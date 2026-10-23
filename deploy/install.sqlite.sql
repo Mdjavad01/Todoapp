@@ -116,3 +116,172 @@ CREATE TABLE IF NOT EXISTS subtasks (
 CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks (task_id);
 CREATE INDEX IF NOT EXISTS idx_subtasks_user ON subtasks (user_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_subtasks_applied ON subtasks (user_id, applied_at);
+
+-- ---------------------------------------------------------------
+-- فاز ۴ — پنل مدیریت + پلن‌ها + اطلاعیه‌ها + تنظیمات + لاگ
+-- (آینه‌ی MySQL برای توسعه/تست محلی)
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS plans (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid        TEXT(36) NOT NULL UNIQUE,
+  code        TEXT(50) NOT NULL UNIQUE,
+  title       TEXT(120) NOT NULL,
+  months      INTEGER NOT NULL DEFAULT 1,
+  price_rials INTEGER NOT NULL DEFAULT 0,
+  description TEXT(255),
+  is_active   INTEGER NOT NULL DEFAULT 1,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at  TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid       TEXT(36) NOT NULL UNIQUE,
+  code       TEXT(50) NOT NULL UNIQUE,
+  type       TEXT(8) NOT NULL,
+  value      INTEGER NOT NULL,
+  expires_at TEXT(19),
+  max_uses   INTEGER,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  is_active  INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid           TEXT(36) NOT NULL UNIQUE,
+  user_id        INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  plan_id        INTEGER NOT NULL REFERENCES plans (id),
+  coupon_id      INTEGER REFERENCES coupons (id),
+  amount_rials   INTEGER NOT NULL,
+  discount_rials INTEGER NOT NULL DEFAULT 0,
+  status         TEXT(16) NOT NULL DEFAULT 'created',
+  description    TEXT(255),
+  created_at     TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at     TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status, created_at);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid          TEXT(36) NOT NULL UNIQUE,
+  order_id      INTEGER NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
+  gateway       TEXT(16) NOT NULL,
+  status        TEXT(16) NOT NULL DEFAULT 'created',
+  amount_rials  INTEGER NOT NULL,
+  gateway_ref   TEXT(190),
+  verified_at   TEXT(19),
+  verify_payload TEXT,
+  created_at    TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at    TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_payments_order ON payments (order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid       TEXT(36) NOT NULL UNIQUE,
+  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  plan_id    INTEGER REFERENCES plans (id),
+  order_id   INTEGER REFERENCES orders (id),
+  source     TEXT(16) NOT NULL,
+  starts_at  TEXT(19) NOT NULL,
+  expires_at TEXT(19),
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_subs_user ON subscriptions (user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_roles (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  code        TEXT(30) NOT NULL UNIQUE,
+  title       TEXT(80) NOT NULL,
+  permissions TEXT
+);
+
+CREATE TABLE IF NOT EXISTS admins (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid            TEXT(36) NOT NULL UNIQUE,
+  username        TEXT(64) NOT NULL UNIQUE,
+  password_hash   TEXT(255) NOT NULL,
+  role_id         INTEGER NOT NULL REFERENCES admin_roles (id),
+  is_active       INTEGER NOT NULL DEFAULT 1,
+  totp_secret     TEXT(255),
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until    TEXT(19),
+  last_login_at   TEXT(19),
+  created_at      TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at      TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id   INTEGER NOT NULL REFERENCES admins (id) ON DELETE CASCADE,
+  token_hash TEXT(255) NOT NULL UNIQUE,
+  csrf_token TEXT(64) NOT NULL,
+  ip         TEXT(45),
+  user_agent TEXT(255),
+  expires_at TEXT(19) NOT NULL,
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin ON admin_sessions (admin_id);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid       TEXT(36) NOT NULL UNIQUE,
+  title      TEXT(150) NOT NULL,
+  body       TEXT NOT NULL,
+  type       TEXT(8) NOT NULL DEFAULT 'info',
+  is_active  INTEGER NOT NULL DEFAULT 1,
+  starts_at  TEXT(19),
+  ends_at    TEXT(19),
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements (is_active);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT(80) PRIMARY KEY,
+  value      TEXT,
+  updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_type TEXT(8) NOT NULL DEFAULT 'admin',
+  actor_id   INTEGER,
+  action     TEXT(80) NOT NULL,
+  entity     TEXT(60),
+  entity_id  TEXT(64),
+  details    TEXT,
+  ip         TEXT(45),
+  user_agent TEXT(255),
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs (actor_type, actor_id);
+
+-- داده‌ی اولیه (فاز ۴)
+INSERT OR IGNORE INTO admin_roles (code, title, permissions) VALUES
+  ('superadmin', 'مدیر کل', '{}'),
+  ('support', 'پشتیبان', '{"users.view":true,"orders.view":true,"orders.review":true}');
+
+INSERT OR IGNORE INTO plans (uuid, code, title, months, price_rials, description, is_active, sort_order) VALUES
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'monthly',  'اشتراک ماهانه',  1, 490000,  'یک ماه دسترسی کامل به کارام پرو', 1, 1),
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'annual',   'اشتراک سالانه', 12, 1900000, 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'lifetime', 'دائمی',          0, 4900000, 'یکبار پرداخت، همیشه پرو', 1, 3);
+
+INSERT OR IGNORE INTO settings (key, value) VALUES
+  ('app_name', 'کارام'),
+  ('maintenance_mode', '0'),
+  ('min_app_version', '1.0.0'),
+  ('paywall_title', 'کارام پرو (Karam Pro)'),
+  ('gateway_zibal_enabled', '0'),
+  ('gateway_aqayepardakht_enabled', '0'),
+  ('gateway_card_enabled', '0'),
+  ('card_numbers', '[]'),
+  ('provider_email_enabled', '0'),
+  ('provider_bale_enabled', '0');

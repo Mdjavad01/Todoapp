@@ -5,6 +5,7 @@ declare(strict_types=1);
 /**
  * کارام — نقطه‌ی ورود API
  * فاز ۱: سلامت سرویس | فاز ۲: CRUD + سینک دوسویه | فاز ۳: احراز هویت OTP + نشست‌ها
+ * فاز ۴: پنل مدیریت (ورود ادمین + داشبورد + کاربران + پلن‌ها + اطلاعیه‌ها + تنظیمات + لاگ)
  *
  * همه‌ی تاریخ‌ها UTC ذخیره و برگردانده می‌شوند.
  */
@@ -18,16 +19,19 @@ require __DIR__ . '/../src/Support/Uuid.php';
 require __DIR__ . '/../src/Security/Validator.php';
 require __DIR__ . '/../src/Auth/AccessToken.php';
 require __DIR__ . '/../src/Auth/Guard.php';
+require __DIR__ . '/../src/Auth/AdminGuard.php';
 require __DIR__ . '/../src/Auth/Otp.php';
 require __DIR__ . '/../src/Auth/RefreshToken.php';
 require __DIR__ . '/../src/Services/Mailer.php';
 require __DIR__ . '/../src/Services/BaleBot.php';
+require __DIR__ . '/../src/Services/Audit.php';
 require __DIR__ . '/../src/Services/Entities.php';
 require __DIR__ . '/../src/Services/SyncService.php';
 require __DIR__ . '/../src/Controllers/HealthController.php';
 require __DIR__ . '/../src/Controllers/AuthController.php';
 require __DIR__ . '/../src/Controllers/RestEntityController.php';
 require __DIR__ . '/../src/Controllers/SyncController.php';
+require __DIR__ . '/../src/Controllers/AdminController.php';
 
 // همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
 date_default_timezone_set('UTC');
@@ -94,6 +98,27 @@ $router->delete('/api/v1/subtasks/{uuid}', [$subtasks, 'destroy']);
 
 // ---- سینک دوسویه ----
 $router->post('/api/v1/sync', [new SyncController(), 'sync']);
+
+// ---- پنل مدیریت (فاز ۴) ----
+$admin = new AdminController();
+$router->post('/api/admin/login', [$admin, 'login']);
+$router->post('/api/admin/logout', [$admin, 'logout']);
+$router->get('/api/admin/me', [$admin, 'me']);
+$router->get('/api/admin/stats', [$admin, 'stats']);
+$router->get('/api/admin/users', [$admin, 'usersIndex']);
+$router->get('/api/admin/users/{id}', [$admin, 'userShow']);
+$router->patch('/api/admin/users/{id}', [$admin, 'userUpdate']);
+$router->post('/api/admin/users/{id}/premium', [$admin, 'userGrantPremium']);
+$router->post('/api/admin/users/{id}/revoke-sessions', [$admin, 'userRevokeSessions']);
+$router->get('/api/admin/plans', [$admin, 'plansIndex']);
+$router->patch('/api/admin/plans/{id}', [$admin, 'planUpdate']);
+$router->get('/api/admin/announcements', [$admin, 'announcementsIndex']);
+$router->post('/api/admin/announcements', [$admin, 'announcementCreate']);
+$router->patch('/api/admin/announcements/{id}', [$admin, 'announcementUpdate']);
+$router->delete('/api/admin/announcements/{id}', [$admin, 'announcementDelete']);
+$router->get('/api/admin/settings', [$admin, 'settingsIndex']);
+$router->patch('/api/admin/settings', [$admin, 'settingsUpdate']);
+$router->get('/api/admin/audit', [$admin, 'auditIndex']);
 
 // اجرا — مسیر بدون query string
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';

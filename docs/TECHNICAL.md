@@ -363,3 +363,66 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 | ۴ — ادمین | جدول‌های `admins`، `admin_roles`، `audit_logs` آماده؛ اسکریپت ساخت ادمین موجود؛ جدول `otp_requests` از `purpose='admin_2fa'` هم پشتیبانی می‌کند |
 | ۵ — پرداخت | جدول‌های `plans`، `orders`، `payments`، `receipts`، `coupons` آماده + داده‌ی اولیه‌ی پلن‌ها |
 | ۶ — اندروید | PWA کامل (manifest + SW + آیکن‌های maskable) + API client-ready → قابل بسته‌بندی با Bubblewrap/TWA |
+
+## ۱۳. پنل مدیریت (فاز ۴)
+
+### ۱۳.۱. معماری
+
+```
+frontend/admin/            ← SPA مستقل React+TS+Vite (hash-routing، بدون PWA)
+├── src/api.ts             ← کلاینت API: Bearer + X-CSRF-Token + هندل ۴۰۱
+├── src/views/             ← Login، Dashboard، Users، Plans، Announcements، Settings، Audit
+└── dist/                  ← خروجی نهایی → آپلود در public_html/panel/
+```
+
+- پنل در مسیر `/panel/` هم‌مبدا با API است؛ مسیریابی با hash (`#/users`) تا روی هر هاست استاتیک کار کند.
+- **سازگار با CSP سخت‌گیرانه:** هیچ `style` inline و اسکریپت inline وجود ندارد؛ نمودارها و عناصر داینامیک با CSSOM (`setProperty`) تغییر اندازه می‌گیرند. فونت وزیرمتن و آیکن‌های SVG کاملاً محلی.
+- `VITE_API_EXTRA_QUERY` (فقط برای پیش‌نمایش سندباکس) به همه‌ی درخواست‌ها اضافه می‌شود؛ در بیلد production خالی است.
+
+### ۱۳.۲. احراز و نشست ادمین (Auth/AdminGuard.php)
+
+| مورد | مقدار |
+|---|---|
+| ورود | `POST /api/admin/login {username, password}` → `{token, csrfToken, expiresAt, admin, permissions}` |
+| هش رمز | Argon2id (یا bcrypt) — ساخته‌شده با `install/setup-admin.php` |
+| قفل حساب | ۵ تلاش ناموفق → ۱۵ دقیقه قفل (`admins.failed_attempts/locked_until`) + تأخیر تصادفی ۱۰۰-۳۰۰ms در پاسخ ناموفق |
+| نشست | سمت‌سرور در `admin_sessions` (توکن ۶۴ hex، فقط SHA-256 ذخیره می‌شود) — عمر پیش‌فرض ۱۲ ساعت (`ADMIN_SESSION_TTL_HOURS`) — ابطال‌پذیر با logout |
+| CSRF | همه‌ی POST/PATCH/DELETE باید هدر `X-CSRF-Token` برابر با `csrf_token` نشست بفرستند (پنل هم‌مبدا است؛ این لایه‌ی دوم است) |
+| دسترسی‌ها | نقش `superadmin` = همه‌چیز؛ بقیه نقش‌ها فقط کلیدهای `true` در `admin_roles.permissions` (JSON) — منبع واحد: `AdminGuard::effectivePermissions()` |
+| Audit | همه‌ی اعمال (`admin.login`، `user.update`، `user.premium_grant`، `plan.update`، `announcement.*`، `settings.update`، ...) در `audit_logs` با IP و User-Agent |
+
+### ۱۳.۳. مسیرهای API ادمین
+
+```
+POST   /api/admin/login                      عمومی
+POST   /api/admin/logout                     CSRF
+GET    /api/admin/me                         پروفایل + دسترسی‌های مؤثر
+GET    /api/admin/stats                      داشبورد (users/content/sessions/orders/signupsSeries)
+GET    /api/admin/users                      ?q=&status=&page=&perPage=  (users.view)
+GET    /api/admin/users/{id}                 جزئیات: هویت‌ها + اشتراک‌ها + شمارنده‌ها
+PATCH  /api/admin/users/{id}                 {status?, displayName?, premiumUntil?}  (users.manage)
+POST   /api/admin/users/{id}/premium         {planCode} یا {months} یا {lifetime:true}
+POST   /api/admin/users/{id}/revoke-sessions ابطال همه‌ی Refresh Token های کاربر
+GET    /api/admin/plans                      (plans.manage)
+PATCH  /api/admin/plans/{id}                 {title?, priceRials?, description?, isActive?, months?, sortOrder?}
+GET    /api/admin/announcements              (announcements.manage)
+POST   /api/admin/announcements              {title, body, type, isActive, startsAt?, endsAt?}
+PATCH  /api/admin/announcements/{id}
+DELETE /api/admin/announcements/{id}
+GET    /api/admin/settings                   (settings.manage)
+PATCH  /api/admin/settings                   {key: value,...} — فقط کلیدهای مجاز + اعتبارسنجی هر کلید
+GET    /api/admin/audit                      ?actor=&action=&page=  (audit.view)
+```
+
+- **اعطای اشتراک:** تمدید از انتهای `premium_until` فعلی (اگر فعال باشد)؛ دائمی → سنتینل `9999-12-31 23:59:59` در `users.premium_until` + رکورد `subscriptions` با `source='admin_grant'` (برای دائمی `expires_at=NULL`).
+- **مسدودسازی کاربر** → ابطال فوری همه‌ی `refresh_tokens` او (خروج از همه‌ی دستگاه‌ها) + `Guard` دیگر توکنش را قبول نمی‌کند.
+- **تنظیمات قابل ویرایش از پنل:** `app_name`، `maintenance_mode`، `min_app_version` (x.y.z)، `paywall_title`، `gateway_*_enabled`، `card_numbers` (JSON نرمال‌شده)، `provider_email_enabled`، `provider_bale_enabled` — کلید ناشناس = 422.
+- **UI و دسترسی:** ناوبری پنل بر اساس دسترسی‌های برگشتی سرور فیلتر می‌شود؛ ورود مستقیم با hash به صفحه‌ی بدون دسترسی → داشبورد. دکمه‌های عملیات فقط با دسترسی مربوطه رندر می‌شوند (سرور هم مستقلاً 403 می‌دهد).
+
+### ۱۳.۴. توسعه و تست
+
+```bash
+php -S 127.0.0.1:8097 tests/panel-router.php   # پنل + API هم‌مبدا (فقط توسعه)
+php tests/phase4-test.php                       # تست یکپارچه‌ی API ادمین (۶۲ بررسی)
+php tests/seed-demo.php                         # داده‌ی نمایشی (boss/BossPass123 و helper/HelperPass123)
+```

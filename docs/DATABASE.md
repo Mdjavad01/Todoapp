@@ -143,4 +143,4 @@ announcements        settings
 
 ## ۸. توسعه‌ی محلی بدون MySQL
 
-فایل `deploy/install.sqlite.sql` آینه‌ی همین اسکما برای SQLite است (فقط توسعه/تست؛ روی هاست آپلود نمی‌شود). با `DB_DRIVER=sqlite` در `.env` محلی، `Database.php` به SQLite وصل می‌شود و کل API (شامل سینک) بدون سرور MySQL قابل تست است.
+فایل `deploy/install.sqlite.sql` آینه‌ی همین اسکما برای SQLite است (فقط توسعه/تست؛ روی هاست آپلود نمی‌شود). با `DB_DRIVER=sqlite` در `.env` محلی، `Database.php` به SQLite وصل می‌شود و کل API (شامل سینک و **پنل مدیریت فاز ۴**) بدون سرور MySQL قابل تست است. اسکیمای sqlite شامل جدول‌های `plans`، `coupons`، `orders`، `payments`، `subscriptions`، `admin_roles`، `admins`، `admin_sessions`، `announcements`، `settings`، `audit_logs` + همان داده‌ی اولیه است.
