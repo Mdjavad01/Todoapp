@@ -161,6 +161,75 @@ final class Otp
         return ['ok' => true];
     }
 
+    /* ---------------- ژورنال کدهای صادرشده (فاز ۴.۵ — شورتکد ادمین) ----------------
+     *
+     * برای «شورتکد ورود OTP» در پنل مدیریت، کدهای صادرشده به‌صورت موقت در فایل
+     * storage/cache/issued-otp.jsonl ثبت می‌شوند تا مالک بتواند بدون دسترسی به
+     * صندوق ایمیل/بله/پیامک، جریان ورود را از پنل تست و تأیید کند.
+     *
+     * محدودسازی ریسک:
+     *  - فایل بیرون از public_html است و .htaccess دسترسی به storage را بسته است.
+     *  - فقط ۲۰۰ رکورد آخر نگه داشته می‌شود؛ کدها ۵ دقیقه اعتبار دارند.
+     *  - خواندن فقط از مسیر ادمین (users.manage) + ثبت در audit.
+     */
+
+    private static function issuedPath(): string
+    {
+        return dirname(__DIR__, 2) . '/storage/cache/issued-otp.jsonl';
+    }
+
+    /** ثبت یک کد صادرشده در ژورنال (تا سقف ۲۰۰ رکورد آخر) */
+    public static function recordIssued(array $entry): void
+    {
+        $path = self::issuedPath();
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $entry['at'] = $entry['at'] ?? gmdate('Y-m-d\TH:i:s\Z');
+        $line = json_encode($entry, JSON_UNESCAPED_UNICODE) . "\n";
+        @file_put_contents($path, $line, FILE_APPEND | LOCK_EX);
+
+        // چرخش: اگر بیش از حد بزرگ شد، فقط ۱۰۰ رکورد آخر بماند
+        if (@filesize($path) > 64 * 1024) {
+            $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (is_array($lines) && count($lines) > 250) {
+                @file_put_contents($path, implode("\n", array_slice($lines, -100)) . "\n", LOCK_EX);
+            }
+        }
+    }
+
+    /** آخرین کد ثبت‌شده برای یک بلیت بله (اتصال چت ← کد) */
+    public static function lastIssuedForTicket(string $ticket): ?array
+    {
+        return self::searchIssued(static fn (array $e): bool => ($e['ticket'] ?? '') === $ticket);
+    }
+
+    /** آخرین کد ثبت‌شده برای یک هویت (ایمیل/بله/موبایل) */
+    public static function lastIssuedFor(string $type, string $value): ?array
+    {
+        return self::searchIssued(static fn (array $e): bool => ($e['type'] ?? '') === $type && strtolower((string) ($e['value'] ?? '')) === strtolower($value));
+    }
+
+    private static function searchIssued(callable $predicate): ?array
+    {
+        $path = self::issuedPath();
+        if (!is_file($path)) {
+            return null;
+        }
+        $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (!is_array($lines)) {
+            return null;
+        }
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $e = json_decode((string) $lines[$i], true);
+            if (is_array($e) && $predicate($e)) {
+                return $e;
+            }
+        }
+        return null;
+    }
+
     /* ---------------- درج رکوردها ---------------- */
 
     /**
@@ -184,6 +253,7 @@ final class Otp
             ':exp' => gmdate('Y-m-d H:i:s', $now + self::ttlMinutes() * 60),
             ':now' => gmdate('Y-m-d H:i:s', $now),
         ]);
+        self::recordIssued(['type' => $type, 'value' => $value, 'code' => $code]);
         return ['code' => $code, 'expiresAt' => gmdate('Y-m-d\TH:i:s\Z', $now + self::ttlMinutes() * 60)];
     }
 

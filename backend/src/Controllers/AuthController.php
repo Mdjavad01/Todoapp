@@ -33,17 +33,18 @@ final class AuthController
         Response::ok([
             'email' => true,
             'bale' => BaleBot::configured(),
+            'sms' => Sms::enabled(),
             'botUsername' => BaleBot::botUsername(),
         ]);
     }
 
     /* ================= درخواست کد / بلیت ================= */
 
-    /** POST /api/auth/otp/request  {channel:'email'|'bale', target?} */
+    /** POST /api/auth/otp/request  {channel:'email'|'bale'|'sms', target?} */
     public function otpRequest(): void
     {
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale']);
+        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
         $ip = Request::ip();
 
         if ($channel === 'bale') {
@@ -65,6 +66,41 @@ final class AuthController
                 'expiresIn' => Otp::ticketTtlMinutes() * 60,
                 'resendAfter' => Otp::resendAfterSeconds(),
             ]);
+            return;
+        }
+
+        if ($channel === 'sms') {
+            if (!Sms::enabled()) {
+                Response::error('ورود با شماره موبایل هنوز فعال نشده است', 503, ['code' => 'sms_disabled']);
+                return;
+            }
+            $phone = self::normalizeMobile((string) ($body['target'] ?? ''));
+            if (!self::isMobile($phone)) {
+                throw new ValidationError('شماره موبایل معتبر نیست (نمونه: 09123456789)');
+            }
+            $pdo = Database::pdo();
+            $limit = Otp::checkRateLimit($pdo, 'mobile', $phone, $ip);
+            if (!$limit['ok']) {
+                Response::error($limit['reason'], 429, ['code' => 'rate_limited', 'retryAfter' => $limit['retryAfter'] ?? 60]);
+                return;
+            }
+            $created = Otp::createCode($pdo, 'mobile', $phone, $ip);
+            $sent = Sms::sendCode($phone, $created['code']);
+            if (!$sent['ok']) {
+                Response::error('ارسال پیامک ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'sms_failed']);
+                return;
+            }
+            $out = [
+                'channel' => 'sms',
+                'target' => $phone,
+                'expiresIn' => Otp::ttlMinutes() * 60,
+                'resendAfter' => Otp::resendAfterSeconds(),
+                'devMode' => $sent['mode'] === 'log',
+            ];
+            if (Otp::debugEcho()) {
+                $out['devCode'] = $created['code']; // فقط در حالت توسعه!
+            }
+            Response::ok($out);
             return;
         }
 
@@ -133,7 +169,7 @@ final class AuthController
     public function otpVerify(): void
     {
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale']);
+        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
         $code = Validator::str($body, 'code', 4, 8);
         $deviceName = Validator::str($body, 'deviceName', 1, 80, false) ?? 'دستگاه ناشناس';
         $deviceUuid = Validator::uuid($body, 'deviceUuid', false) ?? Uuid::v4();
@@ -142,7 +178,15 @@ final class AuthController
 
         if ($channel === 'email') {
             $target = Validator::email($body, 'target');
+            $identityType = 'email';
             $result = Otp::verifyCode($pdo, 'email', $target, (string) $code);
+        } elseif ($channel === 'sms') {
+            $target = self::normalizeMobile((string) ($body['target'] ?? ''));
+            if (!self::isMobile($target)) {
+                throw new ValidationError('شماره موبایل معتبر نیست');
+            }
+            $identityType = 'mobile';
+            $result = Otp::verifyCode($pdo, 'mobile', $target, (string) $code);
         } else {
             $ticket = Validator::str($body, 'ticket', 6, 6);
             $ticket = mb_strtoupper(Otp::normalizeDigits((string) $ticket));
@@ -156,11 +200,12 @@ final class AuthController
             }
             // chat_id از رکورد بلیتِ مصرف‌شده در نمی‌آید؛ کلاینت هم آن را نمی‌داند،
             // پس آخرین کد فعالِ بله که بعد از مصرف همین بلیت ساخته شده را می‌یابیم.
-            $target = $this->latestBaleTargetForTicket($pdo, $ticket);
+            $target = self::latestBaleTargetForTicket($pdo, $ticket);
             if ($target === null) {
                 Response::error('کد فعال یافت نشد؛ از ابتدا وارد شوید', 409, ['code' => 'ticket_not_linked']);
                 return;
             }
+            $identityType = 'bale_chat_id';
             $result = Otp::verifyCode($pdo, 'bale', $target, (string) $code);
         }
 
@@ -170,10 +215,15 @@ final class AuthController
         }
 
         // یافتن/ساخت کاربر و هویت تأییدشده
-        $type = $channel === 'email' ? 'email' : 'bale_chat_id';
-        $user = $this->findOrCreateUserByIdentity($pdo, $type, $target, markVerified: true);
+        $user = self::findOrCreateUserByIdentity($pdo, $identityType, $target, markVerified: true);
         if ($user['status'] !== 'active') {
             Response::error('حساب کاربری مسدود یا حذف شده است', 403, ['code' => 'blocked']);
+            return;
+        }
+
+        // گیت ثبت‌نام (قابل کنترل از پنل مدیریت — فاز ۴.۵)
+        if ($user['isNew'] && !Settings::bool('api_allow_registration', true)) {
+            Response::error('ثبت‌نام حساب جدید موقتاً بسته است؛ با پشتیبانی تماس بگیرید', 403, ['code' => 'registration_closed']);
             return;
         }
 
@@ -184,7 +234,7 @@ final class AuthController
 
         $out = [
             'isNew' => $user['isNew'],
-            'user' => ['uuid' => $user['uuid'], 'displayName' => $user['displayName']],
+            'user' => ['uuid' => $user['uuid'], 'displayName' => $user['displayName'], 'gender' => $user['gender']],
             'device' => ['uuid' => $deviceUuid, 'name' => $deviceName],
             'accessToken' => $access['token'],
             'expiresAt' => $access['expiresAt'],
@@ -193,6 +243,8 @@ final class AuthController
         ];
         if ($channel === 'email') {
             $out['user']['email'] = $target;
+        } elseif ($channel === 'sms') {
+            $out['user']['mobile'] = $target;
         } else {
             $out['user']['baleChatId'] = $target;
         }
@@ -200,7 +252,7 @@ final class AuthController
     }
 
     /** آخرین chat_id بله‌ای که بعد از مصرف این بلیت برایش کد ساخته شده است */
-    private function latestBaleTargetForTicket(PDO $pdo, string $ticket): ?string
+    public static function latestBaleTargetForTicket(PDO $pdo, string $ticket): ?string
     {
         $stmt = $pdo->prepare(
             'SELECT consumed_at FROM otp_requests
@@ -300,15 +352,32 @@ final class AuthController
         Response::ok(['user' => $user, 'identities' => $identities]);
     }
 
-    /** PATCH /api/v1/me  {displayName} */
+    /** PATCH /api/v1/me  {displayName?, gender?} */
     public function updateMe(): void
     {
         $user = Guard::requireUser();
         $body = Request::json();
-        $name = Validator::str($body, 'displayName', 1, 100);
-        Database::pdo()->prepare('UPDATE users SET display_name = :n WHERE id = :id')
-            ->execute([':n' => $name, ':id' => $user['id']]);
-        Response::ok(['user' => ['uuid' => $user['uuid'], 'displayName' => $name]]);
+        $name = Validator::str($body, 'displayName', 1, 100, false);
+        $gender = Validator::enum($body, 'gender', ['unset', 'male', 'female'], null, false);
+
+        if ($name === null && $gender === null) {
+            throw new ValidationError('چیزی برای تغییر ارسال نشده است');
+        }
+
+        $pdo = Database::pdo();
+        if ($name !== null) {
+            $pdo->prepare('UPDATE users SET display_name = :n WHERE id = :id')
+                ->execute([':n' => $name, ':id' => $user['id']]);
+        }
+        if ($gender !== null) {
+            $pdo->prepare('UPDATE users SET gender = :g WHERE id = :id')
+                ->execute([':g' => $gender, ':id' => $user['id']]);
+        }
+        Response::ok(['user' => [
+            'uuid' => $user['uuid'],
+            'displayName' => $name ?? $user['displayName'],
+            'gender' => $gender ?? $user['gender'],
+        ]]);
     }
 
     /** GET /api/v1/me/sessions?deviceUuid=... */
@@ -379,13 +448,13 @@ final class AuthController
     /* ================= ابزارهای مشترک ================= */
 
     /**
-     * یافتن کاربر با هویت یا ساخت کاربر جدید + هویت.
-     * @return array{id:int, uuid:string, displayName:?string, status:string, isNew:bool}
+     * یافتن کاربر با هویت یا ساخت کاربر جدید + هویت. (عمومی — پنل ادمین هم استفاده می‌کند)
+     * @return array{id:int, uuid:string, displayName:?string, gender:string, status:string, isNew:bool}
      */
-    private function findOrCreateUserByIdentity(PDO $pdo, string $type, string $value, bool $markVerified): array
+    public static function findOrCreateUserByIdentity(PDO $pdo, string $type, string $value, bool $markVerified): array
     {
         $stmt = $pdo->prepare(
-            'SELECT u.id, u.uuid, u.display_name, u.status
+            'SELECT u.id, u.uuid, u.display_name, u.gender, u.status
              FROM user_identities i JOIN users u ON u.id = i.user_id
              WHERE i.type = :type AND i.value = :value
              LIMIT 1'
@@ -402,6 +471,7 @@ final class AuthController
                 'id' => (int) $user['id'],
                 'uuid' => (string) $user['uuid'],
                 'displayName' => $user['display_name'],
+                'gender' => (string) ($user['gender'] ?? 'unset'),
                 'status' => (string) $user['status'],
                 'isNew' => false,
             ];
@@ -415,8 +485,8 @@ final class AuthController
         $now = gmdate('Y-m-d H:i:s');
         $pdo->beginTransaction();
         try {
-            $pdo->prepare('INSERT INTO users (uuid, display_name, status, created_at, updated_at)
-                           VALUES (:uuid, :name, :status, :now, :now)')
+            $pdo->prepare("INSERT INTO users (uuid, display_name, gender, status, created_at, updated_at)
+                           VALUES (:uuid, :name, 'unset', :status, :now, :now)")
                 ->execute([':uuid' => $userUuid, ':name' => $displayName, ':status' => 'active', ':now' => $now]);
             $userId = (int) $pdo->lastInsertId();
 
@@ -444,17 +514,43 @@ final class AuthController
                 'id' => (int) $user['id'],
                 'uuid' => (string) $user['uuid'],
                 'displayName' => $user['display_name'],
+                'gender' => (string) ($user['gender'] ?? 'unset'),
                 'status' => (string) $user['status'],
                 'isNew' => false,
             ];
         }
 
-        return ['id' => $userId, 'uuid' => $userUuid, 'displayName' => $displayName, 'status' => 'active', 'isNew' => true];
+        return ['id' => $userId, 'uuid' => $userUuid, 'displayName' => $displayName, 'gender' => 'unset', 'status' => 'active', 'isNew' => true];
     }
 
     private function touchLogin(PDO $pdo, int $userId): void
     {
         $pdo->prepare('UPDATE users SET last_login_at = :now WHERE id = :id')
             ->execute([':id' => $userId, ':now' => gmdate('Y-m-d H:i:s')]);
+    }
+
+    /* ================= ابزار شماره موبایل (فاز ۴.۵) ================= */
+
+    /** نرمال‌سازی شماره موبایل ایران: حذف +۹۸/۰۰۹۸/فاصله — خروجی: 09xxxxxxxxx */
+    public static function normalizeMobile(string $raw): string
+    {
+        $v = Otp::normalizeDigits(trim($raw));
+        $v = preg_replace('/[\s\-()]/u', '', $v) ?? '';
+        if (str_starts_with($v, '+98')) {
+            $v = '0' . substr($v, 3);
+        } elseif (str_starts_with($v, '0098')) {
+            $v = '0' . substr($v, 4);
+        } elseif (str_starts_with($v, '98') && strlen($v) === 12) {
+            $v = '0' . substr($v, 2);
+        } elseif (str_starts_with($v, '9') && strlen($v) === 10) {
+            $v = '0' . $v;
+        }
+        return $v;
+    }
+
+    /** شماره موبایل معتبر ایران؟ */
+    public static function isMobile(string $v): bool
+    {
+        return (bool) preg_match('/^09\d{9}$/', $v);
     }
 }

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid          TEXT(36) NOT NULL UNIQUE,
   display_name  TEXT(100),
+  gender        TEXT(16) NOT NULL DEFAULT 'unset',
   status        TEXT(16) NOT NULL DEFAULT 'active',
   premium_until TEXT(19),
   last_login_at TEXT(19),

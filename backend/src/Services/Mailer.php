@@ -15,9 +15,10 @@ declare(strict_types=1);
 
 final class Mailer
 {
+    /** مسیر ارسال — اولویت: تنظیمات پنل (mail_transport) → .env (MAIL_TRANSPORT) → پیش‌فرض بر اساس درایور */
     public static function transport(): string
     {
-        $t = Config::get('MAIL_TRANSPORT');
+        $t = Settings::get('mail_transport', (string) (Config::get('MAIL_TRANSPORT', '') ?? ''));
         if ($t !== null && in_array($t, ['mail', 'smtp', 'log'], true)) {
             return $t;
         }
@@ -26,12 +27,12 @@ final class Mailer
 
     public static function fromAddress(): string
     {
-        return (string) (Config::get('MAIL_FROM', 'no-reply@localhost') ?? 'no-reply@localhost');
+        return (string) (Settings::get('smtp_from', (string) (Config::get('SMTP_FROM', 'no-reply@localhost') ?? '')) ?? 'no-reply@localhost');
     }
 
     public static function fromName(): string
     {
-        return (string) (Config::get('MAIL_FROM_NAME', 'کارام') ?? 'کارام');
+        return (string) (Settings::get('app_name', (string) (Config::get('SMTP_FROM_NAME', 'کارام') ?? '')) ?? 'کارام');
     }
 
     /** قالب ایمیل OTP — فارسی و راست‌به‌چپ */
@@ -104,15 +105,16 @@ HTML;
 
     private static function sendViaSmtp(string $to, string $subject, string $html): bool
     {
-        $host = (string) (Config::get('SMTP_HOST', '') ?? '');
+        // تنظیمات پنل اولویت دارد؛ در نبودش .env خوانده می‌شود
+        $host = (string) (Settings::get('smtp_host', (string) (Config::get('SMTP_HOST', '') ?? '')) ?? '');
         if ($host === '') {
-            error_log('[karam][mailer] SMTP_HOST خالی است؛ ایمیل ارسال نشد');
+            error_log('[karam][mailer] smtp_host خالی است؛ ایمیل ارسال نشد');
             return false;
         }
-        $port = (int) (Config::get('SMTP_PORT', '587') ?? 587);
-        $secure = (string) (Config::get('SMTP_SECURE', 'tls') ?? 'tls'); // tls | ssl | none
-        $user = (string) (Config::get('SMTP_USER', '') ?? '');
-        $pass = (string) (Config::get('SMTP_PASS', '') ?? '');
+        $port = (int) (Settings::get('smtp_port', (string) (Config::get('SMTP_PORT', '587') ?? '587')) ?? 587);
+        $secure = (string) (Settings::get('smtp_secure', (string) (Config::get('SMTP_SECURE', 'tls') ?? 'tls')) ?? 'tls'); // tls | ssl | none
+        $user = (string) (Settings::get('smtp_user', (string) (Config::get('SMTP_USER', '') ?? '')) ?? '');
+        $pass = (string) (Settings::get('smtp_pass', (string) (Config::get('SMTP_PASS', '') ?? '')) ?? '');
 
         $remote = ($secure === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port;
         $sock = @stream_socket_client($remote, $errno, $errstr, 15);

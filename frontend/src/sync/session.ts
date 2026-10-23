@@ -8,7 +8,7 @@
 import { idbGet, idbPut, STORES } from '@/db/idb';
 import type { PrefEntity } from '@/types';
 
-export type AuthChannel = 'email' | 'bale';
+export type AuthChannel = 'email' | 'bale' | 'sms';
 
 export interface SyncSession {
   userUuid: string;
@@ -16,6 +16,8 @@ export interface SyncSession {
   email: string;
   channel: AuthChannel;
   displayName: string | null;
+  /** جنسیت/ظاهر انتخابی (unset تا بعد از ورود انتخاب شود) */
+  gender?: 'unset' | 'male' | 'female';
   accessToken: string;
   expiresAt: string; // ISO UTC — انقضای access
   refreshToken: string;

@@ -9,6 +9,7 @@ import { clearSession, getDeviceUuid, getSession, setSession, type AuthChannel, 
 export interface AuthChannels {
   email: boolean;
   bale: boolean;
+  sms: boolean;
   botUsername: string;
 }
 
@@ -25,7 +26,7 @@ export interface OtpRequestResult {
 
 export interface VerifyResult {
   isNew: boolean;
-  user: { uuid: string; displayName: string | null; email?: string; baleChatId?: string };
+  user: { uuid: string; displayName: string | null; gender?: 'unset' | 'male' | 'female'; email?: string; mobile?: string; baleChatId?: string };
 }
 
 export interface ActiveSession {
@@ -81,12 +82,13 @@ export async function verifyOtp(params: {
     },
   });
 
-  const identity = res.user.email ?? (res.user.baleChatId ? `بله: ${res.user.baleChatId}` : '');
+  const identity = res.user.email ?? (res.user.mobile ? `موبایل: ${res.user.mobile}` : res.user.baleChatId ? `بله: ${res.user.baleChatId}` : '');
   const session: SyncSession = {
     userUuid: res.user.uuid,
     email: identity,
     channel: params.channel,
     displayName: res.user.displayName,
+    gender: res.user.gender ?? 'unset',
     accessToken: res.accessToken,
     expiresAt: res.expiresAt,
     refreshToken: res.refreshToken,
@@ -121,6 +123,29 @@ export async function updateProfile(displayName: string): Promise<{ displayName:
     await setSession({ ...s, displayName: res.user.displayName });
   }
   return { displayName: res.user.displayName };
+}
+
+/** ثبت جنسیت/ظاهر انتخابی روی پروفایل (فاز ۴.۵) */
+export async function updateGender(gender: 'male' | 'female' | 'unset'): Promise<void> {
+  await authedFetch('/v1/me', { method: 'PATCH', body: { gender } });
+  const s = await getSession();
+  if (s) {
+    await setSession({ ...s, gender });
+  }
+}
+
+/** تنظیمات عمومی سرور — بدون احراز (فاز ۴.۵) */
+export interface BootstrapPayload {
+  appName: string;
+  paywallTitle: string;
+  minAppVersion: string;
+  maintenance: boolean;
+  voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
+  channels: { email: boolean; bale: boolean; sms: boolean; botUsername: string };
+}
+
+export async function fetchBootstrap(): Promise<BootstrapPayload> {
+  return apiFetch<BootstrapPayload>('/v1/bootstrap');
 }
 
 export async function listSessions(): Promise<ActiveSession[]> {

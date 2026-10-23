@@ -12,18 +12,20 @@ import {
   type AdminSession,
 } from './api';
 import { Toast, Spinner, useToast } from './ui';
-import { IconDashboard, IconUsers, IconCard, IconMegaphone, IconSettings, IconHistory, IconLogout, IconMenu, IconClose } from './icons';
+import { IconDashboard, IconUsers, IconCard, IconMegaphone, IconSettings, IconHistory, IconLogout, IconMenu, IconClose, IconKey } from './icons';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Users from './views/Users';
 import Plans from './views/Plans';
 import Announcements from './views/Announcements';
 import Settings from './views/Settings';
+import OtpLogin from './views/OtpLogin';
 import Audit from './views/Audit';
-type Route = 'dashboard' | 'users' | 'plans' | 'announcements' | 'settings' | 'audit';
+type Route = 'dashboard' | 'users' | 'otplogin' | 'plans' | 'announcements' | 'settings' | 'audit';
 
 const NAV: { key: Route; label: string; icon: typeof IconDashboard; perm?: string }[] = [
   { key: 'dashboard', label: 'داشبورد', icon: IconDashboard },
+  { key: 'otplogin', label: 'شورتکد ورود OTP', icon: IconKey, perm: 'users.manage' },
   { key: 'users', label: 'کاربران', icon: IconUsers, perm: 'users.view' },
   { key: 'plans', label: 'پلن‌ها', icon: IconCard, perm: 'plans.manage' },
   { key: 'announcements', label: 'اطلاعیه‌ها', icon: IconMegaphone, perm: 'announcements.manage' },
@@ -156,6 +158,7 @@ export default function App() {
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 lg:px-7 lg:py-7">
           {activeRoute === 'dashboard' && <Dashboard onToast={show} />}
+          {activeRoute === 'otplogin' && <OtpLogin onToast={show} />}
           {activeRoute === 'users' && <Users onToast={show} session={session} />}
           {activeRoute === 'plans' && <Plans onToast={show} session={session} />}
           {activeRoute === 'announcements' && <Announcements onToast={show} />}

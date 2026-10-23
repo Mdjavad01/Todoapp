@@ -391,7 +391,7 @@ check('ورود دوم بله → isNew=false (همان کاربر)', $st === 20
 
 /* ================= ۱۰) اعتبارسنجی ورودی ================= */
 echo "۱۰) اعتبارسنجی\n";
-[$st] = http('POST', '/api/auth/otp/request', ['channel' => 'sms', 'target' => '0912']);
+[$st] = http('POST', '/api/auth/otp/request', ['channel' => 'fax', 'target' => '0912']);
 check('کانال نامعتبر → 422', $st === 422);
 [$st] = http('POST', '/api/auth/otp/request', ['channel' => 'email', 'target' => 'not-an-email']);
 check('ایمیل نامعتبر → 422', $st === 422);

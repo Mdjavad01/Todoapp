@@ -58,9 +58,10 @@ final class SyncService
                 if (!is_array($items)) {
                     throw new ValidationError("ساختار changes.{$entity} نامعتبر است");
                 }
-                // سقف تعداد برای هر موجودیت در هر درخواست (محافظت از سرور)
-                if (count($items) > 2000) {
-                    throw new ValidationError("تعداد آیتم‌های {$entity} بیش از حد مجاز است (حداکثر ۲۰۰۰)");
+                // سقف تعداد برای هر موجودیت در هر درخواست (قابل تنظیم از پنل — فاز ۴.۵)
+                $cap = Settings::int('api_max_sync_items', 2000, 100, 5000);
+                if (count($items) > $cap) {
+                    throw new ValidationError("تعداد آیتم‌های {$entity} بیش از حد مجاز است (حداکثر " . Otp::normalizeDigits((string) $cap) . ')');
                 }
                 foreach ($items as $i => $item) {
                     if (!is_array($item)) {

@@ -27,7 +27,7 @@ final class Guard
         }
 
         $stmt = Database::pdo()->prepare(
-            'SELECT id, uuid, display_name, status, premium_until FROM users WHERE uuid = :uuid LIMIT 1'
+            'SELECT id, uuid, display_name, gender, status, premium_until FROM users WHERE uuid = :uuid LIMIT 1'
         );
         $stmt->execute([':uuid' => $payload['u']]);
         $row = $stmt->fetch();
@@ -43,6 +43,7 @@ final class Guard
             'id' => (int) $row['id'],
             'uuid' => (string) $row['uuid'],
             'displayName' => $row['display_name'],
+            'gender' => (string) ($row['gender'] ?? 'unset'),
             'premiumUntil' => $row['premium_until'],
         ];
     }

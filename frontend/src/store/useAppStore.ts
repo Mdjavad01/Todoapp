@@ -12,13 +12,23 @@ export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emer
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
 export type CalendarTarget = 'quickAdd' | 'hub' | null;
 
+/** تنظیمات عمومی سرور (از /api/v1/bootstrap) — آفلاین با پیش‌فرض‌ها */
+export interface AppSettings {
+  appName: string;
+  paywallTitle: string;
+  minAppVersion: string;
+  maintenance: boolean;
+  voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
+  channels: { email: boolean; bale: boolean; sms: boolean; botUsername: string } | null;
+}
+
 /** نگاشت اکسنت به مقادیر RGB برای متغیرهای CSS */
 export const ACCENTS: Record<AccentColor, { label: string; primary: string; container: string; fixed: string; dim: string; deep: string }> = {
   teal: { label: 'فیروزه‌ای', primary: '0 104 95', container: '0 131 120', fixed: '137 245 231', dim: '107 216 203', deep: '17 94 89' },
   indigo: { label: 'نیلی', primary: '79 70 229', container: '99 102 241', fixed: '165 180 252', dim: '129 140 248', deep: '49 46 129' },
   amber: { label: 'کهربایی', primary: '217 119 6', container: '245 158 11', fixed: '253 230 138', dim: '251 191 36', deep: '146 64 14' },
   emerald: { label: 'زمردی', primary: '5 150 105', container: '16 185 129', fixed: '167 243 208', dim: '110 231 183', deep: '6 95 70' },
-  rose: { label: 'سرخابی', primary: '225 29 72', container: '244 63 94', fixed: '254 205 211', dim: '253 164 175', deep: '159 18 57' },
+  rose: { label: 'صورتی', primary: '190 24 93', container: '219 39 119', fixed: '251 207 232', dim: '249 168 212', deep: '131 24 67' },
   purple: { label: 'بنفش', primary: '147 51 234', container: '168 85 247', fixed: '233 213 255', dim: '192 132 252', deep: '88 28 135' },
 };
 
@@ -43,6 +53,8 @@ interface AppState {
   searchQuery: string;
   searchFilter: string;
   accountSheet: boolean;
+  genderSheet: boolean;
+  appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
 
@@ -53,6 +65,7 @@ interface AppState {
   goHome(): void;
 
   openAccountSheet(): void;
+  openGenderSheet(): void;
   reloadSession(): Promise<void>;
   signOut(): Promise<void>;
   syncNow(): Promise<void>;
@@ -116,6 +129,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: '',
   searchFilter: 'all',
   accountSheet: false,
+  genderSheet: false,
+  appSettings: {
+    appName: 'کارام',
+    paywallTitle: 'کارام پرو',
+    minAppVersion: '1.0.0',
+    maintenance: false,
+    voice: { enabled: false, provider: 'off', rate: 1, pitch: 1, lang: 'fa-IR' },
+    channels: null,
+  },
   session: null,
   syncState: { status: 'idle', lastSyncAt: null, error: null },
 
@@ -145,6 +167,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳)
     if (get().session) void refreshSession().then(() => get().reloadSession());
 
+    // تنظیمات عمومی سرور (فاز ۴.۵) — در نبود شبکه با پیش‌فرض‌ها ادامه می‌دهیم
+    try {
+      const bs = await auth.fetchBootstrap();
+      useAppStore.setState({ appSettings: bs });
+    } catch {
+      /* آفلاین — پیش‌فرض‌ها */
+    }
+
     set({ ready: true });
   },
 
@@ -167,6 +197,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openAccountSheet() {
     set({ accountSheet: true });
+  },
+
+  openGenderSheet() {
+    set({ genderSheet: true });
   },
 
   async reloadSession() {
@@ -274,7 +308,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refresh();
     queueSync();
     set({ modal: null, pendingDate: null });
-    get().showToast(`کار «${cleanTitle || title}» افزوده شد ✨`);
+    get().showToast(`کار «${cleanTitle || title}» افزوده شد`);
   },
 
   async addInlineTask(listId, title) {

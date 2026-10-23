@@ -141,8 +141,5 @@ export function sortedLists(lists: ListEntity[]): ListEntity[] {
   return [...lists].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-export const GREETING_EMOJI = (hour: number): string =>
-  hour < 12 ? '☀️' : hour < 17 ? '🌤️' : hour < 20 ? '🌆' : '🌙';
-
 export const GREETING_TEXT = (hour: number): string =>
   hour < 5 ? 'شب بخیر' : hour < 12 ? 'صبح بخیر' : hour < 17 ? 'ظهر بخیر' : hour < 20 ? 'عصر بخیر' : 'شب بخیر';

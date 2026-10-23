@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetHeader } from '@/components/Sheet';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
+import * as repo from '@/db/repo';
 import { toFa } from '@/lib/format';
 import {
   fetchChannels,
@@ -21,7 +22,7 @@ import {
  * نقطه‌ی ورود: سطر «پشتیبان‌گیری در حساب کاربری» در تنظیمات (مطابق طرح)
  */
 
-type Step = 'choose' | 'email' | 'bale' | 'code';
+type Step = 'choose' | 'email' | 'bale' | 'sms' | 'code';
 
 const toFaDigits = (v: string | number): string =>
   toFa(String(v)).replace(/,/g, '');
@@ -38,8 +39,9 @@ export function AccountSheet() {
 
   // ورود
   const [step, setStep] = useState<Step>('choose');
-  const [channel, setChannel] = useState<'email' | 'bale' | null>(null);
+  const [channel, setChannel] = useState<'email' | 'bale' | 'sms' | null>(null);
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export function AccountSheet() {
     setCode('');
     setDevCode(null);
     setBaleState('waiting');
-    void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, bale: false, botUsername: '' }));
+    void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, bale: false, sms: false, botUsername: '' }));
     if (useAppStore.getState().session) {
       void listSessions().then(setSessions).catch(() => setSessions([]));
     }
@@ -119,6 +121,28 @@ export function AccountSheet() {
     setError(null);
     setChannel('bale');
     setStep('bale');
+  };
+
+  const startSms = () => {
+    setError(null);
+    setChannel('sms');
+    setStep('sms');
+  };
+
+  const sendSmsCode = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await requestOtp('sms', phone.trim());
+      setResendIn(res.resendAfter ?? 60);
+      setDevCode(res.devCode ?? null);
+      setStep('code');
+      setTimeout(() => codeRef.current?.focus(), 50);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ارسال کد ناموفق بود');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const sendEmailCode = async () => {
@@ -174,16 +198,25 @@ export function AccountSheet() {
       const res =
         channel === 'bale'
           ? await verifyOtp({ channel: 'bale', ticket, code: code.trim() })
-          : await verifyOtp({ channel: 'email', target: email.trim(), code: code.trim() });
+          : channel === 'sms'
+            ? await verifyOtp({ channel: 'sms', target: phone.trim(), code: code.trim() })
+            : await verifyOtp({ channel: 'email', target: email.trim(), code: code.trim() });
       await reloadSession();
       void listSessions().then(setSessions).catch(() => setSessions([]));
-      showToast(res.isNew ? 'حساب شما ساخته شد و سینک ابری فعال شد ✨' : 'ورود موفق؛ سینک ابری فعال شد ✨');
+      showToast(res.isNew ? 'حساب شما ساخته شد و سینک ابری فعال شد' : 'ورود موفق؛ سینک ابری فعال شد');
       setStep('choose');
       setChannel(null);
       setEmail('');
+      setPhone('');
       setCode('');
       setTicket('');
       setDevCode(null);
+      // آنبوردینگ ظاهر (فاز ۴.۵) — برای حسابی که هنوز جنسیت/تم انتخاب نکرده
+      const needsOnboarding = (res.user.gender ?? 'unset') === 'unset';
+      const localChoice = await repo.prefsGet<string>('gender-choice', 'none');
+      if (needsOnboarding && localChoice === 'none') {
+        useAppStore.setState({ accountSheet: false, genderSheet: true });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'کد تأیید نشد');
     } finally {
@@ -394,6 +427,15 @@ export function AccountSheet() {
                   <Icon name="mail" size={18} />
                   ورود با ایمیل
                 </button>
+                {channels?.sms ? (
+                  <button
+                    className="w-full py-3.5 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
+                    onClick={startSms}
+                  >
+                    <Icon name="notifications_active" size={18} />
+                    ورود با شماره موبایل
+                  </button>
+                ) : null}
                 {channels?.bale ? (
                   <button
                     className="w-full py-3.5 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
@@ -522,13 +564,59 @@ export function AccountSheet() {
             </div>
           ) : null}
 
+          {step === 'sms' ? (
+            <div>
+              <label className="text-label-md font-bold mb-2 block" htmlFor="karam-login-phone">
+                شماره موبایل شما
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="karam-login-phone"
+                  type="tel"
+                  dir="ltr"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  autoFocus
+                  placeholder="09xxxxxxxxx"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^0-9۰-۹+ ]/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && phone.trim().length >= 10 && !busy) void sendSmsCode();
+                  }}
+                  className="flex-1 px-4 py-3 rounded-2xl bg-surface-container dark:bg-slate-800 text-body-md outline-none border border-outline-variant/40 focus:border-primary transition-colors text-on-surface dark:text-slate-100 placeholder:text-outline"
+                />
+                <button
+                  className="px-5 py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50 whitespace-nowrap"
+                  onClick={() => void sendSmsCode()}
+                  disabled={busy || phone.trim().length < 10}
+                >
+                  {busy ? '…' : 'دریافت کد'}
+                </button>
+              </div>
+              {error ? <p className="text-body-sm text-red-600 dark:text-red-300 mt-2">{error}</p> : null}
+              <button
+                className="text-body-sm text-primary font-bold mt-3"
+                onClick={() => {
+                  setError(null);
+                  setStep('choose');
+                }}
+              >
+                بازگشت
+              </button>
+            </div>
+          ) : null}
+
           {step === 'code' ? (
             <div>
               <label className="text-label-md font-bold mb-2 block" htmlFor="karam-login-code">
                 کد ۶ رقمی
               </label>
               <p className="text-body-sm text-on-surface-variant mb-3">
-                {channel === 'bale' ? 'کد ارسال‌شده به چت بله‌تان را وارد کنید' : `کد به ${email} ارسال شد`}
+                {channel === 'bale'
+                  ? 'کد ارسال‌شده به چت بله‌تان را وارد کنید'
+                  : channel === 'sms'
+                    ? `کد به شماره ${phone} پیامک شد`
+                    : `کد به ${email} ارسال شد`}
               </p>
               <input
                 id="karam-login-code"

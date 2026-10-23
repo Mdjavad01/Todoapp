@@ -16,6 +16,7 @@ require __DIR__ . '/../src/Http/Request.php';
 require __DIR__ . '/../src/Http/Response.php';
 require __DIR__ . '/../src/Http/Router.php';
 require __DIR__ . '/../src/Support/Uuid.php';
+require __DIR__ . '/../src/Support/Settings.php';
 require __DIR__ . '/../src/Security/Validator.php';
 require __DIR__ . '/../src/Auth/AccessToken.php';
 require __DIR__ . '/../src/Auth/Guard.php';
@@ -23,6 +24,7 @@ require __DIR__ . '/../src/Auth/AdminGuard.php';
 require __DIR__ . '/../src/Auth/Otp.php';
 require __DIR__ . '/../src/Auth/RefreshToken.php';
 require __DIR__ . '/../src/Services/Mailer.php';
+require __DIR__ . '/../src/Services/Sms.php';
 require __DIR__ . '/../src/Services/BaleBot.php';
 require __DIR__ . '/../src/Services/Audit.php';
 require __DIR__ . '/../src/Services/Entities.php';
@@ -58,6 +60,16 @@ set_exception_handler(static function (Throwable $e): void {
 
 $router = new Router();
 $router->get('/api/health', [new HealthController(), 'health']);
+$router->get('/api/v1/bootstrap', [new HealthController(), 'bootstrap']);
+
+// ---- گیت حالت تعمیر (فاز ۴.۵ — از پنل ادمین قابل تغییر) ----
+// سلامت سرویس و همه‌ی مسیرهای ادمین همیشه باز می‌مانند؛ بقیه‌ی API ۵۰۳ می‌شود.
+if (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) !== '/api/health'
+    && !str_starts_with((string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: ''), '/api/admin')
+    && Settings::bool('maintenance_mode')) {
+    Response::error('سرویس موقتاً در حال به‌روزرسانی است؛ چند دقیقه‌ی دیگر برگردید', 503, ['code' => 'maintenance']);
+    return;
+}
 
 // ---- احراز هویت OTP + نشست‌ها (فاز ۳) ----
 $auth = new AuthController();
@@ -118,6 +130,9 @@ $router->patch('/api/admin/announcements/{id}', [$admin, 'announcementUpdate']);
 $router->delete('/api/admin/announcements/{id}', [$admin, 'announcementDelete']);
 $router->get('/api/admin/settings', [$admin, 'settingsIndex']);
 $router->patch('/api/admin/settings', [$admin, 'settingsUpdate']);
+$router->post('/api/admin/otp/request', [$admin, 'otpShortcutRequest']);
+$router->post('/api/admin/otp/bale/poll', [$admin, 'otpShortcutBalePoll']);
+$router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);
 $router->get('/api/admin/audit', [$admin, 'auditIndex']);
 
 // اجرا — مسیر بدون query string

@@ -426,3 +426,68 @@ php -S 127.0.0.1:8097 tests/panel-router.php   # پنل + API هم‌مبدا (�
 php tests/phase4-test.php                       # تست یکپارچه‌ی API ادمین (۶۲ بررسی)
 php tests/seed-demo.php                         # داده‌ی نمایشی (boss/BossPass123 و helper/HelperPass123)
 ```
+
+## ۱۴. فاز ۴.۵ — شورتکد OTP ادمین + تنظیمات داینامیک + تم جنسیتی + پشتیبان‌گیری
+
+### ۱۴.۱. تنظیمات داینامیک (`Support/Settings.php`)
+
+منبع واحد خواندن تنظیمات قابل‌تغییر از پنل با **اولویت: پنل (جدول settings) → .env → پیش‌فرض**:
+
+- کش درون‌درخواستی (حداکثر یک کوئری)؛ اگر DB در دسترس نباشد بی‌صدا به .env برمی‌گردد.
+- کلید «خالی» در پنل یعنی «برگشت به .env» — برای mail_transport و smtp_secure به‌صورت enum با allowEmpty و برای بقیه‌ی str/int هم مقدار خالی نادیده گرفته می‌شود.
+- مصرف‌کنندگان: `Mailer` (transport/host/port/secure/user/pass/from)، `BaleBot` (token/username)، `Sms::enabled()`، سقف سینک (`api_max_sync_items`)، گیت ثبت‌نام (`api_allow_registration`)، گیت تعمیر (`maintenance_mode`)، بوت‌استرپ عمومی.
+
+### ۱۴.۲. شورتکد ورود OTP (پنل)
+
+```
+POST /api/admin/otp/request      {channel:'email'|'sms'|'bale', target?}   (users.manage + CSRF)
+  email/sms → {code, expiresAt, sent:{ok,mode}}   ← کد مستقیماً در پاسخ ادمین
+  bale      → {ticket, deepLink, botUsername}
+POST /api/admin/otp/bale/poll    {ticket} → {status, code?, chatId?}   ← پس از code_sent کد از ژورنال
+POST /api/admin/otp/verify       {channel, target?|ticket?, code} → نشست کامل کاربر (Access+Refresh)
+```
+
+- دسترسی: `users.manage` + CSRF؛ همه‌ی اعمال در audit با `otp.shortcut_request` / `otp.shortcut_login` (بدون کد در لاگ).
+- زیرساخت نمایش کد: ژورنال `storage/cache/issued-otp.jsonl` (۲۰۰ رکورد آخر؛ بیرون از web root؛ نوشته‌شده در `Otp::createCode` و `BaleBot::linkChatToTicket` با پیوند ticket). فقط این مسیر ادمین آن را می‌خواند.
+- بله: بعد از «شروع اتصال»، مالک باید از حساب بله‌ی خودش روی لینک بزند و START بفرستد؛ پنل هر ۳ ثانیه poll می‌زند و به‌محض اتصال چت، کد را نشان می‌دهد.
+- ادمین از محدودسازی ارسال OTP معاف است (اکشن کنترل‌شده + audit)؛ جریان عمومی محدودسازی خودش را دارد.
+
+### ۱۴.۳. کانال موبایل (پیامک)
+
+- `POST /api/auth/otp/request {channel:'sms', target}` — نرمال‌سازی `+98/0098/۹۸/ارقام فارسی` → `09xxxxxxxxx` و اعتبارسنجی.
+- هویت: `user_identities.type='mobile'`؛ سقف‌های OTP همان‌ها (identity + IP).
+- ارسال با `Sms::sendCode` — درایور HTTP عمومی از تنظیمات پنل:
+  - `provider_sms_url` (+ متد GET/POST) — خالی = حالت log (کد فقط در ژورنال/شورتکد ادمین)
+  - `provider_sms_headers` (JSON) و `provider_sms_body` (قالب با {phone} و {code})
+- پارامترهای Settings::publicBootstrap و `/api/auth/channels` شامل `sms` هستند تا UI فقط وقتی کانال را نشان دهد که فعال است.
+
+### ۱۴.۴. گیت‌های سمت سرور
+
+- **تعمیر:** `maintenance_mode=1` → همه‌ی `/api/*` به‌جز `/api/health` و `/api/admin/*` → ۵۰۳ با پیام فارسی (`code:'maintenance'`).
+- **ثبت‌نام:** `api_allow_registration=0` → تأیید OTP برای حسابِ جدید ۴۰۳ (`code:'registration_closed'`)؛ ورود کاربران موجود سالم است.
+- **سقف سینک:** `api_max_sync_items` (پیش‌فرض ۲۰۰۰، بازه‌ی ۱۰۰..۵۰۰۰) در `SyncService`.
+
+### ۱۴.۵. جنسیت و تم کاربر
+
+- ستون `users.gender` (`unset/male/female`)؛ در پاسخ `otp/verify` و `/api/v1/me` برمی‌گردد و با `PATCH /api/v1/me {gender}` ثبت می‌شود.
+- اپ بعد از ورودِ اولین بار (gender=unset و انتخاب محلی ثبت‌نشده) شیت «ظاهر کارام را انتخاب کنید» را باز می‌کند: دخترانه → اکسنت `rose` (پالت صورتی 190 24 93)، پسرانه → `teal`. انتخاب محلی در `prefs.gender-choice` هم ذخیره می‌شود تا تکرار نشود؛ از تنظیمات همیشه قابل تغییر است.
+
+### ۱۴.۶. بکاپ/بازیابی کاربر (`lib/backup.ts`)
+
+- خروجی: JSON کامل ۴ استور IndexedDB (lists/tasks/subtasks/reminders — شامل تومب‌استون‌ها) با `app:'karam'`, `kind:'backup'`, `version:1`.
+- بازیابی: ادغام LWW بر اساس `updatedAt` (newer wins) — هیچ رکوردی حذف نمی‌شود؛ گزارش «افزوده/به‌روز/محلیِ جدیدتر ماند».
+- بعد از بازیابی `queueSync()` → اگر حساب ابری فعال باشد، داده‌ی بازیابی‌شده به سرور سینک می‌شود.
+
+### ۱۴.۷. ویس (خواندن صوتی کار)
+
+- ادمین: `voice_enabled=1` + `voice_provider=web_speech` (+rate/pitch/lang).
+- اپ: `GET /api/v1/bootstrap` → `appSettings.voice` → دکمه‌ی «خواندن کار با صدا» در TaskDetailSheet (عنوان + یادداشت + زیرکارهای انجام‌نشده) با `speechSynthesis` — بدون هیچ وابستگی خارجی؛ در نبود موتور صوتی/صدا، بدون خطا کاری نمی‌کند.
+
+### ۱۴.۸. تست
+
+```bash
+php tests/phase45-test.php    # ۶۰ بررسی فاز ۴.۵ (نیاز به سرور ۸۰۹۹ دارد)
+php tests/phase3-test.php     # رگرسیون فاز ۳ (۵۳)
+php tests/phase4-test.php     # رگرسیون فاز ۴ (۶۲)
+php -S 127.0.0.1:8096 tests/app-router.php   # اپ + API هم‌مبدا (تست مرورگر)
+```

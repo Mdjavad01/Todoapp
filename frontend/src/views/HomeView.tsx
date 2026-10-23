@@ -1,7 +1,7 @@
 import { Icon } from '@/components/Icon';
 import { MicButton } from '@/components/Sheet';
 import { useAppStore } from '@/store/useAppStore';
-import { homeStats, sortedLists, LIST_BAR_COLORS, GREETING_EMOJI, GREETING_TEXT } from '@/lib/selectors';
+import { homeStats, sortedLists, LIST_BAR_COLORS, GREETING_TEXT } from '@/lib/selectors';
 import { toFa, faFullDate } from '@/lib/format';
 
 /** بخش ۲: صفحه‌ی خانه — دقیقاً مطابق طرح با داده‌ی زنده */
@@ -23,7 +23,7 @@ export function HomeView() {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-headline-lg font-headline-lg text-on-surface dark:text-inverse-on-surface">
-            {GREETING_TEXT(hour)}، {userName} عزیز {GREETING_EMOJI(hour)}
+            {GREETING_TEXT(hour)}، {userName} عزیز
           </h1>
           <p className="text-body-sm font-body-sm text-on-surface-variant dark:text-outline mt-0.5">
             {faFullDate(today)} • <span className="text-primary font-bold">روز پرباری پیش روست</span>

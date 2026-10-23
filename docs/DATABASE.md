@@ -37,6 +37,8 @@ announcements        settings
 ## ۱. گروه کاربران و احراز هویت (فاز ۳)
 
 ### `users`
+
+> **فاز ۴.۵:** ستون `gender ENUM(unset,male,female) DEFAULT unset` اضافه شد (انتخاب تم دخترانه/پسرانه بعد از ورود). برای نصب‌های موجود: `deploy/upgrade-v0.5.sql`.
 کاربران اپ. `uuid` شناسه‌ی سینک بین دستگاه‌ها؛ `status` شامل `active/blocked/deleted`؛ `premium_until` انقضای اشتراک (NULL = کاربر عادی).
 
 ### `user_identities`
@@ -55,6 +57,8 @@ announcements        settings
 قرارداد مشترک این گروه: `uuid` (تولید سمت کلاینت)، `updated_at` (پیش‌فرض CURRENT_TIMESTAMP و بروز هنگام UPDATE)، `deleted_at` (NULL = زنده)، و **`applied_at`** (زمان اعمال سمت سرور — از فاز ۲ مبنای کرسر قطعی سینک؛ ایندکس `(user_id, applied_at)`).
 
 ### `lists`
+کلیدهای settings فاز ۴.۵: `api_allow_registration`، `api_max_sync_items`، `voice_*`، `mail_transport`، `smtp_*`، `bale_bot_token/username`، `provider_sms_*`، `card_payment_guide` — خالی = fallback به .env.
+
 لیست‌های کار: `name`، `emoji`، `color`، `sort_order`. کلید خارجی به `users` با `ON DELETE CASCADE`.
 
 ### `tasks`

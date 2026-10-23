@@ -39,6 +39,43 @@ export function TaskDetailSheet() {
   const [repeat, setRepeat] = useState<TaskEntity['repeat']>('none');
   const [newSub, setNewSub] = useState('');
   const [addingSub, setAddingSub] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
+  const appSettings = useAppStore((s) => s.appSettings);
+
+  // خواندن صوتی کار (فاز ۴.۵) — با موتور صوتی خود دستگاه؛ بدون هیچ وابستگی خارجی
+  const voiceAvailable =
+    appSettings.voice.enabled &&
+    appSettings.voice.provider === 'web_speech' &&
+    typeof window !== 'undefined' &&
+    'speechSynthesis' in window;
+
+  const stopSpeaking = () => {
+    if (voiceAvailable) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeaking(false);
+  };
+
+  const speak = () => {
+    if (!voiceAvailable || !task) return;
+    window.speechSynthesis.cancel();
+    const text = [task.title, task.notes, ...subs.filter((s) => !s.done).map((s) => s.title)].filter(Boolean).join('. ');
+    if (!text.trim()) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = appSettings.voice.lang || 'fa-IR';
+    u.rate = Math.min(2, Math.max(0.5, appSettings.voice.rate || 1));
+    u.pitch = Math.min(2, Math.max(0.5, appSettings.voice.pitch || 1));
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(u);
+  };
+
+  useEffect(() => {
+    if (!voiceAvailable) return;
+    return () => window.speechSynthesis.cancel();
+  }, [voiceAvailable]);
 
   useEffect(() => {
     if (task) {
@@ -48,6 +85,8 @@ export function TaskDetailSheet() {
       setRepeat(task.repeat);
       setNewSub('');
       setAddingSub(false);
+    } else {
+      stopSpeaking();
     }
   }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -103,6 +142,19 @@ export function TaskDetailSheet() {
             onChange={(e) => setNotes(e.target.value)}
             aria-label="یادداشت"
           />
+
+          {voiceAvailable ? (
+            <button
+              className={`self-start flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold active:scale-95 transition-transform ${
+                speaking ? 'bg-primary text-on-primary' : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
+              }`}
+              onClick={() => (speaking ? stopSpeaking() : speak())}
+              aria-label={speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
+            >
+              <Icon name="mic" size={15} />
+              {speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
+            </button>
+          ) : null}
 
           {/* زیرکارها */}
           <div className="flex flex-col gap-2">

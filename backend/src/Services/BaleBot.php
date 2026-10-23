@@ -18,14 +18,20 @@ declare(strict_types=1);
 
 final class BaleBot
 {
+    /** توکن ربات — اولویت با تنظیمات پنل، بعد .env */
     public static function configured(): bool
     {
-        return (string) (Config::get('BALE_BOT_TOKEN', '') ?? '') !== '';
+        return self::token() !== '';
+    }
+
+    public static function token(): string
+    {
+        return (string) (Settings::get('bale_bot_token', (string) (Config::get('BALE_BOT_TOKEN', '') ?? '')) ?? '');
     }
 
     public static function botUsername(): string
     {
-        return (string) (Config::get('BALE_BOT_USERNAME', '') ?? '');
+        return (string) (Settings::get('bale_bot_username', (string) (Config::get('BALE_BOT_USERNAME', '') ?? '')) ?? '');
     }
 
     private static function apiBase(): string
@@ -47,7 +53,7 @@ final class BaleBot
     public static function sendMessage(int|string $chatId, string $text): bool
     {
         // مسیر رسمی Bot API: /bot{TOKEN}/sendMessage — بدون اسلش بعد از bot
-        $url = self::apiBase() . '/bot' . rawurlencode((string) Config::get('BALE_BOT_TOKEN', '')) . '/sendMessage';
+        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/sendMessage';
         $body = json_encode(['chat_id' => $chatId, 'text' => $text], JSON_UNESCAPED_UNICODE);
         [$status] = self::httpPostJson($url, (string) $body);
         return $status === 200;
@@ -56,7 +62,7 @@ final class BaleBot
     /** @return array<int,array>|null null = خطای اتصال */
     private static function getUpdates(?int $offset): ?array
     {
-        $url = self::apiBase() . '/bot' . rawurlencode((string) Config::get('BALE_BOT_TOKEN', ''))
+        $url = self::apiBase() . '/bot' . rawurlencode(self::token())
             . '/getUpdates?timeout=0&allowed_updates=%5B%22message%22%5D';
         if ($offset !== null && $offset > 0) {
             $url .= '&offset=' . $offset;
@@ -243,6 +249,8 @@ final class BaleBot
 
             $code = Otp::createCode($pdo, 'bale', (string) $chatId, ''); // ip خالی = ارسال سمت سرور
             Otp::consumeTicket($pdo, $ticket);
+            // ژورنال شورتکد ادمین: پیوند بلیت ← چت ← کد (خواندن فقط از پنل)
+            Otp::recordIssued(['type' => 'bale', 'value' => (string) $chatId, 'code' => $code['code'], 'ticket' => $ticket]);
 
             $pdo->commit();
         } catch (Throwable $e) {

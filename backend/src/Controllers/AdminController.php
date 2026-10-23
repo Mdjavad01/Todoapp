@@ -252,7 +252,7 @@ final class AdminController
 
         $offset = ($page - 1) * $perPage;
         $stmt = $pdo->prepare(
-            "SELECT u.id, u.uuid, u.display_name, u.status, u.premium_until, u.last_login_at, u.created_at,
+            "SELECT u.id, u.uuid, u.display_name, u.gender, u.status, u.premium_until, u.last_login_at, u.created_at,
                     (SELECT i.value FROM user_identities i WHERE i.user_id = u.id AND i.type = 'email' ORDER BY i.is_primary DESC, i.id ASC LIMIT 1) AS email,
                     (SELECT COUNT(*) FROM lists l WHERE l.user_id = u.id AND l.deleted_at IS NULL) AS lists_count,
                     (SELECT COUNT(*) FROM tasks t WHERE t.user_id = u.id AND t.deleted_at IS NULL) AS tasks_count
@@ -269,6 +269,7 @@ final class AdminController
                 'id' => (int) $row['id'],
                 'uuid' => (string) $row['uuid'],
                 'displayName' => $row['display_name'],
+                'gender' => (string) ($row['gender'] ?? 'unset'),
                 'email' => $row['email'],
                 'status' => (string) $row['status'],
                 'premiumUntil' => $row['premium_until'],
@@ -297,7 +298,7 @@ final class AdminController
         $id = self::userId($params);
         $pdo = Database::pdo();
 
-        $stmt = $pdo->prepare('SELECT id, uuid, display_name, status, premium_until, last_login_at, created_at, updated_at FROM users WHERE id = :id LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, uuid, display_name, gender, status, premium_until, last_login_at, created_at, updated_at FROM users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
         $user = $stmt->fetch();
         if ($user === false) {
@@ -348,6 +349,7 @@ final class AdminController
                 'id' => (int) $user['id'],
                 'uuid' => (string) $user['uuid'],
                 'displayName' => $user['display_name'],
+                'gender' => (string) ($user['gender'] ?? 'unset'),
                 'status' => (string) $user['status'],
                 'premiumUntil' => $user['premium_until'],
                 'isPremium' => $user['premium_until'] !== null && (string) $user['premium_until'] > gmdate('Y-m-d H:i:s'),
@@ -802,22 +804,236 @@ final class AdminController
         Response::ok(['message' => 'اطلاعیه حذف شد']);
     }
 
+    /* ================= شورتکد ورود OTP (فاز ۴.۵) =================
+     *
+     * میان‌بر مالک برای تست کامل جریان ورود OTP بدون دسترسی به صندوق ایمیل/
+     * بله/پیامک: کد صادرشده مستقیماً در پاسخ ادمین برمی‌گردد (ژورنال سرور) و
+     * می‌شود همان‌جا تأیید و نشست کاربر را گرفت. همه‌ی این اعمال در audit ثبت
+     * می‌شوند و دسترسی لازم: users.manage.
+     */
+
+    /** POST /api/admin/otp/request  {channel:'email'|'bale'|'sms', target?} */
+    public function otpShortcutRequest(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'users.manage');
+        AdminGuard::requireCsrf($ctx);
+        $body = Request::json();
+        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $pdo = Database::pdo();
+
+        if ($channel === 'email') {
+            $target = Validator::email($body, 'target');
+            // ادمین از محدودسازی ارسال معاف است (اکشن کنترل‌شده + ثبت در audit)
+            $created = Otp::createCode($pdo, 'email', $target, Request::ip());
+            $sent = Mailer::send(
+                $target,
+                'کد ورود کارام: ' . $created['code'],
+                Mailer::otpHtml($created['code'], (string) Otp::ttlMinutes()),
+            );
+            Audit::admin($ctx['admin']['id'], 'otp.shortcut_request', 'user', $target, ['channel' => 'email', 'sent' => $sent]);
+            Response::ok([
+                'channel' => 'email',
+                'target' => $target,
+                'code' => $created['code'], // کد مستقیم برای شورتکد ادمین
+                'expiresAt' => $created['expiresAt'],
+                'sent' => ['ok' => $sent, 'mode' => Mailer::transport()],
+            ]);
+            return;
+        }
+
+        if ($channel === 'sms') {
+            if (!Sms::enabled()) {
+                Response::error('کانال پیامک در تنظیمات فعال نشده است', 503, ['code' => 'sms_disabled']);
+                return;
+            }
+            $target = AuthController::normalizeMobile((string) ($body['target'] ?? ''));
+            if (!AuthController::isMobile($target)) {
+                throw new ValidationError('شماره موبایل معتبر نیست (نمونه: 09123456789)');
+            }
+            $created = Otp::createCode($pdo, 'mobile', $target, Request::ip());
+            $sent = Sms::sendCode($target, $created['code']);
+            Audit::admin($ctx['admin']['id'], 'otp.shortcut_request', 'user', $target, ['channel' => 'sms', 'mode' => $sent['mode']]);
+            Response::ok([
+                'channel' => 'sms',
+                'target' => $target,
+                'code' => $created['code'],
+                'expiresAt' => $created['expiresAt'],
+                'sent' => $sent,
+            ]);
+            return;
+        }
+
+        // ---- بله: بلیت اتصال (فشار START از حساب بله‌ی واقعی لازم است) ----
+        if (!BaleBot::configured()) {
+            Response::error('توکن ربات بله در تنظیمات ثبت نشده است', 503, ['code' => 'bale_disabled']);
+            return;
+        }
+        $ticket = Otp::createTicket($pdo, Request::ip());
+        Audit::admin($ctx['admin']['id'], 'otp.shortcut_request', 'user', null, ['channel' => 'bale', 'ticket' => $ticket['ticket']]);
+        Response::ok([
+            'channel' => 'bale',
+            'ticket' => $ticket['ticket'],
+            'botUsername' => BaleBot::botUsername(),
+            'deepLink' => BaleBot::deepLink($ticket['ticket']),
+            'expiresAt' => $ticket['expiresAt'],
+        ]);
+    }
+
+    /** POST /api/admin/otp/bale/poll  {ticket} → status + کد (اگر چت متصل شده باشد) */
+    public function otpShortcutBalePoll(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'users.manage');
+        $body = Request::json();
+        $ticket = Validator::str($body, 'ticket', 6, 6);
+        $ticket = mb_strtoupper(Otp::normalizeDigits((string) $ticket));
+        if (!Otp::isTicketFormat($ticket)) {
+            throw new ValidationError('بلیت نامعتبر است');
+        }
+
+        BaleBot::pollAndMatchTickets(Database::pdo());
+        $status = Otp::ticketStatus(Database::pdo(), $ticket);
+
+        $out = ['status' => $status, 'botUsername' => BaleBot::botUsername()];
+        if ($status === 'code_sent') {
+            // کد برای چتِ متصل‌شده ارسال شده — از ژورنال برای شورتکد برمی‌گردانیم
+            $issued = Otp::lastIssuedForTicket($ticket);
+            if ($issued !== null) {
+                $out['code'] = (string) ($issued['code'] ?? '');
+                $out['chatId'] = (string) ($issued['value'] ?? '');
+            }
+        }
+        Response::ok($out);
+    }
+
+    /** POST /api/admin/otp/verify  {channel, target?, ticket?, code, deviceName?} → نشست کاربر */
+    public function otpShortcutVerify(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'users.manage');
+        AdminGuard::requireCsrf($ctx);
+        $body = Request::json();
+        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $code = Validator::str($body, 'code', 4, 8);
+        $deviceName = Validator::str($body, 'deviceName', 1, 80, false) ?? 'پنل مدیریت (شورتکد)';
+        $deviceUuid = Uuid::v4();
+        $pdo = Database::pdo();
+
+        if ($channel === 'email') {
+            $target = Validator::email($body, 'target');
+            $identityType = 'email';
+            $result = Otp::verifyCode($pdo, 'email', $target, (string) $code);
+        } elseif ($channel === 'sms') {
+            $target = AuthController::normalizeMobile((string) ($body['target'] ?? ''));
+            if (!AuthController::isMobile($target)) {
+                throw new ValidationError('شماره موبایل معتبر نیست');
+            }
+            $identityType = 'mobile';
+            $result = Otp::verifyCode($pdo, 'mobile', $target, (string) $code);
+        } else {
+            $ticket = Validator::str($body, 'ticket', 6, 6);
+            $ticket = mb_strtoupper(Otp::normalizeDigits((string) $ticket));
+            if (!Otp::isTicketFormat($ticket)) {
+                throw new ValidationError('بلیت نامعتبر است');
+            }
+            if (Otp::ticketStatus($pdo, $ticket) !== 'code_sent') {
+                Response::error('چت بله هنوز به بلیت متصل نشده است', 409, ['code' => 'ticket_not_linked']);
+                return;
+            }
+            $target = AuthController::latestBaleTargetForTicket($pdo, $ticket);
+            if ($target === null) {
+                Response::error('کد فعال یافت نشد؛ از ابتدا شروع کنید', 409, ['code' => 'ticket_not_linked']);
+                return;
+            }
+            $identityType = 'bale_chat_id';
+            $result = Otp::verifyCode($pdo, 'bale', $target, (string) $code);
+        }
+
+        if (!$result['ok']) {
+            Response::error($result['error'], 400, ['code' => $result['code']]);
+            return;
+        }
+
+        $user = AuthController::findOrCreateUserByIdentity($pdo, $identityType, $target, markVerified: true);
+        if ($user['status'] !== 'active') {
+            Response::error('حساب کاربری مسدود یا حذف شده است', 403, ['code' => 'blocked']);
+            return;
+        }
+
+        $pdo->prepare('UPDATE users SET last_login_at = :now WHERE id = :id')
+            ->execute([':id' => $user['id'], ':now' => gmdate('Y-m-d H:i:s')]);
+
+        $access = AccessToken::issue($user['uuid']);
+        $refresh = RefreshToken::issue($pdo, $user['id'], $deviceUuid, $deviceName);
+
+        Audit::admin($ctx['admin']['id'], 'otp.shortcut_login', 'user', $user['uuid'], [
+            'channel' => $channel,
+            'identity' => $target,
+        ]);
+
+        $out = [
+            'isNew' => $user['isNew'],
+            'user' => ['uuid' => $user['uuid'], 'displayName' => $user['displayName'], 'gender' => $user['gender']],
+            'accessToken' => $access['token'],
+            'expiresAt' => $access['expiresAt'],
+            'refreshToken' => $refresh['token'],
+            'refreshExpiresAt' => $refresh['expiresAt'],
+        ];
+        if ($channel === 'email') {
+            $out['user']['email'] = $target;
+        } elseif ($channel === 'sms') {
+            $out['user']['mobile'] = $target;
+        } else {
+            $out['user']['baleChatId'] = $target;
+        }
+        Response::ok($out);
+    }
+
     /* ================= تنظیمات ================= */
 
-    /** کلیدهای مجاز + قواعد اعتبارسنجی هر کلید */
+    /** کلیدهای مجاز + قواعد اعتبارسنجی هر کلید (فاز ۴.۵: API/ویس/پروایدرها/کارت کامل) */
     private static function settingRules(): array
     {
         return [
+            // --- عمومی و API ---
             'app_name' => ['type' => 'str', 'min' => 2, 'max' => 80],
             'maintenance_mode' => ['type' => 'bool'],
             'min_app_version' => ['type' => 'semver'],
+            'api_allow_registration' => ['type' => 'bool'],
+            'api_max_sync_items' => ['type' => 'int', 'min' => 100, 'max' => 5000],
+            // --- ظاهر اپ و پرو ---
             'paywall_title' => ['type' => 'str', 'min' => 3, 'max' => 120],
+            'voice_enabled' => ['type' => 'bool'],
+            'voice_provider' => ['type' => 'enum', 'values' => ['off', 'web_speech']],
+            'voice_rate' => ['type' => 'int', 'min' => 50, 'max' => 200],
+            'voice_pitch' => ['type' => 'int', 'min' => 50, 'max' => 150],
+            'voice_lang' => ['type' => 'str', 'min' => 2, 'max' => 12],
+            // --- پروایدر ایمیل ---
+            'provider_email_enabled' => ['type' => 'bool'],
+            'mail_transport' => ['type' => 'enum', 'values' => ['mail', 'smtp', 'log'], 'allowEmpty' => true],
+            'smtp_host' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'smtp_port' => ['type' => 'int', 'min' => 0, 'max' => 65535],
+            'smtp_secure' => ['type' => 'enum', 'values' => ['tls', 'ssl', 'none'], 'allowEmpty' => true],
+            'smtp_user' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'smtp_pass' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'smtp_from' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            // --- پروایدر بله ---
+            'provider_bale_enabled' => ['type' => 'bool'],
+            'bale_bot_token' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'bale_bot_username' => ['type' => 'str', 'min' => 0, 'max' => 100],
+            // --- پروایدر پیامک (HTTP عمومی) ---
+            'provider_sms_enabled' => ['type' => 'bool'],
+            'provider_sms_url' => ['type' => 'str', 'min' => 0, 'max' => 500],
+            'provider_sms_method' => ['type' => 'enum', 'values' => ['GET', 'POST']],
+            'provider_sms_headers' => ['type' => 'json'],
+            'provider_sms_body' => ['type' => 'str', 'min' => 0, 'max' => 1000],
+            // --- پرداخت و کارت‌به‌کارت (شخصی‌سازی کامل) ---
             'gateway_zibal_enabled' => ['type' => 'bool'],
             'gateway_aqayepardakht_enabled' => ['type' => 'bool'],
             'gateway_card_enabled' => ['type' => 'bool'],
             'card_numbers' => ['type' => 'cards'],
-            'provider_email_enabled' => ['type' => 'bool'],
-            'provider_bale_enabled' => ['type' => 'bool'],
+            'card_payment_guide' => ['type' => 'str', 'min' => 0, 'max' => 500],
         ];
     }
 
@@ -876,6 +1092,39 @@ final class AdminController
                     throw new ValidationError("مقدار «{$key}» باید به شکل x.y.z باشد");
                 }
                 $stored = $value;
+            } elseif ($rule['type'] === 'int') {
+                if (is_string($value)) {
+                    $value = Otp::normalizeDigits($value);
+                }
+                if (!is_numeric($value) || (int) $value != $value) {
+                    throw new ValidationError("مقدار «{$key}» باید عدد باشد");
+                }
+                $iv = (int) $value;
+                if ($iv < $rule['min'] || $iv > $rule['max']) {
+                    throw new ValidationError("مقدار «{$key}» باید بین {$rule['min']} تا {$rule['max']} باشد");
+                }
+                $stored = (string) $iv;
+            } elseif ($rule['type'] === 'enum') {
+                $allowEmpty = ($rule['allowEmpty'] ?? false) === true;
+                if ($allowEmpty && ($value === '' || $value === null)) {
+                    $stored = ''; // خالی = برگشت به .env
+                } elseif (!is_string($value) || !in_array($value, $rule['values'], true)) {
+                    throw new ValidationError("مقدار «{$key}» باید یکی از: " . implode(' / ', $rule['values']) . ' باشد');
+                } else {
+                    $stored = $value;
+                }
+            } elseif ($rule['type'] === 'json') {
+                $decoded = is_string($value) ? json_decode($value, true) : $value;
+                if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                    throw new ValidationError("مقدار «{$key}» باید JSON معتبر باشد");
+                }
+                if (!is_array($decoded)) {
+                    throw new ValidationError("مقدار «{$key}» باید شیء یا آرایه‌ی JSON باشد");
+                }
+                $stored = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+                if (strlen((string) $stored) > 2000) {
+                    throw new ValidationError("مقدار «{$key}» خیلی بزرگ است");
+                }
             } elseif ($rule['type'] === 'cards') {
                 if (is_string($value)) {
                     $decoded = json_decode($value, true);
@@ -893,7 +1142,12 @@ final class AdminController
                         throw new ValidationError('شماره کارت باید ۱۶ تا ۲۴ رقم باشد');
                     }
                     $clean[] = is_array($card)
-                        ? ['number' => $digits, 'holder' => mb_substr((string) ($card['holder'] ?? ''), 0, 100), 'bank' => mb_substr((string) ($card['bank'] ?? ''), 0, 60)]
+                        ? [
+                            'number' => $digits,
+                            'holder' => mb_substr((string) ($card['holder'] ?? ''), 0, 100),
+                            'bank' => mb_substr((string) ($card['bank'] ?? ''), 0, 60),
+                            'note' => mb_substr((string) ($card['note'] ?? ''), 0, 200),
+                        ]
                         : $digits;
                 }
                 $stored = json_encode($clean, JSON_UNESCAPED_UNICODE);

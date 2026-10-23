@@ -14,6 +14,7 @@ import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
 import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
+import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
 
@@ -63,6 +64,7 @@ export default function App() {
         <CalendarSheet />
         <NewListSheet />
         <AccountSheet />
+        <GenderOnboardingSheet />
       </div>
     </div>
   );
