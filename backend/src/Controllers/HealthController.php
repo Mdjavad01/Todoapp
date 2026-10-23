@@ -5,7 +5,7 @@ declare(strict_types=1);
 /** کنترلر سلامت سرویس — برای مانیتورینگ و تست اولیه‌ی نصب */
 final class HealthController
 {
-    public function health(): void
+    public function health(array $params = []): void
     {
         $dbOk = false;
         $dbError = null;

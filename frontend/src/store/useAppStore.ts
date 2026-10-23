@@ -3,6 +3,9 @@ import type { ListEntity, TaskEntity, SubtaskEntity, ViewName, ListColor, Templa
 import * as repo from '@/db/repo';
 import { ensureSeeded } from '@/db/seed';
 import { toIsoDate } from '@/lib/format';
+import { queueSync, runSync, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
+import { clearSession, getDeviceUuid, getSession, setSession as saveSession, type SyncSession } from '@/sync/session';
+import { apiFetch } from '@/sync/api';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
@@ -38,12 +41,20 @@ interface AppState {
   completedExpanded: boolean;
   searchQuery: string;
   searchFilter: string;
+  accountSheet: boolean;
+  session: SyncSession | null;
+  syncState: SyncState;
 
   init(): Promise<void>;
   refresh(): Promise<void>;
   setView(v: ViewName): void;
   openList(id: string): void;
   goHome(): void;
+
+  openAccountSheet(): void;
+  signIn(email: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  signOut(): Promise<void>;
+  syncNow(): Promise<void>;
 
   setDark(d: boolean): void;
   setAccent(a: AccentColor): void;
@@ -103,6 +114,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   completedExpanded: false,
   searchQuery: '',
   searchFilter: 'all',
+  accountSheet: false,
+  session: null,
+  syncState: { status: 'idle', lastSyncAt: null, error: null },
 
   async init() {
     await ensureSeeded();
@@ -117,6 +131,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ dark, accent, biometricLock: biometric, alerts, userName });
     applyDark(dark);
     applyAccent(accent);
+
+    // اتصال موتور سینک به store (فاز ۲)
+    setSyncListeners({
+      onState: (syncState) => useAppStore.setState({ syncState }),
+      onApplied: () => {
+        void useAppStore.getState().refresh();
+      },
+    });
+    startSyncLoop();
+    const session = await getSession();
+    set({ session });
+    if (session) void runSync();
+
     set({ ready: true });
   },
 
@@ -135,6 +162,51 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   goHome() {
     set({ view: 'home', activeListId: null });
+  },
+
+  openAccountSheet() {
+    set({ accountSheet: true });
+  },
+
+  async signIn(email) {
+    if (!email.includes('@')) return { ok: false, error: 'ایمیل معتبر نیست' };
+    try {
+      const deviceUuid = await getDeviceUuid();
+      const res = await apiFetch<{
+        isNew: boolean;
+        user: { uuid: string; displayName: string | null; email: string };
+        accessToken: string;
+        expiresAt: string;
+      }>('/auth/session', {
+        method: 'POST',
+        body: { email, deviceUuid, deviceName: 'مرورگر وب' },
+      });
+      await saveSession({
+        userUuid: res.user.uuid,
+        email: res.user.email,
+        displayName: res.user.displayName,
+        accessToken: res.accessToken,
+        expiresAt: res.expiresAt,
+        deviceUuid,
+        deviceName: 'مرورگر وب',
+      });
+      const session = await getSession();
+      set({ session });
+      // اولین سینک: داده‌های محلی این دستگاه به حساب می‌رود و داده‌ی سرور می‌آید
+      void runSync();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'ورود ناموفق بود' };
+    }
+  },
+
+  async signOut() {
+    await clearSession();
+    set({ session: null, syncState: { status: 'idle', lastSyncAt: null, error: null } });
+  },
+
+  async syncNow() {
+    await runSync();
   },
 
   setDark(dark) {
@@ -163,6 +235,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!name.trim()) return;
     await repo.listsCreate({ name: name.trim(), emoji, color: 'teal' });
     await get().refresh();
+    queueSync();
     set({ modal: null });
     get().showToast(`لیست «${name.trim()}» ساخته شد`);
   },
@@ -203,6 +276,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!task) return;
     await repo.tasksToggleComplete(id, !task.completedAt);
     await get().refresh();
+    queueSync();
   },
 
   async addQuickTask({ title, listId, dueDate }) {
@@ -223,6 +297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       dueTime,
     });
     await get().refresh();
+    queueSync();
     set({ modal: null, pendingDate: null });
     get().showToast(`کار «${cleanTitle || title}» افزوده شد ✨`);
   },
@@ -231,17 +306,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!title.trim()) return;
     await repo.tasksCreate({ listId, title: title.trim(), dueDate: toIsoDate(new Date()) });
     await get().refresh();
+    queueSync();
     get().showToast('کار جدید به لیست افزوده شد');
   },
 
   async updateTask(id, patch) {
     await repo.tasksUpdate(id, patch);
     await get().refresh();
+    queueSync();
   },
 
   async deleteTask(id) {
     await repo.tasksSoftDelete(id);
     await get().refresh();
+    queueSync();
     set({ modal: null, detailTaskId: null });
     get().showToast('کار حذف شد');
   },
@@ -255,6 +333,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await repo.tasksUpdate(t.id, { dueDate: today });
     }
     await get().refresh();
+    if (overdue.length > 0) queueSync();
     get().showToast(`${overdue.length} کار معوقه به امروز منتقل شد`);
   },
 
@@ -263,12 +342,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!sub) return;
     await repo.subtasksUpdate(id, { done: !sub.done });
     await get().refresh();
+    queueSync();
   },
 
   async addSubtask(taskId, title) {
     if (!title.trim()) return;
     await repo.subtasksCreate(taskId, title.trim());
     await get().refresh();
+    queueSync();
   },
 
   async applyTemplate(tpl) {
@@ -279,6 +360,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await repo.tasksCreate({ listId: list.id, title: item, priority: 'normal' });
     }
     await get().refresh();
+    queueSync();
     set({ activeListId: list.id, view: 'listView' });
     get().showToast(`قالب «${tpl.title}» به لیست‌های شما افزوده شد!`);
   },

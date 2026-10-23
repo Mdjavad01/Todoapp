@@ -74,6 +74,9 @@ final class Config
 
     public static function isConfigured(): bool
     {
+        if (self::get('DB_DRIVER', 'mysql') === 'sqlite') {
+            return true; // مسیر پیش‌فرض sqlite همیشه در دسترس است
+        }
         return self::get('DB_HOST') !== null && self::get('DB_NAME') !== null;
     }
 }

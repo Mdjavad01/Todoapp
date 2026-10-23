@@ -10,6 +10,8 @@ frontend/node_modules/
 # آرتیفکت‌های اجرایی بک‌اند
 backend/storage/logs/*
 !backend/storage/logs/.gitkeep
+backend/storage/*.sqlite3
+backend/storage/*.sqlite3-*
 backend/install/.installed
 backend/install/setup-admin.disabled.php
 

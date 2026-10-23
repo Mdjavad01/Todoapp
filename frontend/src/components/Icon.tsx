@@ -44,6 +44,7 @@ export type IconName =
   | 'more_vert'
   | 'notifications'
   | 'notifications_active'
+  | 'person'
   | 'priority_high'
   | 'psychology'
   | 'replay'

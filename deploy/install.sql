@@ -92,9 +92,11 @@ CREATE TABLE IF NOT EXISTS `lists` (
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME     NULL DEFAULT NULL,
+  `applied_at` DATETIME     NULL DEFAULT NULL COMMENT 'زمان اعمال سمت سرور — کرسر قطعی سینک',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_lists_uuid` (`uuid`),
   KEY `idx_lists_user` (`user_id`,`deleted_at`),
+  KEY `idx_lists_applied` (`user_id`,`applied_at`),
   CONSTRAINT `fk_lists_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -114,9 +116,11 @@ CREATE TABLE IF NOT EXISTS `tasks` (
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at`       DATETIME     NULL DEFAULT NULL,
+  `applied_at`       DATETIME     NULL DEFAULT NULL COMMENT 'زمان اعمال سمت سرور — کرسر قطعی سینک',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_tasks_uuid` (`uuid`),
   KEY `idx_tasks_user` (`user_id`,`deleted_at`),
+  KEY `idx_tasks_applied` (`user_id`,`applied_at`),
   KEY `idx_tasks_list` (`list_id`),
   KEY `idx_tasks_due` (`due_date`),
   CONSTRAINT `fk_tasks_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
@@ -134,9 +138,11 @@ CREATE TABLE IF NOT EXISTS `subtasks` (
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME     NULL DEFAULT NULL,
+  `applied_at` DATETIME     NULL DEFAULT NULL COMMENT 'زمان اعمال سمت سرور — کرسر قطعی سینک',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_subtasks_uuid` (`uuid`),
   KEY `idx_subtasks_task` (`task_id`),
+  KEY `idx_subtasks_applied` (`user_id`,`applied_at`),
   CONSTRAINT `fk_subtasks_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_subtasks_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,8 +1,8 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.23.07.24.28) */
-const CACHE_NAME = 'karam-cache-2026.10.23.07.24.28';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.23.12.53.40) */
+const CACHE_NAME = 'karam-cache-2026.10.23.12.53.40';
 const PRECACHE_URLS = [
-  "./assets/index-CfwsBWKL.css",
-  "./assets/index-DeJ09oTD.js",
+  "./assets/index-BONhcvyU.css",
+  "./assets/index-BeItqHSw.js",
   "./fonts/Vazirmatn-Variable.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.svg",

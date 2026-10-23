@@ -13,6 +13,7 @@ import { QuickAddSheet } from '@/modals/QuickAddSheet';
 import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
 import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
+import { AccountSheet } from '@/modals/AccountSheet';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
 
@@ -61,6 +62,7 @@ export default function App() {
         <TaskDetailSheet />
         <CalendarSheet />
         <NewListSheet />
+        <AccountSheet />
       </div>
     </div>
   );

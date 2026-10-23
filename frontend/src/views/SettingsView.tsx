@@ -21,7 +21,20 @@ export function SettingsView() {
   const alerts = useAppStore((s) => s.alerts);
   const setPref = useAppStore((s) => s.setPref);
   const setView = useAppStore((s) => s.setView);
+  const openAccountSheet = useAppStore((s) => s.openAccountSheet);
   const showToast = useAppStore((s) => s.showToast);
+  const session = useAppStore((s) => s.session);
+  const syncState = useAppStore((s) => s.syncState);
+
+  const syncHint = session
+    ? syncState.status === 'syncing'
+      ? 'در حال سینک…'
+      : syncState.status === 'error'
+        ? 'خطا در سینک'
+        : syncState.lastSyncAt
+          ? 'سینک شد ✓'
+          : 'فعال'
+    : 'ورود به حساب';
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-settings">
@@ -78,13 +91,15 @@ export function SettingsView() {
         </div>
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
-          onClick={() => showToast('سینک ابری با ورود به حساب کاربری فعال می‌شود (فاز ۳)')}
+          onClick={openAccountSheet}
+          role="button"
+          aria-label="حساب کاربری و سینک"
         >
           <div className="flex items-center gap-2.5">
             <Icon name="cloud_sync" size={22} className="text-outline" />
             <span>پشتیبان‌گیری در حساب کاربری</span>
           </div>
-          <span className="text-xs text-primary font-bold">ورود به حساب</span>
+          <span className="text-xs text-primary font-bold">{syncHint}</span>
         </div>
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
@@ -108,10 +123,19 @@ export function SettingsView() {
         </div>
       </div>
 
-      {/* حالت مهمان */}
+      {/* حالت مهمان / حساب */}
       <p className="text-body-sm text-on-surface-variant text-center leading-relaxed">
-        شما در <span className="font-bold text-primary">حالت مهمان</span> هستید؛ همه‌ی داده‌ها فقط روی همین دستگاه
-        (IndexedDB) ذخیره می‌شوند و کاملاً آفلاین کار می‌کنند.
+        {session ? (
+          <>
+            وارد حساب <span className="font-bold text-primary" dir="ltr">{session.email}</span> شده‌اید؛ داده‌ها بین
+            دستگاه‌های شما سینک می‌شوند.
+          </>
+        ) : (
+          <>
+            شما در <span className="font-bold text-primary">حالت مهمان</span> هستید؛ همه‌ی داده‌ها فقط روی همین دستگاه
+            (IndexedDB) ذخیره می‌شوند و کاملاً آفلاین کار می‌کنند.
+          </>
+        )}
       </p>
     </section>
   );

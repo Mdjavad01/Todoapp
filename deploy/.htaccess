@@ -54,6 +54,11 @@ ServerSignature Off
     <FilesMatch "index\.html$">
         Header set Cache-Control "no-cache, must-revalidate"
     </FilesMatch>
+
+    # sw.js همیشه تازه (تشخیص نسخه‌ی جدید Service Worker)
+    <FilesMatch "^sw\.js$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
 </IfModule>
 
 AddDefaultCharset UTF-8

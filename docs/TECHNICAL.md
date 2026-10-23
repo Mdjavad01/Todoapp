@@ -155,15 +155,30 @@ backend/
 └── .env.example          ← نمونه‌ی تنظیمات
 ```
 
-### ۶.۲. مسیرهای فعلی
+### ۶.۲. مسیرهای API (فاز ۲)
 
-| متد | مسیر | توضیح |
-|---|---|---|
-| GET | `/api/health` | سلامت سرویس + وضعیت اتصال دیتابیس (`{ok, service, database, php, time}`) |
+| متد | مسیر | احراز | توضیح |
+|---|---|---|---|
+| GET | `/api/health` | — | سلامت سرویس + وضعیت دیتابیس |
+| POST | `/api/auth/session` | — | ساخت/یافتن کاربر با ایمیل + صدور Access Token (فاز ۲ بدون OTP — با کلید `OPEN_SESSION` کنترل می‌شود؛ فاز ۳ با OTP جایگزین می‌شود) |
+| GET | `/api/v1/me` | Bearer | پروفایل کاربر جاری (تست اعتبار توکن) |
+| GET | `/api/v1/lists` | Bearer | فهرست لیست‌ها (پارامترها: `since`, `includeDeleted`) |
+| POST | `/api/v1/lists` | Bearer | ساخت لیست (UUID سمت کلاینت — تکرار = 409) |
+| GET/PATCH/DELETE | `/api/v1/lists/{uuid}` | Bearer | نمایش/به‌روزرسانی (LWW)/حذف نرم |
+| GET/POST/PATCH/DELETE | `/api/v1/tasks[/{uuid}]` | Bearer | همان الگو + فیلتر `?listId=` |
+| GET/POST/PATCH/DELETE | `/api/v1/subtasks[/{uuid}]` | Bearer | همان الگو + فیلتر `?taskId=` |
+| POST | `/api/v1/sync` | Bearer | سینک دوسویه — شرح کامل در بخش ۷ |
 
-بقیه‌ی مسیرها (لیست‌ها، کارها، احراز هویت، پرداخت، ادمین) در فازهای ۲ تا ۵ اضافه می‌شوند — Router و Database از الان برای گسترش آماده‌اند.
+همه‌ی پاسخ‌ها JSON با `ok` هستند؛ خطاها: 401 (نشست)، 403 (مسدود/OTP لازم)، 404، 409 (تکرار)، 422 (اعتبارسنجی با پیام فارسی).
 
-### ۶.۳. ساخت ادمین (یک‌بارمصرف)
+### ۶.۳. احراز هویت (فاز ۲)
+
+- **Access Token بی‌حالت (Stateless):** `k1.{base64url(payload)}.{HMAC-SHA256}` — کلید امضا `APP_SECRET` در `.env`؛ عمر پیش‌فرض ۷۲۰ ساعت (۳۰ روز).
+- **Guard:** هر مسیر `/api/v1/*` توکن را بررسی و کاربر فعال را از دیتابیس می‌خواند؛ کاربر `blocked/deleted` حتی با توکن معتبر رد می‌شود.
+- **فاز ۲:** ساخت نشست بدون کد (کلید `OPEN_SESSION=1` در `.env` — بعد از راه‌اندازی OTP در فاز ۳ حتماً «0» می‌شود).
+- **فاز ۳:** جریان کامل OTP (ایمیل/بله) + refresh token چرخشی در جدول `refresh_tokens` جایگزین/تکمیل می‌شود.
+
+### ۶.۴. ساخت ادمین (یک‌بارمصرف)
 
 `install/setup-admin.php` از **CLI** اجرا می‌شود:
 
@@ -176,30 +191,110 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 - بعد از اجرای موفق: فایل `.installed` ساخته می‌شود و **خود اسکریپت به `setup-admin.disabled.php` تغییر نام می‌دهد** → اجرای دوباره غیرممکن است.
 - پوشه‌ی `install/` روی وب با `.htaccess` بسته است.
 
-### ۶.۴. فایل .env
+### ۶.۵. فایل .env
 
 نمونه‌ی کامل در `backend/.env.example`. نکته‌ها:
 
 - `ENV_PATH` مسیر پوشه‌ی فایل `.env` است — پیشنهاد: **بیرون از public_html** (مثل `/home/USERNAME/private`).
+- `APP_SECRET` راز امضای توکن — حتماً تصادفی (`openssl rand -hex 32`) و حداقل ۳۲ کاراکتر.
+- `OPEN_SESSION` در فاز ۲ «1» است؛ در فاز ۳ (OTP) حتماً «0» شود.
+- `DB_DRIVER` روی هاست `mysql` است؛ `sqlite` فقط برای توسعه‌ی محلی (اسکیمای آینه در `deploy/install.sqlite.sql`).
 - `SETUP_TOKEN` باید مقدار تصادفی طولانی باشد (`openssl rand -hex 32`).
 - فایل واقعی `.env` هرگز در گیت نیست (`backend/.env.example` استثنا شده).
 
 ---
 
-## ۷. دیتابیس
+## ۷. پروتکل سینک دوسویه (فاز ۲)
+
+### ۷.۱. قرارداد داده
+
+هر موجودیت (لیست/کار/زیرکار) از هر دو سمت با همین شکل JSON رد و بدل می‌شود:
+
+```json
+{
+  "id": "uuid-v4-کلاینت",
+  "createdAt": "2026-10-23T12:00:00.000Z",
+  "updatedAt": "2026-10-23T12:00:05.000Z",
+  "deletedAt": null,
+  "...fields": ""
+}
+```
+
+### ۷.۲. جریان `POST /api/v1/sync`
+
+**درخواست:**
+
+```json
+{
+  "cursor": "2026-10-23T12:00:00.000Z",
+  "changes": {
+    "lists":    [ "...رکوردهای تغییرکرده محلی..." ],
+    "tasks":    [ "..." ],
+    "subtasks": [ "..." ]
+  }
+}
+```
+
+**پاسخ:**
+
+```json
+{
+  "ok": true,
+  "applied": { "lists": 2, "tasks": 5, "subtasks": 1 },
+  "rejected": [ { "entity": "tasks", "id": "...", "reason": "missing_parent" } ],
+  "server":   { "lists": ["..."], "tasks": ["..."], "subtasks": ["..."] },
+  "cursor":   "2026-10-23T12:00:10.000Z",
+  "serverTime": "2026-10-23T12:00:10.000Z"
+}
+```
+
+### ۷.۳. قواعد همگرایی
+
+| قاعده | توضیح |
+|---|---|
+| ترتیب اعمال | `lists → tasks → subtasks` تا والد‌ها قبل از فرزندان موجود باشند |
+| **LWW** | رکورد با `updatedAt` جدیدتر برنده است؛ مساوی → کلاینت (اعمال دوباره بی‌ضرر/ایده‌مپوتنت) |
+| **بازنده‌ی LWW** | نسخه‌ی معتبر سرور **قطعاً در همان پاسخ** برگردانده می‌شود تا هر دو دستگاه همگرا شوند |
+| **کرسر قطعی** | پول بر اساس `applied_at` (زمان اعمال سمت سرور) است نه `updated_at` — اگر دستگاهی آفلاین باشد و بعداً با تاریخ عقب‌تر برنده‌ی LWW شود، دستگاه‌های دیگر تغییرش را **از دست نمی‌دهند** |
+| حذف نرم | `deletedAt` به‌صورت تومب‌استون سینک می‌شود؛ احیای رکورد (deletedAt=null با updatedAt جدید) پشتیبانی می‌شود |
+| گارد ساعت | رکوردی با `updatedAt` جلوتر از ۵ دقیقه آینده‌ی سرور رد می‌شود (`clock skew`) |
+| محدودیت | حداکثر ۲۰۰۰ آیتم از هر موجودیت در هر درخواست؛ آیتم‌های معیوب `rejected` می‌شوند و بقیه سالم اعمال می‌شوند |
+| یادآورها | در فاز ۲ محلی می‌مانند (از `reminderMinutes` کار مشتق می‌شوند) |
+
+### ۷.۴. موتور کلاینت (`frontend/src/sync/`)
+
+- **api.ts:** پوشش fetch هم‌مبدا (سازگار با CSP 'self') + نگاشت خطاها به پیام فارسی.
+- **session.ts:** نشست + `deviceUuid` پایدار در IndexedDB (prefs)؛ انقضای توکن قبل از استفاده بررسی می‌شود.
+- **engine.ts:** چرخه‌ی push/pull با قفل هم‌زمانی، debounce ۱.۵ ثانیه بعد از هر تغییر، سینک در رویداد `online`، بازه‌ی ۶۰ ثانیه‌ای و شروع اپ؛ در 401 نشست خودکار پاک می‌شود.
+
+---
+
+## ۸. دیتابیس
 
 ۲۳ جدول با InnoDB، `utf8mb4_unicode_ci`، کلید خارجی واقعی و ایندکس‌های لازم. شرح کامل: [`DATABASE.md`](DATABASE.md).
 
 نکته‌های کلیدی:
 
-- همه‌ی تاریخ‌ها **UTC** (`SET time_zone='+00:00'` در اسکریپت نصب).
+- همه‌ی تاریخ‌ها **UTC** (`SET time_zone='+00:00'` در اسکریپت نصب و در اتصال PDO).
 - موجودیت‌های کاربر (`lists`، `tasks`، `subtasks`، `reminders`) **UUID CHAR(36)** دارند و `updated_at` / `deleted_at` (حذف نرم) — دقیقاً همان قرارداد کلاینت.
+- **`applied_at`** (فاز ۲): زمان اعمال سمت سرور در همان سه جدول + ایندکس `(user_id, applied_at)` — مبنای کرسر قطعی سینک.
 - داده‌ی اولیه: نقش‌های ادمین، ۳ پلن اشتراک، تنظیمات پیش‌فرض.
 - جدول‌های آینده‌نگر (از الان ساخته شده‌اند): `otp_requests`، `refresh_tokens`، `payments`، `receipts`، `coupons`، `templates`، `announcements`، `audit_logs`، `provider_logs` و ...
 
+## ۹. امنیت
+
+- **CSP سخت‌گیرانه** در `deploy/.htaccess`: فقط `'self'` برای همه‌ی دستورها؛ هیچ اسکریپت/استایل/فونت/تصویر خارجی مجاز نیست (عمداً — قانون بدون CDN).
+- **HSTS** فعال (max-age یک سال، includeSubDomains).
+- **HTTPS اجباری** (redirect 301) — Service Worker بدون HTTPS/localhost کار نمی‌کند.
+- `X-Content-Type-Options: nosniff`، `Referrer-Policy`، `X-Frame-Options`، `Permissions-Policy` (میکروفون/دوربین خاموش).
+- محافظت فایل‌های حساس: `.env*`، فایل‌های `install/`، `storage/` با `Require all denied` بسته‌اند.
+- **سمت سرور:** همه‌ی ورودی‌ها از `Validator` می‌گذرند (طول/الگو/محدوده)؛ ۱۰۰٪ کوئری‌ها Prepared Statement؛ مالکیت رکورد در همه‌ی کوئری‌ها با `user_id` بررسی می‌شود؛ بدون کش پاسخ (`no-store`)؛ CORS بسته فقط برای مبدأ خود اپ.
+- کش فایل‌ها: فایل‌های هش‌شده `immutable`؛ `index.html` و `sw.js` با `no-cache` (آپدیت PWA فوری).
+- هیچ کلید یا رمزی در کد فرانت وجود ندارد.
+
 ---
 
-## ۸. استقرار
+## ۱۰. استقرار
 
 خلاصه‌ی جریان دیپلوی (شرح کامل در `INSTALL.md`):
 
@@ -213,12 +308,11 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 
 ---
 
-## ۹. آمادگی برای فازهای بعد
+## ۱۱. آمادگی برای فازهای بعد
 
 | فاز | چه چیزی از الان آماده است |
 |---|---|
-| ۲ — API + سینک | اسکیمای جدول‌ها کامل؛ کلاینت UUID/updatedAt/deleted رعایت می‌کند؛ لایه‌ی `repo.ts` تنها نقطه‌ی تعویض داده است |
-| ۳ — OTP | جدول‌های `user_identities`، `otp_requests`، `refresh_tokens` آماده؛ طراحی OtpProvider (Email/Bale) در مشخصات قفل شده |
+| ۳ — OTP | جدول‌های `user_identities`، `otp_requests`، `refresh_tokens` آماده؛ مسیر session با کلید `OPEN_SESSION` قابل بستن؛ شیت حساب جای تعویض OTP آماده است |
 | ۴ — ادمین | جدول‌های `admins`، `admin_roles`، `audit_logs` آماده؛ اسکریپت ساخت ادمین موجود |
 | ۵ — پرداخت | جدول‌های `plans`، `orders`، `payments`، `receipts`، `coupons` آماده + داده‌ی اولیه‌ی پلن‌ها |
-| ۶ — اندروید | PWA کامل (manifest + SW + آیکن‌های maskable) → قابل بسته‌بندی با Bubblewrap/TWA |
+| ۶ — اندروید | PWA کامل (manifest + SW + آیکن‌های maskable) + API client-ready → قابل بسته‌بندی با Bubblewrap/TWA |

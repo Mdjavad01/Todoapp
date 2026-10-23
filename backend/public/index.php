@@ -3,17 +3,30 @@
 declare(strict_types=1);
 
 /**
- * کارام — نقطه‌ی ورود API (فاز ۱: ساختار، تنظیمات و سلامت سرویس)
- * فازهای بعد: /api/auth، /api/lists، /api/tasks و ...
+ * کارام — نقطه‌ی ورود API
+ * فاز ۱: سلامت سرویس | فاز ۲: نشست + CRUD لیست/کار/زیرکار + سینک دوسویه
  *
  * همه‌ی تاریخ‌ها UTC ذخیره و برگردانده می‌شوند.
  */
 
 require __DIR__ . '/../src/Config.php';
 require __DIR__ . '/../src/Database.php';
+require __DIR__ . '/../src/Http/Request.php';
 require __DIR__ . '/../src/Http/Response.php';
 require __DIR__ . '/../src/Http/Router.php';
+require __DIR__ . '/../src/Support/Uuid.php';
+require __DIR__ . '/../src/Security/Validator.php';
+require __DIR__ . '/../src/Auth/AccessToken.php';
+require __DIR__ . '/../src/Auth/Guard.php';
+require __DIR__ . '/../src/Services/Entities.php';
+require __DIR__ . '/../src/Services/SyncService.php';
 require __DIR__ . '/../src/Controllers/HealthController.php';
+require __DIR__ . '/../src/Controllers/AuthController.php';
+require __DIR__ . '/../src/Controllers/RestEntityController.php';
+require __DIR__ . '/../src/Controllers/SyncController.php';
+
+// همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
+date_default_timezone_set('UTC');
 
 // محدودیت خطا: لاگ سرمحلی، بدون افشای جزئیات در پاسخ
 ini_set('display_errors', '0');
@@ -28,13 +41,46 @@ if (is_dir($logDir) && is_writable($logDir)) {
 
 set_exception_handler(static function (Throwable $e): void {
     error_log('[karam] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    if ($e instanceof ValidationError) {
+        Response::error($e->getMessage(), 422, ['code' => 'validation']);
+        return;
+    }
     Response::error('خطای داخلی سرور', 500);
 });
 
 $router = new Router();
-$health = new HealthController();
+$router->get('/api/health', [new HealthController(), 'health']);
 
-$router->get('/api/health', [$health, 'health']);
+// ---- نشست (فاز ۲ — در فاز ۳ با OTP کامل جایگزین/تکمیل می‌شود) ----
+$auth = new AuthController();
+$router->post('/api/auth/session', [$auth, 'session']);
+$router->get('/api/v1/me', [$auth, 'me']);
+
+// ---- CRUD موجودیت‌ها (Bearer) ----
+$lists = new RestEntityController(Entities::ENTITY_LISTS);
+$tasks = new RestEntityController(Entities::ENTITY_TASKS);
+$subtasks = new RestEntityController(Entities::ENTITY_SUBTASKS);
+
+$router->get('/api/v1/lists', [$lists, 'index']);
+$router->post('/api/v1/lists', [$lists, 'create']);
+$router->get('/api/v1/lists/{uuid}', [$lists, 'show']);
+$router->patch('/api/v1/lists/{uuid}', [$lists, 'update']);
+$router->delete('/api/v1/lists/{uuid}', [$lists, 'destroy']);
+
+$router->get('/api/v1/tasks', [$tasks, 'index']);
+$router->post('/api/v1/tasks', [$tasks, 'create']);
+$router->get('/api/v1/tasks/{uuid}', [$tasks, 'show']);
+$router->patch('/api/v1/tasks/{uuid}', [$tasks, 'update']);
+$router->delete('/api/v1/tasks/{uuid}', [$tasks, 'destroy']);
+
+$router->get('/api/v1/subtasks', [$subtasks, 'index']);
+$router->post('/api/v1/subtasks', [$subtasks, 'create']);
+$router->get('/api/v1/subtasks/{uuid}', [$subtasks, 'show']);
+$router->patch('/api/v1/subtasks/{uuid}', [$subtasks, 'update']);
+$router->delete('/api/v1/subtasks/{uuid}', [$subtasks, 'destroy']);
+
+// ---- سینک دوسویه ----
+$router->post('/api/v1/sync', [new SyncController(), 'sync']);
 
 // اجرا — مسیر بدون query string
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';

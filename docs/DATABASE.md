@@ -52,13 +52,13 @@ announcements        settings
 
 ## ۲. گروه داده‌ی اصلی اپ (فاز ۲)
 
-قرارداد مشترک این گروه: `uuid` (تولید سمت کلاینت)، `updated_at` (پیش‌فرض CURRENT_TIMESTAMP و بروز هنگام UPDATE)، `deleted_at` (NULL = زنده).
+قرارداد مشترک این گروه: `uuid` (تولید سمت کلاینت)، `updated_at` (پیش‌فرض CURRENT_TIMESTAMP و بروز هنگام UPDATE)، `deleted_at` (NULL = زنده)، و **`applied_at`** (زمان اعمال سمت سرور — از فاز ۲ مبنای کرسر قطعی سینک؛ ایندکس `(user_id, applied_at)`).
 
 ### `lists`
 لیست‌های کار: `name`، `emoji`، `color`، `sort_order`. کلید خارجی به `users` با `ON DELETE CASCADE`.
 
 ### `tasks`
-کارها: `list_id`، `title`، `note`، `due_date` (DATETIME UTC)، `priority` ∈ {`low`,`medium`,`high`}، `repeat` ∈ {`none`,`daily`,`weekly`,`monthly`}، `completed_at` (NULL = انجام‌نشده؛ عمداً boolean نیست تا زمان تکمیل هم ثبت شود)، `reminder_id` اختیاری. ایندکس روی `(user_id, due_date)` و `(user_id, completed_at)` برای کوئری‌های «امروز» و «معوقه».
+کارها: `list_id`، `title`، `notes`، `priority` ∈ {`urgent`,`high`,`normal`,`low`} (مطابق کلاینت)، `due_date` (DATE)، `due_time` (TIME)، `reminder_minutes`، `repeat` ∈ {`none`,`daily`,`weekly`,`monthly`}، `completed_at` (NULL = انجام‌نشده؛ عمداً boolean نیست تا زمان تکمیل هم ثبت شود). ایندکس روی `(user_id, due_date)` و `(user_id, deleted_at)` برای کوئری‌های «امروز» و «معوقه».
 
 ### `subtasks`
 زیرکارها: `task_id`، `title`، `sort_order`، `completed_at`. حذف کار → حذف آبشاری زیرکارها.
@@ -140,3 +140,7 @@ announcements        settings
 | `settings` | کلیدهای پیش‌فرض (نام اپ = کارام، تعمیر و نگهداری = خاموش، درگاه‌ها = غیرفعال) |
 
 > نام جداول و ستون‌ها قرارداد ثابت پروژه‌اند؛ کد بک‌اند فازهای بعدی دقیقاً از همین نام‌ها استفاده می‌کند.
+
+## ۸. توسعه‌ی محلی بدون MySQL
+
+فایل `deploy/install.sqlite.sql` آینه‌ی همین اسکما برای SQLite است (فقط توسعه/تست؛ روی هاست آپلود نمی‌شود). با `DB_DRIVER=sqlite` در `.env` محلی، `Database.php` به SQLite وصل می‌شود و کل API (شامل سینک) بدون سرور MySQL قابل تست است.

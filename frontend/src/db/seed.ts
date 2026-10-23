@@ -1,4 +1,4 @@
-import { seedTransaction, STORES } from './idb';
+import { seedTransaction, idbGetAll, STORES } from './idb';
 import { metaGet, metaSet } from './repo';
 import { toIsoDate } from '@/lib/format';
 import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity } from '@/types';
@@ -130,22 +130,30 @@ function dayAt(offset: number, hh: number, mm: number): string {
   return d.toISOString();
 }
 
-/** در اولین اجرا داده‌ها را می‌کارد؛ اجراهای بعدی دست نمی‌زنند */
+/** در اولین اجرا داده‌ها را می‌کارد؛ اجراهای بعدی دست نمی‌زنند (فقط مهاجرت شناسه‌ها) */
 export async function ensureSeeded(): Promise<void> {
   const seeded = await metaGet<number>('seededVersion');
-  if (seeded) return;
+  if (seeded) {
+    if (seeded < 2) await migrateSeedIds();
+    return;
+  }
 
   const now = new Date().toISOString();
-  const lists: ListEntity[] = SEED_LISTS.map((l, i) => ({
-    id: `seed-list-${l.key}`,
-    name: l.name,
-    emoji: l.emoji,
-    color: l.color,
-    sortOrder: i,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  }));
+  const listIds: Record<string, string> = {};
+  const lists: ListEntity[] = SEED_LISTS.map((l, i) => {
+    const id = crypto.randomUUID();
+    listIds[l.key] = id;
+    return {
+      id,
+      name: l.name,
+      emoji: l.emoji,
+      color: l.color,
+      sortOrder: i,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+  });
 
   const tasks: TaskEntity[] = [];
   const subtasks: SubtaskEntity[] = [];
@@ -154,9 +162,10 @@ export async function ensureSeeded(): Promise<void> {
   for (const t of SEED_TASKS) {
     const dueDate = t.dayOffset == null ? null : dayIso(t.dayOffset);
     const completedAt = t.doneOffset != null ? dayAt(t.doneOffset, 12, 0) : null;
+    const taskId = crypto.randomUUID();
     tasks.push({
-      id: `seed-task-${t.key}`,
-      listId: `seed-list-${t.list}`,
+      id: taskId,
+      listId: listIds[t.list],
       title: t.title,
       notes: t.notes ?? '',
       priority: t.priority ?? 'normal',
@@ -173,8 +182,8 @@ export async function ensureSeeded(): Promise<void> {
     if (t.reminderMinutes != null && t.time && t.dayOffset === 0) {
       const [h, m] = t.time.split(':').map(Number);
       reminders.push({
-        id: `seed-rem-${t.key}`,
-        taskId: `seed-task-${t.key}`,
+        id: crypto.randomUUID(),
+        taskId,
         fireAt: dayAt(0, h, Math.max(0, m - t.reminderMinutes)),
         fired: false,
         createdAt: now,
@@ -183,10 +192,10 @@ export async function ensureSeeded(): Promise<void> {
       });
     }
     if (t.subtasks) {
-      t.subtasks.forEach((s, i) => {
+      t.subtasks.forEach((s) => {
         subtasks.push({
-          id: `seed-sub-${t.key}-${i}`,
-          taskId: `seed-task-${t.key}`,
+          id: crypto.randomUUID(),
+          taskId,
           title: s.title,
           done: s.done,
           createdAt: now,
@@ -211,7 +220,61 @@ export async function ensureSeeded(): Promise<void> {
     for (const s of subtasks) stores[STORES.subtasks].put(s);
     for (const r of reminders) stores[STORES.reminders].put(r);
     for (const p of prefs) stores[STORES.prefs].put(p);
-    stores[STORES.meta].put({ key: 'seededVersion', value: 1 });
+    stores[STORES.meta].put({ key: 'seededVersion', value: 2 });
+  });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * مهاجرت نصب‌های فاز ۱: شناسه‌های seed (مثل «seed-list-bills») به UUID واقعی تبدیل می‌شوند
+ * تا قرارداد سینک سرور (UUID) رعایت شود. روابط (listId/taskId) بازنگاشت می‌شوند.
+ */
+async function migrateSeedIds(): Promise<void> {
+  const [lists, tasks, subs, rems] = await Promise.all([
+    idbGetAll<ListEntity>(STORES.lists),
+    idbGetAll<TaskEntity>(STORES.tasks),
+    idbGetAll<SubtaskEntity>(STORES.subtasks),
+    idbGetAll<ReminderEntity>(STORES.reminders),
+  ]);
+
+  const needs =
+    lists.some((l) => !UUID_RE.test(l.id)) ||
+    tasks.some((t) => !UUID_RE.test(t.id)) ||
+    subs.some((s) => !UUID_RE.test(s.id)) ||
+    rems.some((r) => !UUID_RE.test(r.id));
+
+  if (!needs) {
+    await metaSet('seededVersion', 2);
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const listMap = new Map(lists.map((l) => [l.id, UUID_RE.test(l.id) ? l.id : crypto.randomUUID()]));
+  const taskMap = new Map(tasks.map((t) => [t.id, UUID_RE.test(t.id) ? t.id : crypto.randomUUID()]));
+
+  await seedTransaction(async (stores) => {
+    for (const l of lists) {
+      const id = listMap.get(l.id)!;
+      stores[STORES.lists].delete(l.id);
+      stores[STORES.lists].put({ ...l, id, updatedAt: now });
+    }
+    for (const t of tasks) {
+      const id = taskMap.get(t.id)!;
+      stores[STORES.tasks].delete(t.id);
+      stores[STORES.tasks].put({ ...t, id, listId: listMap.get(t.listId) ?? t.listId, updatedAt: now });
+    }
+    for (const s of subs) {
+      const id = UUID_RE.test(s.id) ? s.id : crypto.randomUUID();
+      stores[STORES.subtasks].delete(s.id);
+      stores[STORES.subtasks].put({ ...s, id, taskId: taskMap.get(s.taskId) ?? s.taskId, updatedAt: now });
+    }
+    for (const r of rems) {
+      const id = UUID_RE.test(r.id) ? r.id : crypto.randomUUID();
+      stores[STORES.reminders].delete(r.id);
+      stores[STORES.reminders].put({ ...r, id, taskId: taskMap.get(r.taskId) ?? r.taskId, updatedAt: now });
+    }
+    stores[STORES.meta].put({ key: 'seededVersion', value: 2 });
   });
 }
 
