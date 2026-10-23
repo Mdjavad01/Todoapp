@@ -2,6 +2,38 @@
 
 فرمت بر اساس [Keep a Changelog](https://keepachangelog.com/) و نسخه‌گذاری معنایی (SemVer).
 
+## [0.3.0] — فاز ۳: احراز هویت OTP + نشست‌های چرخشی
+
+### افزودن
+- **بک‌اند:**
+  - `POST /api/auth/otp/request` — درخواست کد (ایمیل) یا بلیت اتصال (بله) با محدودسازی ارسال (فاصله‌ی حداقلی، سقف ساعتی هر حساب، سقف ساعتی هر IP)
+  - `POST /api/auth/otp/bale/poll` — وضعیت بلیت بله؛ خواندن پیام‌های ربات با قفل فایل و کش ۲ ثانیه‌ای (بدون تداخل چند poll هم‌زمان)
+  - `POST /api/auth/otp/verify` — تأیید کد و صدور نشست کامل (Access + Refresh)؛ هویت‌های email / bale_chat_id با `verified_at`
+  - `POST /api/auth/refresh` — چرخش Refresh Token با **تشخیص سرقت**: استفاده‌ی مجدد از توکن باطل‌شده = ابطال همه‌ی نشست‌های کاربر
+  - `POST /api/auth/logout` — ابطال Refresh Token
+  - `PATCH /api/v1/me` (نام نمایشی)، `GET /api/v1/me/sessions`، `DELETE /api/v1/me/sessions/{id}` — مدیریت پروفایل و نشست‌ها
+  - `GET /api/auth/channels` — کانال‌های ورود فعال (برای UI)
+  - `Auth/Otp.php` — کد ۶ رقمی CSPRNG، هش HMAC-SHA256 (فقط هش در DB)، انقضا، سقف تلاش، نرمال‌سازی اعداد فارسی
+  - `Auth/RefreshToken.php` — توکن ۶۴ کاراکتری، فقط SHA-256 در DB، چرخش، ابطال تکی/سراسری، فهرست نشست‌های فعال با علامت دستگاه جاری
+  - `Services/Mailer.php` — سه مسیر ارسال: `mail()` خود PHP، کلاینت SMTP خام (STARTTLS/SSL/AUTH LOGIN)، و `log` برای توسعه — قالب ایمیل فارسی RTL
+  - `Services/BaleBot.php` — درایور Bot API بله (sendMessage/getUpdates با cURL و fallback)، تطبیق بلیت در پیام‌ها، لینک `ble.ir/{bot}?start={ticket}`
+- **فرانت‌اند:**
+  - جریان کامل ورود OTP در شیت «حساب کاربری و سینک»: انتخاب کانال → ایمیل (کد + شمارش معکوس ارسال مجدد) یا بله (بلیت + لینک ربات + poll خودکار) → ورود کد ۶ رقمی
+  - `sync/auth.ts` — سرویس احراز هویت؛ `sync/api.ts` — `authedFetch` با **تمدید خودکار تک‌پرواز (single-flight)** روی ۴۰۱
+  - نشست کامل (Access + Refresh + دستگاه) در IndexedDB؛ بازیابی خودکار پس از بازکردن مجدد اپ
+  - پروفایل: ویرایش نام نمایشی (inline)، فهرست نشست‌های فعال با بستن هر دستگاه
+- **تست:** `tests/phase3-test.php` — ۵۳ سناریوی یکپارچه (OTP/محدودسازی/قفل/انقضا/چرخش/سرقت/نشست‌ها/بله با سرور ساختگی/رگرسیون سینک) — همه سبز
+- **ابزار:** `tests/bale-mock.php` — سرور ساختگی Bot API بله برای تست محلی
+
+### تغییر
+- `ACCESS_TOKEN_TTL_HOURS` پیش‌فرض از ۷۲۰ به **۲۴ ساعت** (تمدید با Refresh Token)
+- `OPEN_SESSION` پیش‌فرض به **0** (ورود مستقیم بدون کد بسته شد — فاز ۲ تمام)
+- `deploy/install.sqlite.sql` — جدول‌های `otp_requests` و `refresh_tokens` برای توسعه‌ی محلی اضافه شد
+
+### امنیت
+- کدهای OTP و توکن‌های رفرش هرگز خام ذخیره نمی‌شوند (HMAC-SHA256 با `APP_SECRET` / SHA-256)
+- `OTP_DEBUG=1` فقط برای توسعه — کد را در پاسخ API هم برمی‌گرداند؛ روی هاست باید 0 باشد
+
 ## [0.2.0] — فاز ۲: API کامل داده + سینک دوسویه
 
 ### افزودن

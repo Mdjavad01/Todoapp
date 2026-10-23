@@ -18,9 +18,9 @@ final class AccessToken
 
     public static function issue(string $userUuid, ?int $ttlHours = null): array
     {
-        $ttl = $ttlHours ?? (int) (Config::get('ACCESS_TOKEN_TTL_HOURS', '720') ?? 720);
-        if ($ttl < 1 || $ttl > 24 * 90) {
-            $ttl = 720;
+        $ttl = $ttlHours ?? (int) (Config::get('ACCESS_TOKEN_TTL_HOURS', '24') ?? 24);
+        if ($ttl < 1 || $ttl > 24 * 30) {
+            $ttl = 24;
         }
         $exp = time() + $ttl * 3600;
         $payload = ['u' => $userUuid, 'e' => $exp, 'i' => bin2hex(random_bytes(8))];

@@ -4,8 +4,9 @@ import * as repo from '@/db/repo';
 import { ensureSeeded } from '@/db/seed';
 import { toIsoDate } from '@/lib/format';
 import { queueSync, runSync, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
-import { clearSession, getDeviceUuid, getSession, setSession as saveSession, type SyncSession } from '@/sync/session';
-import { apiFetch } from '@/sync/api';
+import { getSession, type SyncSession } from '@/sync/session';
+import { refreshSession } from '@/sync/api';
+import * as auth from '@/sync/auth';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
@@ -52,7 +53,7 @@ interface AppState {
   goHome(): void;
 
   openAccountSheet(): void;
-  signIn(email: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  reloadSession(): Promise<void>;
   signOut(): Promise<void>;
   syncNow(): Promise<void>;
 
@@ -140,9 +141,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
     });
     startSyncLoop();
-    const session = await getSession();
-    set({ session });
-    if (session) void runSync();
+    await get().reloadSession();
+    // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳)
+    if (get().session) void refreshSession().then(() => get().reloadSession());
 
     set({ ready: true });
   },
@@ -168,40 +169,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ accountSheet: true });
   },
 
-  async signIn(email) {
-    if (!email.includes('@')) return { ok: false, error: 'ایمیل معتبر نیست' };
-    try {
-      const deviceUuid = await getDeviceUuid();
-      const res = await apiFetch<{
-        isNew: boolean;
-        user: { uuid: string; displayName: string | null; email: string };
-        accessToken: string;
-        expiresAt: string;
-      }>('/auth/session', {
-        method: 'POST',
-        body: { email, deviceUuid, deviceName: 'مرورگر وب' },
-      });
-      await saveSession({
-        userUuid: res.user.uuid,
-        email: res.user.email,
-        displayName: res.user.displayName,
-        accessToken: res.accessToken,
-        expiresAt: res.expiresAt,
-        deviceUuid,
-        deviceName: 'مرورگر وب',
-      });
-      const session = await getSession();
-      set({ session });
-      // اولین سینک: داده‌های محلی این دستگاه به حساب می‌رود و داده‌ی سرور می‌آید
-      void runSync();
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : 'ورود ناموفق بود' };
-    }
+  async reloadSession() {
+    const session = await getSession();
+    set({ session });
+    if (session) void runSync();
   },
 
   async signOut() {
-    await clearSession();
+    await auth.logout();
     set({ session: null, syncState: { status: 'idle', lastSyncAt: null, error: null } });
   },
 

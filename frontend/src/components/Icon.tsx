@@ -40,6 +40,7 @@ export type IconName =
   | 'home'
   | 'light_mode'
   | 'lock'
+  | 'mail'
   | 'mic'
   | 'more_vert'
   | 'notifications'

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * کارام — نقطه‌ی ورود API
- * فاز ۱: سلامت سرویس | فاز ۲: نشست + CRUD لیست/کار/زیرکار + سینک دوسویه
+ * فاز ۱: سلامت سرویس | فاز ۲: CRUD + سینک دوسویه | فاز ۳: احراز هویت OTP + نشست‌ها
  *
  * همه‌ی تاریخ‌ها UTC ذخیره و برگردانده می‌شوند.
  */
@@ -18,6 +18,10 @@ require __DIR__ . '/../src/Support/Uuid.php';
 require __DIR__ . '/../src/Security/Validator.php';
 require __DIR__ . '/../src/Auth/AccessToken.php';
 require __DIR__ . '/../src/Auth/Guard.php';
+require __DIR__ . '/../src/Auth/Otp.php';
+require __DIR__ . '/../src/Auth/RefreshToken.php';
+require __DIR__ . '/../src/Services/Mailer.php';
+require __DIR__ . '/../src/Services/BaleBot.php';
 require __DIR__ . '/../src/Services/Entities.php';
 require __DIR__ . '/../src/Services/SyncService.php';
 require __DIR__ . '/../src/Controllers/HealthController.php';
@@ -51,10 +55,19 @@ set_exception_handler(static function (Throwable $e): void {
 $router = new Router();
 $router->get('/api/health', [new HealthController(), 'health']);
 
-// ---- نشست (فاز ۲ — در فاز ۳ با OTP کامل جایگزین/تکمیل می‌شود) ----
+// ---- احراز هویت OTP + نشست‌ها (فاز ۳) ----
 $auth = new AuthController();
-$router->post('/api/auth/session', [$auth, 'session']);
+$router->get('/api/auth/channels', [$auth, 'channels']);
+$router->post('/api/auth/otp/request', [$auth, 'otpRequest']);
+$router->post('/api/auth/otp/bale/poll', [$auth, 'otpBalePoll']);
+$router->post('/api/auth/otp/verify', [$auth, 'otpVerify']);
+$router->post('/api/auth/refresh', [$auth, 'refresh']);
+$router->post('/api/auth/logout', [$auth, 'logout']);
+$router->post('/api/auth/session', [$auth, 'session']); // فاز ۲ — پیش‌فرض بسته
 $router->get('/api/v1/me', [$auth, 'me']);
+$router->patch('/api/v1/me', [$auth, 'updateMe']);
+$router->get('/api/v1/me/sessions', [$auth, 'sessions']);
+$router->delete('/api/v1/me/sessions/{id}', [$auth, 'revokeSession']);
 
 // ---- CRUD موجودیت‌ها (Bearer) ----
 $lists = new RestEntityController(Entities::ENTITY_LISTS);

@@ -9,7 +9,7 @@
  */
 
 import { idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
-import { apiFetch, ApiError } from './api';
+import { authedFetch, ApiError } from './api';
 import { getSession, clearSession, type SyncSession } from './session';
 import type { ListEntity, PrefEntity, SubtaskEntity, TaskEntity } from '@/types';
 
@@ -148,9 +148,9 @@ export async function runSync(): Promise<SyncState> {
     const cycleStart = new Date(Date.now() - 1000).toISOString();
     const payload = await collectChanges(await metaGet<string>('sync-last-push') ?? null);
 
-    const res = await apiFetch<SyncResponse>('/v1/sync', {
+    // authedFetch روی ۴۰۱ خودکار refresh می‌کند و یک‌بار تلاش را تکرار می‌کند (فاز ۳)
+    const res = await authedFetch<SyncResponse>('/v1/sync', {
       method: 'POST',
-      token: session.accessToken,
       body: payload,
     });
 
@@ -167,7 +167,7 @@ export async function runSync(): Promise<SyncState> {
     return state;
   } catch (e) {
     if (e instanceof ApiError && (e.status === 401 || e.code === 'unauthorized')) {
-      // توکن باطل/منقضی — نشست پاک می‌شود (فاز ۳: با refresh token بدون خروج خودکار می‌شود)
+      // تمدید خودکار هم ناموفق بود — نشست واقعاً تمام است (clearSession انجام شده)
       await clearSession();
       setState({ status: 'idle', error: 'نشست منقضی شده است؛ دوباره وارد شوید' });
       listeners.onApplied?.();

@@ -1,7 +1,12 @@
 /**
- * کارام — لایه‌ی ارتباط با API (فاز ۲)
+ * کارام — لایه‌ی ارتباط با API (فاز ۳)
  * همه‌ی درخواست‌ها هم‌مبدا (relative) هستند — مطابق قانون CSP 'self'.
+ *
+ * authedFetch: توکن می‌گذارد و روی ۴۰۱ یک‌بار با Refresh Token تمدید و درخواست را تکرار می‌کند.
+ * تمدید single-flight است تا چند درخواست هم‌زمان فقط یک‌بار refresh بزنند.
  */
+
+import { clearSession, getSession, setSession, type SyncSession } from './session';
 
 const API_BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 // فقط برای پیش‌نمایش سندباکس (پارامتر گیت‌وی) — در بیلد production خالی است
@@ -62,4 +67,72 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
     );
   }
   return payload as T;
+}
+
+/* ---------------- تمدید خودکار نشست (فاز ۳) ---------------- */
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/** یک‌بارمصرف: با Refresh Token فعلی نشست را تمدید می‌کند؛ موفق = true */
+export async function refreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const s = await getSession();
+    if (!s) return false;
+    try {
+      const res = await apiFetch<{
+        accessToken: string;
+        expiresAt: string;
+        refreshToken: string;
+        refreshExpiresAt: string;
+        user: { uuid: string; displayName: string | null };
+      }>('/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken: s.refreshToken, deviceUuid: s.deviceUuid },
+      });
+      const fresh: SyncSession = {
+        ...s,
+        userUuid: res.user.uuid,
+        displayName: res.user.displayName ?? s.displayName,
+        accessToken: res.accessToken,
+        expiresAt: res.expiresAt,
+        refreshToken: res.refreshToken,
+        refreshExpiresAt: res.refreshExpiresAt,
+      };
+      await setSession(fresh);
+      return true;
+    } catch {
+      // refresh نامعتبر/چرخیده/منقضی — نشست تمام است
+      await clearSession();
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/**
+ * درخواست احرازشده — با تمدید خودکار روی ۴۰۱.
+ * خطای ۴۰۱ِ نهایی یعنی نشست واقعاً تمام شده (clearSession انجام شده است).
+ */
+export async function authedFetch<T>(path: string, opts: Omit<ApiOptions, 'token'> = {}): Promise<T> {
+  const session = await getSession();
+  if (!session) {
+    throw new ApiError(401, 'برای این کار باید وارد حساب شوید', 'unauthorized');
+  }
+  try {
+    return await apiFetch<T>(path, { ...opts, token: session.accessToken });
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 401 || e.code === 'unauthorized')) {
+      const ok = await refreshSession();
+      if (!ok) throw new ApiError(401, 'نشست منقضی شده است؛ دوباره وارد شوید', 'unauthorized');
+      const fresh = await getSession();
+      if (!fresh) throw new ApiError(401, 'نشست منقضی شده است؛ دوباره وارد شوید', 'unauthorized');
+      return apiFetch<T>(path, { ...opts, token: fresh.accessToken });
+    }
+    throw e;
+  }
 }

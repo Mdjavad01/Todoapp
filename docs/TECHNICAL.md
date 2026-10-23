@@ -263,13 +263,61 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 
 ### ۷.۴. موتور کلاینت (`frontend/src/sync/`)
 
-- **api.ts:** پوشش fetch هم‌مبدا (سازگار با CSP 'self') + نگاشت خطاها به پیام فارسی.
-- **session.ts:** نشست + `deviceUuid` پایدار در IndexedDB (prefs)؛ انقضای توکن قبل از استفاده بررسی می‌شود.
-- **engine.ts:** چرخه‌ی push/pull با قفل هم‌زمانی، debounce ۱.۵ ثانیه بعد از هر تغییر، سینک در رویداد `online`، بازه‌ی ۶۰ ثانیه‌ای و شروع اپ؛ در 401 نشست خودکار پاک می‌شود.
+- **api.ts:** پوشش fetch هم‌مبدا (سازگار با CSP 'self') + نگاشت خطاها به پیام فارسی + `authedFetch` با تمدید خودکار تک‌پرواز روی 401 (فاز ۳).
+- **session.ts:** نشست کامل (Access + Refresh + دستگاه) + `deviceUuid` پایدار در IndexedDB (prefs).
+- **engine.ts:** چرخه‌ی push/pull با قفل هم‌زمانی، debounce ۱.۵ ثانیه بعد از هر تغییر، سینک در رویداد `online`، بازه‌ی ۶۰ ثانیه‌ای و شروع اپ؛ در 401 نهایی (تمدید ناموفق) نشست پاک می‌شود.
+- **auth.ts (فاز ۳):** سرویس ورود OTP (request/poll/verify)، خروج با ابطال سمت سرور، پروفایل و نشست‌ها.
 
 ---
 
-## ۸. دیتابیس
+## ۸. احراز هویت و نشست‌ها (فاز ۳)
+
+### ۸.۱. جریان‌های ورود
+
+| کانال | جریان |
+|---|---|
+| ایمیل | `POST /api/auth/otp/request` → ایمیل با کد ۶ رقمی → `POST /api/auth/otp/verify {channel:'email', target, code}` |
+| بله | `POST /api/auth/otp/request {channel:'bale'}` → بلیت ۶ حرفی + لینک `ble.ir/{bot}?start={ticket}` → کاربر برای ربات می‌فرستد → اپ هر ۳ ثانیه `POST /api/auth/otp/bale/poll` می‌زند → سرور با `getUpdates` پیام را می‌یابد و کد به همان چت می‌فرستد → `verify {channel:'bale', ticket, code}` |
+
+- پاسخ `verify`: `{isNew, user, device, accessToken, expiresAt, refreshToken, refreshExpiresAt}`.
+- کاربر/هویت در اولین ورود ساخته می‌شود (`user_identities` با `verified_at`) — ایمیل یا `bale_chat_id`.
+
+### ۸.۲. توکن‌ها
+
+| توکن | ساختار | عمر | ذخیره سمت سرور |
+|---|---|---|---|
+| Access | `k1.{payload}.{HMAC-SHA256}` بی‌حالت | پیش‌فرض ۲۴ ساعت (`ACCESS_TOKEN_TTL_HOURS`) | هیچ (فقط امضا) |
+| Refresh | ۶۴ کاراکتر تصادفی، مخصوص هر دستگاه | ۱۸۰ روز (`REFRESH_TOKEN_TTL_DAYS`) | فقط SHA-256 در `refresh_tokens` + `device_id`/`device_name` |
+
+- **چرخش:** هر `POST /api/auth/refresh` توکن قبلی را باطل و توکن جدید می‌دهد.
+- **تشخیص سرقت:** استفاده‌ی مجدد از توکنِ باطل‌شده → ابطال خودکار **همه‌ی** نشست‌های همان کاربر + لاگ امنیتی.
+- **معامله‌ی شناخته‌شده:** Access Token بی‌حالت است و تا انقضایش (حداکثر ۲۴ ساعت) حتی بعد از ابطال نشست معتبر می‌ماند — با عمر کوتاه پذیرفته شده است.
+- کلاینت: `authedFetch` روی 401 یک‌بار refresh می‌کند و درخواست را تکرار می‌کند؛ چند درخواست هم‌زمان فقط یک refresh می‌زنند (single-flight).
+
+### ۸.۳. امنیت OTP
+
+| مکانیزم | مقدار پیش‌فرض (قابل تنظیم با .env) |
+|---|---|
+| ذخیره‌سازی | فقط `HMAC-SHA256(code \| type \| value, APP_SECRET)` |
+| اعتبار کد | ۵ دقیقه (`OTP_TTL_MINUTES`) |
+| فاصله‌ی دو ارسال | ۶۰ ثانیه (`OTP_RESEND_AFTER`) |
+| سقف ساعتی هر حساب / هر IP | ۵ / ۲۰ (`OTP_MAX_PER_HOUR` / `OTP_MAX_PER_IP_HOUR`) |
+| سقف تلاش اشتباه | ۵ → کد باطل می‌شود (`OTP_MAX_ATTEMPTS`) |
+| بلیت بله | ۶ حرفی بدون کاراکتر گنگ، اعتبار ۱۰ دقیقه، یک‌بارمصرف |
+| اعداد | ورودی کد نرمال می‌شود (۰-۹ فارسی/عربی → لاتین) |
+
+- ارسال ایمیل: `MAIL_TRANSPORT = mail \| smtp \| log` (پیش‌فرض روی هاست: `mail()`؛ روی sqlite توسعه: `log`).
+- درایور بله فقط وقتی فعال است که `BALE_BOT_TOKEN` تنظیم شده باشد؛ `GET /api/auth/channels` وضعیت را به UI می‌دهد.
+- خواندن `getUpdates` با قفل فایل + کش ۲ ثانیه‌ای انجام می‌شود تا چند poll هم‌زمان، API بله را دچار تداخل نکند.
+
+### ۸.۴. مدیریت نشست‌ها و پروفایل
+
+- `GET /api/v1/me/sessions?deviceUuid=…` — نشست‌های فعال با علامت «همین دستگاه»؛ `DELETE /api/v1/me/sessions/{id}` — بستن هر نشست (همراه ابطال refresh آن دستگاه).
+- `PATCH /api/v1/me {displayName}` — نام نمایشی؛ `GET /api/v1/me` — پروفایل + هویت‌های تأییدشده.
+
+---
+
+## ۹. دیتابیس
 
 ۲۳ جدول با InnoDB، `utf8mb4_unicode_ci`، کلید خارجی واقعی و ایندکس‌های لازم. شرح کامل: [`DATABASE.md`](DATABASE.md).
 
@@ -281,7 +329,7 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 - داده‌ی اولیه: نقش‌های ادمین، ۳ پلن اشتراک، تنظیمات پیش‌فرض.
 - جدول‌های آینده‌نگر (از الان ساخته شده‌اند): `otp_requests`، `refresh_tokens`، `payments`، `receipts`، `coupons`، `templates`، `announcements`، `audit_logs`، `provider_logs` و ...
 
-## ۹. امنیت
+## ۱۰. امنیت
 
 - **CSP سخت‌گیرانه** در `deploy/.htaccess`: فقط `'self'` برای همه‌ی دستورها؛ هیچ اسکریپت/استایل/فونت/تصویر خارجی مجاز نیست (عمداً — قانون بدون CDN).
 - **HSTS** فعال (max-age یک سال، includeSubDomains).
@@ -294,7 +342,7 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 
 ---
 
-## ۱۰. استقرار
+## ۱۱. استقرار
 
 خلاصه‌ی جریان دیپلوی (شرح کامل در `INSTALL.md`):
 
@@ -308,11 +356,10 @@ php install/setup-admin.php "SETUP_TOKEN" "username" "password"
 
 ---
 
-## ۱۱. آمادگی برای فازهای بعد
+## ۱۲. آمادگی برای فازهای بعد
 
 | فاز | چه چیزی از الان آماده است |
 |---|---|
-| ۳ — OTP | جدول‌های `user_identities`، `otp_requests`، `refresh_tokens` آماده؛ مسیر session با کلید `OPEN_SESSION` قابل بستن؛ شیت حساب جای تعویض OTP آماده است |
-| ۴ — ادمین | جدول‌های `admins`، `admin_roles`، `audit_logs` آماده؛ اسکریپت ساخت ادمین موجود |
+| ۴ — ادمین | جدول‌های `admins`، `admin_roles`، `audit_logs` آماده؛ اسکریپت ساخت ادمین موجود؛ جدول `otp_requests` از `purpose='admin_2fa'` هم پشتیبانی می‌کند |
 | ۵ — پرداخت | جدول‌های `plans`، `orders`، `payments`، `receipts`، `coupons` آماده + داده‌ی اولیه‌ی پلن‌ها |
 | ۶ — اندروید | PWA کامل (manifest + SW + آیکن‌های maskable) + API client-ready → قابل بسته‌بندی با Bubblewrap/TWA |

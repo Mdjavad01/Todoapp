@@ -1,17 +1,25 @@
 /**
- * کارام — نشست سینک کاربر (فاز ۲)
- * نشست و شناسه‌ی دستگاه در IndexedDB (prefs) ذخیره می‌شوند — نه در localStorage — تا با بقیه‌ی داده هم‌مسیر باشد.
+ * کارام — نشست کاربر (فاز ۳)
+ *
+ * نشست کامل = Access Token کوتاه‌عمر + Refresh Token بلندعمر (چرخشی).
+ * همه‌چیز در IndexedDB (prefs) ذخیره می‌شود تا با بقیه‌ی داده هم‌مسیر باشد.
  */
 
 import { idbGet, idbPut, STORES } from '@/db/idb';
 import type { PrefEntity } from '@/types';
 
+export type AuthChannel = 'email' | 'bale';
+
 export interface SyncSession {
   userUuid: string;
+  /** شناسه‌ی حساب برای نمایش: ایمیل یا «بله: ۱۲۳۴…» */
   email: string;
+  channel: AuthChannel;
   displayName: string | null;
   accessToken: string;
-  expiresAt: string; // ISO UTC
+  expiresAt: string; // ISO UTC — انقضای access
+  refreshToken: string;
+  refreshExpiresAt: string; // ISO UTC — انقضای refresh
   deviceUuid: string;
   deviceName: string;
 }
@@ -25,7 +33,7 @@ async function prefSet(key: string, value: unknown): Promise<void> {
   await idbPut(STORES.prefs, { key, value } satisfies PrefEntity);
 }
 
-/** شناسه‌ی پایدار دستگاه (برای گزارش‌های سینک — در فاز ۳ به refresh_tokens وصل می‌شود) */
+/** شناسه‌ی پایدار دستگاه — به refresh token سمت سرور گره می‌خورد */
 export async function getDeviceUuid(): Promise<string> {
   const existing = await prefGet<string>('device-uuid');
   if (existing) return existing;
@@ -34,11 +42,15 @@ export async function getDeviceUuid(): Promise<string> {
   return fresh;
 }
 
+/**
+ * نشست جاری — حتی اگر access منقضی شده باشد برمی‌گردد (refresh معتبر = قابل تمدید).
+ * فقط وقتی refresh هم نباشد/منقضی باشد null است.
+ */
 export async function getSession(): Promise<SyncSession | null> {
   const s = await prefGet<SyncSession>('sync-session');
-  if (!s || !s.accessToken) return null;
-  // انقضای قطعی توکن — ۳۰ ثانیه زودتر برای اطمینان
-  if (new Date(s.expiresAt).getTime() < Date.now() + 30_000) return null;
+  if (!s || !s.refreshToken) return null;
+  // ۳۰ ثانیه زودتر از انقضای refresh، نشست را تمام‌شده بگیر
+  if (new Date(s.refreshExpiresAt).getTime() < Date.now() + 30_000) return null;
   return s;
 }
 

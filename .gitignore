@@ -10,6 +10,8 @@ frontend/node_modules/
 # آرتیفکت‌های اجرایی بک‌اند
 backend/storage/logs/*
 !backend/storage/logs/.gitkeep
+backend/storage/cache/*
+!backend/storage/cache/.gitkeep
 backend/storage/*.sqlite3
 backend/storage/*.sqlite3-*
 backend/install/.installed
@@ -23,3 +25,4 @@ Thumbs.db
 # ادیتورها
 .idea/
 .vscode/
+tests/bale-mock-state.json

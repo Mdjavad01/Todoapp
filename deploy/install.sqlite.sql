@@ -29,6 +29,38 @@ CREATE TABLE IF NOT EXISTS user_identities (
 );
 CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities (user_id);
 
+CREATE TABLE IF NOT EXISTS otp_requests (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  identity_type  TEXT(16) NOT NULL,            -- email | bale
+  identity_value TEXT(190) NOT NULL,           -- ایمیل، بلیت ۶ حرفی یا chat_id بله
+  code_hash      TEXT(255) NOT NULL,
+  purpose        TEXT(16) NOT NULL DEFAULT 'login',
+  attempts       INTEGER NOT NULL DEFAULT 0,
+  ip             TEXT(45),
+  expires_at     TEXT(19) NOT NULL,
+  consumed_at    TEXT(19),
+  created_at     TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_otp_identity ON otp_requests (identity_value, created_at);
+CREATE INDEX IF NOT EXISTS idx_otp_ip ON otp_requests (ip, created_at);
+CREATE INDEX IF NOT EXISTS idx_otp_expires ON otp_requests (expires_at);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  device_id    TEXT(36) NOT NULL,
+  device_name  TEXT(120),
+  token_hash   TEXT(255) NOT NULL UNIQUE,
+  user_agent   TEXT(255),
+  ip           TEXT(45),
+  issued_at    TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  expires_at   TEXT(19) NOT NULL,
+  revoked_at   TEXT(19),
+  last_used_at TEXT(19)
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens (user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens (expires_at);
+
 CREATE TABLE IF NOT EXISTS lists (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid       TEXT(36) NOT NULL UNIQUE,
