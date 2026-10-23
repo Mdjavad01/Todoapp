@@ -1,0 +1,43 @@
+{
+  "name": "کارام | دستیار هوشمند مدیریت وظایف",
+  "short_name": "کارام",
+  "description": "دستیار هوشمند مدیریت وظایف و چک‌لیست‌ها — کاملاً آفلاین، بدون وابستگی به اینترنت",
+  "dir": "rtl",
+  "lang": "fa",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#00685f",
+  "background_color": "#faf8ff",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "افزودن کار جدید",
+      "short_name": "افزودن",
+      "description": "ثبت سریع یک کار جدید",
+      "url": "./?action=add",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

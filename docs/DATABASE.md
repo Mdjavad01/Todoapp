@@ -1,0 +1,142 @@
+# مستندات دیتابیس «کارام»
+
+اسکیمای کامل در فایل [`deploy/install.sql`](../deploy/install.sql) قرار دارد و با اجرای آن روی MySQL/MariaDB 5.7+ همه‌ی جداول + داده‌ی اولیه ساخته می‌شود.
+
+## مشخصات کلی
+
+| ویژگی | مقدار |
+|---|---|
+| موتور | InnoDB (کلید خارجی + تراکنش) |
+| انکودینگ | `utf8mb4` / `utf8mb4_unicode_ci` (پشتیبانی کامل فارسی و ایموجی) |
+| منطقه‌ی زمانی | همه‌ی تاریخ‌ها **UTC** (`SET time_zone = '+00:00'`) — نمایش شمسی فقط در UI |
+| تعداد جداول | **۲۳** |
+| حذف رکورد | **حذف نرم** با ستون `deleted_at` در موجودیت‌های کاربری |
+| شناسه‌ی سینک | موجودیت‌های کاربری هم `id` عددی داخلی دارند و هم `uuid CHAR(36)` سمت کلاینت |
+
+## نقشه‌ی جداول
+
+```
+users ──┬── user_identities
+        ├── otp_requests
+        ├── refresh_tokens
+        ├── lists ── tasks ──┬── subtasks
+        │                    └── reminders
+        ├── orders ──┬── payments ── provider_logs
+        │            └── receipts
+        ├── subscriptions
+        └── audit_logs
+
+plans ── orders / subscriptions        coupons ── orders
+templates ── template_items
+admins ── admin_sessions        admin_roles ── admins
+announcements        settings
+```
+
+---
+
+## ۱. گروه کاربران و احراز هویت (فاز ۳)
+
+### `users`
+کاربران اپ. `uuid` شناسه‌ی سینک بین دستگاه‌ها؛ `status` شامل `active/blocked/deleted`؛ `premium_until` انقضای اشتراک (NULL = کاربر عادی).
+
+### `user_identities`
+هویت‌های ورود: `type` ∈ {`email`, `mobile`, `bale_chat_id`}؛ `value` یکتا به‌ازای هر نوع؛ `verified_at` زمان تأیید. یک کاربر می‌تواند چند هویت داشته باشد (یکتایی روی `(type, value)`).
+
+### `otp_requests`
+درخواست‌های کد یک‌بارمصرف: ۶ رقمی، **فقط هش کد** ذخیره می‌شود، انقضای ۲ دقیقه، حداکثر ۵ تلاش، شمارنده‌ی محدودیت ارسال (۵ در ساعت به‌ازای هر هویت و هر IP)، وضعیت `used/expired/failed`.
+
+### `refresh_tokens`
+توکن رفرش **به‌ازای هر دستگاه**: نام دستگاه، `device_uuid`، قابل ابطال (`revoked_at`)، انقضای بلندمدت — پایه‌ی «لیست دستگاه‌های فعال» و «خروج از همه‌ی دستگاه‌ها».
+
+---
+
+## ۲. گروه داده‌ی اصلی اپ (فاز ۲)
+
+قرارداد مشترک این گروه: `uuid` (تولید سمت کلاینت)، `updated_at` (پیش‌فرض CURRENT_TIMESTAMP و بروز هنگام UPDATE)، `deleted_at` (NULL = زنده).
+
+### `lists`
+لیست‌های کار: `name`، `emoji`، `color`، `sort_order`. کلید خارجی به `users` با `ON DELETE CASCADE`.
+
+### `tasks`
+کارها: `list_id`، `title`، `note`، `due_date` (DATETIME UTC)، `priority` ∈ {`low`,`medium`,`high`}، `repeat` ∈ {`none`,`daily`,`weekly`,`monthly`}، `completed_at` (NULL = انجام‌نشده؛ عمداً boolean نیست تا زمان تکمیل هم ثبت شود)، `reminder_id` اختیاری. ایندکس روی `(user_id, due_date)` و `(user_id, completed_at)` برای کوئری‌های «امروز» و «معوقه».
+
+### `subtasks`
+زیرکارها: `task_id`، `title`، `sort_order`، `completed_at`. حذف کار → حذف آبشاری زیرکارها.
+
+### `reminders`
+یادآورها: `task_id`، `remind_at` (UTC)، وضعیت ارسال (`sent_at`) — در فاز ارسال نوتیفیکیشن استفاده می‌شود.
+
+---
+
+## ۳. گروه اشتراک و پرداخت (فاز ۵)
+
+### `plans`
+پلن‌های پرمیوم: `title`، `duration_days`، `price_rial` (**BIGINT — مبلغ فقط از اینجا خوانده می‌شود، هرگز هاردکد**)، `is_active`. داده‌ی اولیه: ماهانه / ۳ماهه / سالانه.
+
+### `coupons`
+کد تخفیف: `code` یکتا، `type` ∈ {`percent`,`fixed`}، `amount`، سقف استفاده (`max_uses`، `used_count`)، بازه‌ی اعتبار (`starts_at`/`expires_at`)، `is_active`.
+
+### `orders`
+سفارش‌های خرید اشتراک: `user_id`، `plan_id`، `coupon_id`، `amount_rial` (مبلغ نهایی پس از تخفیف — ملاک verify)، `status` ∈ {`created`,`redirected`,`paid`,`failed`,`pending_review`,`approved`,`rejected`,`refunded`}، `tracking_code` (کد پیگیری کارت‌به‌کارت)، `gateway` ∈ {`zibal`,`aghaye_pardakht`,`card_to_card`,`admin_grant`, ...}. شمارنده‌ی کارت مقصد برای **چرخش چند کارت** در کارت‌به‌کارت در `settings` نگهداری می‌شود.
+
+### `payments`
+تراکنش هر درگاه: `order_id`، `gateway`، `ref_id` (شناسه‌ی تراکنش درگاه)، `amount_rial`، `status`، `raw_response` (JSON پاسخ کامل درگاه برای ردیابی). **verify باید idempotent باشد** — پرداختِ `paid` دوباره verify نمی‌شود.
+
+### `receipts`
+رسید کارت‌به‌کارت: `order_id`، `file_path` (**بیرون از public_html**، نام تصادفی)، `mime_type` (با بررسی واقعی محتوا نه پسوند)، `size_bytes`، وضعیت بررسی. دسترسی به فایل فقط از طریق اسکریپت PHP احراز هویت‌شده (ادمین).
+
+### `subscriptions`
+اشتراک فعال کاربر — **مستقل از روش پرداخت**: `user_id`، `plan_id`، `starts_at`، `ends_at`، `source` ∈ {`web_gateway`,`card_to_card`,`admin_grant`,`store_bazaar`,`cafe_bazaar`، ...} → آینده: خرید از مارکت‌های اندروید بدون تغییر اسکیما.
+
+---
+
+## ۴. گروه قالب‌ها (فاز ۴)
+
+### `templates`
+قالب‌های آماده (چک‌لیست خرید، کنکور، معاملات و ...): `title`، `description`، `icon`، `category`، `is_premium` (قالب پرمیوم یا رایگان)، `is_active`.
+
+### `template_items`
+آیتم‌های هر قالب: `template_id`، `title`، `sort_order`. اعمال قالب = ساخت یک لیست + کارها از روی این آیتم‌ها.
+
+---
+
+## ۵. گروه پنل مدیریت (فاز ۴)
+
+### `admins`
+مدیران پنل `/admin` (جدا از کاربران اپ): `username` یکتا، `password_hash` (Argon2id/bcrypt)، `role_id`، `is_active`، `last_login_at`.
+
+### `admin_roles`
+نقش‌ها: `superadmin` (دسترسی کامل) و `support` (محدود). داده‌ی اولیه هر دو درج می‌شوند.
+
+### `admin_sessions`
+نشست‌های ورود مدیر + توکن دومرحله‌ای اختیاری (OTP ادمین).
+
+---
+
+## ۶. گروه سیستمی
+
+### `announcements`
+اطلاعیه‌های درون‌اپ (پیام همگانی): `title`، `body`، `type` (info/warning)، بازه‌ی نمایش.
+
+### `settings`
+تنظیمات کلید/مقدار برنامه: نام اپ، لوگو، حالت تعمیر و نگهداری (`maintenance_mode`)، حداقل نسخه‌ی اپ، تنظیمات SMTP/بله/زیبال/آقای‌پرداخت (فعال/غیرفعال)، شماره کارت‌های کارت‌به‌کارت و ... . داده‌ی اولیه با مقادیر پیش‌فرض درج می‌شود.
+
+### `audit_logs`
+لاگ حسابرسی: چه کسی (`actor_type`: user/admin + id)، چه کاری (`action`)، روی چه موجودی (`entity_type`، `entity_id`)، `ip`، `meta` (JSON). پایه‌ی «لاگ کامل فعالیت‌ها» در پنل ادمین.
+
+### `provider_logs`
+لاگ تماس با سرویس‌دهنده‌های خارجی (SMTP، بله، زیبال، آقای‌پرداخت): `provider`، `action`، `status`، `request`/`response` (بدون رمز خام)، مدت پاسخ — برای عیب‌یابی و «لاگ ارسال» در پنل.
+
+---
+
+## ۷. داده‌ی اولیه (Seed)
+
+با اجرای `install.sql` این رکوردها ساخته می‌شوند:
+
+| جدول | رکوردها |
+|---|---|
+| `admin_roles` | `superadmin`، `support` |
+| `plans` | پلن ماهانه، ۳ ماهه، سالانه (فعال، قیمت‌های پایه — از پنل قابل ویرایش) |
+| `settings` | کلیدهای پیش‌فرض (نام اپ = کارام، تعمیر و نگهداری = خاموش، درگاه‌ها = غیرفعال) |
+
+> نام جداول و ستون‌ها قرارداد ثابت پروژه‌اند؛ کد بک‌اند فازهای بعدی دقیقاً از همین نام‌ها استفاده می‌کند.

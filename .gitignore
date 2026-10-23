@@ -1,0 +1,23 @@
+# وابستگی‌ها
+node_modules/
+frontend/node_modules/
+
+# فایل‌های محیطی حساس — نمونه‌ی backend/.env.example استثناست
+.env
+.env.*
+!backend/.env.example
+
+# آرتیفکت‌های اجرایی بک‌اند
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+backend/install/.installed
+backend/install/setup-admin.disabled.php
+
+# لاگ و فایل‌های سیستمی
+*.log
+.DS_Store
+Thumbs.db
+
+# ادیتورها
+.idea/
+.vscode/

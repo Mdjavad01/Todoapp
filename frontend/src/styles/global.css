@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- فونت وزیرمتن (متغیر ۱۰۰ تا ۹۰۰) — کاملاً محلی ---------- */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+/* ---------- متغیرهای رنگ برند (قابل تغییر از تنظیمات) — پیش‌فرض فیروزه‌ای طرح ---------- */
+:root {
+  --karam-primary-rgb: 0 104 95;
+  --karam-primary-container-rgb: 0 131 120;
+  --karam-primary-fixed-rgb: 137 245 231;
+  --karam-primary-fixed-dim-rgb: 107 216 203;
+  --karam-primary-deep-rgb: 17 94 89;
+}
+
+body {
+  font-family: 'Vazirmatn', sans-serif;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: max(884px, 100dvh);
+}
+
+/* در تم شب، متن‌های بدون کلاس صریح روشن باشند (inverse-on-surface) */
+.dark body {
+  color: #eef0ff;
+}
+
+/* ---------- آیکن‌های SVG محلی (جایگزین Material Symbols) ---------- */
+.ms-icon {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ms-icon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- مخفی‌کردن اسکرول‌بار برای حس اپ موبایل ---------- */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ---------- safe-area برای ناوبری پایین روی موبایل ---------- */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ---------- انیمیشن ورود bottom sheet ---------- */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.sheet-in {
+  animation: sheet-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* اسکرول‌بار سفارشی برای لیست‌های بلند */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #bcc9c6;
+  border-radius: 9999px;
+}
