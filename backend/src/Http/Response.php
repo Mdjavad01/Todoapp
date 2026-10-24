@@ -31,13 +31,29 @@ final class Response
         header('Referrer-Policy: no-referrer');
         header('X-Frame-Options: DENY');
         header('Cache-Control: no-store');
-        // CORS بسته: فقط مبدأ خود اپ (از تنظیمات) مجاز است
-        $allowed = Config::get('APP_URL', '');
-        if ($allowed !== '' && isset($_SERVER['HTTP_ORIGIN']) && $_SERVER['HTTP_ORIGIN'] === $allowed) {
-            header('Access-Control-Allow-Origin: ' . $allowed);
+        // CORS بسته: فقط مبداهای لیست‌سفید مجازند
+        //  - APP_URL: خود اپ وب
+        //  - CORS_EXTRA_ORIGINS: مبداهای اضافه با کاما (فاز ۶) — مثلاً WebView اپ اندروید https://localhost
+        $allowedList = self::allowedOrigins();
+        $origin = isset($_SERVER['HTTP_ORIGIN']) ? trim((string) $_SERVER['HTTP_ORIGIN']) : '';
+        if ($origin !== '' && in_array($origin, $allowedList, true)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
             header('Vary: Origin');
             header('Access-Control-Allow-Headers: Content-Type, Authorization');
             header('Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE');
         }
+    }
+
+    /** @return list<string> لیست مبداهای مجاز CORS — بدون مقدار خالی */
+    public static function allowedOrigins(): array
+    {
+        $list = [trim((string) Config::get('APP_URL', ''))];
+        $extra = trim((string) Config::get('CORS_EXTRA_ORIGINS', ''));
+        if ($extra !== '') {
+            foreach (explode(',', $extra) as $o) {
+                $list[] = trim($o);
+            }
+        }
+        return array_values(array_unique(array_filter($list, static fn (string $o): bool => $o !== '')));
     }
 }

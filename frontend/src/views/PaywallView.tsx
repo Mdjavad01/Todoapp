@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { toFa } from '@/lib/format';
+import { isNativeApp, onBrowserFinished, openExternal } from '@/lib/native';
 import { createPaymentOrder, fetchOrderStatus, fetchPlans, type Plan } from '@/sync/payments';
 
 /**
@@ -46,6 +47,7 @@ export function PaywallView() {
   const paywallTitle = useAppStore((s) => s.appSettings.paywallTitle);
   const paymentResult = useAppStore((s) => s.paymentResult);
   const clearPaymentResult = useAppStore((s) => s.clearPaymentResult);
+  const setPaymentResult = useAppStore((s) => s.setPaymentResult);
   const openAccountSheet = useAppStore((s) => s.openAccountSheet);
 
   const [plans, setPlans] = useState<Plan[] | null>(null);
@@ -58,6 +60,8 @@ export function PaywallView() {
   const [resultPlan, setResultPlan] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef(0);
+  // فاز ۶ — سفارش در جریان بومی (درگاه در تب مرورگر باز می‌شود)
+  const pendingOrderRef = useRef<string | null>(null);
 
   // پلن‌ها — از سرور؛ آفلاین با پیش‌فرض‌ها
   useEffect(() => {
@@ -147,6 +151,18 @@ export function PaywallView() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [session, reloadPremium]);
 
+  // فاز ۶ — اپ اندروید: با بسته‌شدن تب مرورگر (بازگشت از درگاه) poll نتیجه شروع می‌شود
+  useEffect(() => {
+    const off = onBrowserFinished(() => {
+      const uuid = pendingOrderRef.current;
+      if (uuid) {
+        pendingOrderRef.current = null;
+        setPaymentResult(uuid);
+      }
+    });
+    return off;
+  }, [setPaymentResult]);
+
   const buy = async () => {
     if (buying) return;
     if (!session) {
@@ -158,7 +174,15 @@ export function PaywallView() {
     setBuying(true);
     try {
       const res = await createPaymentOrder(selected);
-      // رفتن به درگاه زیبال — بازگشت به اپ با ?payResult=
+      if (isNativeApp()) {
+        // فاز ۶ — اپ اندروید: درگاه در تب مرورگر سیستم باز می‌شود؛ با بسته‌شدن تب
+        // رویداد browserFinished شروع بررسی نتیجه را می‌زند (بدون خروج از اپ)
+        pendingOrderRef.current = res.orderUuid;
+        setBuying(false);
+        await openExternal(res.payUrl);
+        return;
+      }
+      // وب — رفتن به درگاه زیبال؛ بازگشت به اپ با ?payResult=
       window.location.href = res.payUrl;
     } catch (e) {
       setBuyError(e instanceof Error ? e.message : 'ساخت تراکنش ناموفق بود');

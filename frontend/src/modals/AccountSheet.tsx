@@ -4,6 +4,7 @@ import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import * as repo from '@/db/repo';
 import { toFa } from '@/lib/format';
+import { openExternal } from '@/lib/native';
 import {
   fetchChannels,
   pollTelegramTicket,
@@ -525,14 +526,12 @@ export function AccountSheet() {
                   </div>
                   <div className="flex gap-2">
                     {deepLink ? (
-                      <a
-                        href={deepLink}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
                         className="flex-1 py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm text-center active:scale-95 transition-transform"
+                        onClick={() => void openExternal(deepLink)}
                       >
                         باز کردن تلگرام
-                      </a>
+                      </button>
                     ) : null}
                     <button
                       className="flex-1 py-3 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform"

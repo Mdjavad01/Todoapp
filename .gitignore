@@ -26,3 +26,13 @@ Thumbs.db
 .idea/
 .vscode/
 tests/bale-mock-state.json
+
+# --- اپ اندروید (فاز ۶) — خروجی‌های بیلد و کلید امضا هرگز کامیت نمی‌شوند ---
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/local.properties
+mobile/android/capacitor-cordova-android-plugins/build/
+*.jks
+*.keystore
+keystore.properties

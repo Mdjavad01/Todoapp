@@ -17,6 +17,7 @@ import { AccountSheet } from '@/modals/AccountSheet';
 import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
+import { onAppResume } from '@/lib/native';
 
 /** پوسته‌ی اپ — قاب موبایل مطابق طرح (فول‌اسکرین در موبایل، قاب ۴۱۰px در دسکتاپ) */
 export default function App() {
@@ -28,6 +29,17 @@ export default function App() {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [view]);
+
+  // فاز ۶ — اپ اندروید: با بازگشت به پیش‌زمینه، سینک و وضعیت اشتراک تازه می‌شود
+  useEffect(() => {
+    const off = onAppResume(() => {
+      const st = useAppStore.getState();
+      if (!st.ready) return;
+      void st.syncNow();
+      void st.reloadPremium();
+    });
+    return off;
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-0 sm:p-4 transition-colors duration-300">

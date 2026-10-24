@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">کارام</string>
+    <string name="title_activity_main">کارام</string>
+    <string name="package_name">ir.hojre24shop.app</string>
+    <string name="custom_url_scheme">ir.hojre24shop.app</string>
+</resources>

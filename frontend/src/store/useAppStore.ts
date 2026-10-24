@@ -84,6 +84,8 @@ interface AppState {
   syncNow(): Promise<void>;
   reloadPremium(): Promise<void>;
   clearPaymentResult(): void;
+  /** فاز ۶ — تنظیم نتیجه‌ی پرداخت در جریان بومی (بدون پارامتر URL) */
+  setPaymentResult(orderUuid: string | null): void;
 
   setDark(d: boolean): void;
   setAccent(a: AccentColor): void;
@@ -282,6 +284,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearPaymentResult() {
     set({ paymentResult: null });
+  },
+
+  setPaymentResult(orderUuid) {
+    if (orderUuid === null) {
+      set({ paymentResult: null });
+      return;
+    }
+    // جریان بومی اندروید — مثل بازگشت از درگاه وب
+    set({ view: 'paywall', paymentResult: orderUuid });
   },
 
   setDark(dark) {
