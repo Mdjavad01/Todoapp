@@ -16,10 +16,25 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // امضای ریلیز — فقط وقتی پراپرتی‌های گریدل از CI داده شود (فاز ۶)
+    // بدون آن خروجی release بدون امضا ساخته می‌شود و بیلد نمی‌شکند
+    if (project.hasProperty('karamKeystoreFile')) {
+        signingConfigs {
+            karamRelease {
+                storeFile file(karamKeystoreFile)
+                storePassword karamKeystorePassword
+                keyAlias karamKeyAlias
+                keyPassword karamKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (project.hasProperty('karamKeystoreFile')) {
+                signingConfig signingConfigs.karamRelease
+            }
         }
     }
 }
