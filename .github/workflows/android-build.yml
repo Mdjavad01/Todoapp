@@ -1,0 +1,107 @@
+# کارام — بیلد اپ اندروید روی GitHub Actions (فاز ۶)
+# خروجی: APK دیباگ (برای نصب و تست روی گوشی) + APK ریلیز (امضاشده اگر Secret کلید تنظیم شده باشد)
+# اجرا: خودکار با هر پوش مرتبط، یا دستی از تب Actions → Run workflow
+
+name: بیلد اندروید کارام
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/public/**'
+      - 'frontend/package.json'
+      - 'mobile/**'
+      - '.github/workflows/android-build.yml'
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: APK (Debug + Release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: دریافت مخزن
+        uses: actions/checkout@v4
+
+      - name: نصب Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: نصب وابستگی‌های فرانت
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: نصب وابستگی‌های موبایل
+        working-directory: mobile
+        run: bun install --frozen-lockfile
+
+      - name: ساخت بسته‌ی وب از سورس فرانت (www)
+        working-directory: mobile
+        run: bun run build:www
+
+      - name: همگام‌سازی Capacitor (www → پروژه‌ی نیتیو)
+        working-directory: mobile
+        run: bunx cap sync android
+
+      - name: نصب Java 21 (Temurin) + کش Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: پذیرش لایسنس‌های Android SDK
+        run: |
+          if [ -d "$ANDROID_HOME/licenses" ] && [ -n "$(ls -A "$ANDROID_HOME/licenses" 2>/dev/null)" ]; then
+            echo 'لایسنس‌ها از قبل فعال است'
+          else
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
+
+      - name: رمزگشایی کلید امضا از Secret (در صورت وجود)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$HOME/karam-release.jks"
+            echo "KARAM_SIGNING=true" >> "$GITHUB_ENV"
+            echo 'کلید امضا آماده شد — Release امضاشده بیلد می‌شود'
+          else
+            echo "KARAM_SIGNING=false" >> "$GITHUB_ENV"
+            echo 'ℹ️ Secret کلید امضا تنظیم نشده — Release بدون امضا بیلد می‌شود'
+          fi
+
+      - name: بیلد APK
+        working-directory: mobile/android
+        env:
+          KS_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          GRADLE_ARGS="assembleDebug assembleRelease --no-daemon --stacktrace"
+          if [ "$KARAM_SIGNING" = "true" ]; then
+            GRADLE_ARGS="$GRADLE_ARGS -PkaramKeystoreFile=$HOME/karam-release.jks -PkaramKeystorePassword=$KS_PASSWORD -PkaramKeyAlias=$KS_ALIAS -PkaramKeyPassword=$KS_KEY_PASSWORD"
+          fi
+          ./gradlew $GRADLE_ARGS
+
+      - name: آپلود APK دیباگ (برای تست روی گوشی)
+        uses: actions/upload-artifact@v4
+        with:
+          name: karam-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: آپلود APK ریلیز
+        uses: actions/upload-artifact@v4
+        with:
+          name: karam-release-apk
+          path: mobile/android/app/build/outputs/apk/release/app-release*.apk
+          if-no-files-found: error
