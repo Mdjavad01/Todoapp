@@ -8,11 +8,11 @@
 import { idbGet, idbPut, STORES } from '@/db/idb';
 import type { PrefEntity } from '@/types';
 
-export type AuthChannel = 'email' | 'bale' | 'sms';
+export type AuthChannel = 'email' | 'telegram' | 'sms';
 
 export interface SyncSession {
   userUuid: string;
-  /** شناسه‌ی حساب برای نمایش: ایمیل یا «بله: ۱۲۳۴…» */
+  /** شناسه‌ی حساب برای نمایش: ایمیل یا «تلگرام: ۱۲۳۴…» */
   email: string;
   channel: AuthChannel;
   displayName: string | null;

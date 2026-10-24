@@ -3,15 +3,15 @@
 declare(strict_types=1);
 
 /**
- * کارام — کنترلر احراز هویت — فاز ۳
+ * کارام — کنترلر احراز هویت — فاز ۳ (فاز ۵: بله ← تلگرام)
  *
- * جریان اصلی: کد یک‌بارمصرف (OTP) از راه ایمیل یا ربات بله.
- *  POST /api/auth/channels          → کانال‌های ورود فعال
- *  POST /api/auth/otp/request       → درخواست کد (ایمیل) یا بلیت اتصال (بله)
- *  POST /api/auth/otp/bale/poll     → وضعیت بلیت بله (تا اتصال چت و ارسال کد)
- *  POST /api/auth/otp/verify        → تأیید کد و صدور نشست (Access + Refresh)
- *  POST /api/auth/refresh           → چرخش Refresh Token و صدور Access جدید
- *  POST /api/auth/logout            → ابطال Refresh Token (خروج)
+ * جریان اصلی: کد یک‌بارمصرف (OTP) از راه ایمیل یا ربات تلگرام.
+ *  GET  /api/auth/channels              → کانال‌های ورود فعال
+ *  POST /api/auth/otp/request           → درخواست کد (ایمیل/موبایل) یا بلیت اتصال (تلگرام)
+ *  POST /api/auth/otp/telegram/poll     → وضعیت بلیت تلگرام (تا اتصال چت و ارسال کد)
+ *  POST /api/auth/otp/verify            → تأیید کد و صدور نشست (Access + Refresh)
+ *  POST /api/auth/refresh               → چرخش Refresh Token و صدور Access جدید
+ *  POST /api/auth/logout                → ابطال Refresh Token (خروج)
  *
  * مدیریت نشست‌ها و پروفایل (نیازمند Bearer):
  *  GET    /api/v1/me
@@ -32,37 +32,37 @@ final class AuthController
     {
         Response::ok([
             'email' => true,
-            'bale' => BaleBot::configured(),
+            'telegram' => TelegramBot::configured(),
             'sms' => Sms::enabled(),
-            'botUsername' => BaleBot::botUsername(),
+            'botUsername' => TelegramBot::botUsername(),
         ]);
     }
 
     /* ================= درخواست کد / بلیت ================= */
 
-    /** POST /api/auth/otp/request  {channel:'email'|'bale'|'sms', target?} */
+    /** POST /api/auth/otp/request  {channel:'email'|'telegram'|'sms', target?} */
     public function otpRequest(): void
     {
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms']);
         $ip = Request::ip();
 
-        if ($channel === 'bale') {
-            if (!BaleBot::configured()) {
-                Response::error('ورود با بله هنوز فعال نشده است', 503, ['code' => 'bale_disabled']);
+        if ($channel === 'telegram') {
+            if (!TelegramBot::configured()) {
+                Response::error('ورود با تلگرام هنوز فعال نشده است', 503, ['code' => 'telegram_disabled']);
                 return;
             }
-            $limit = Otp::checkRateLimit($pdo = Database::pdo(), 'bale', '__ticket__', $ip);
+            $limit = Otp::checkRateLimit($pdo = Database::pdo(), 'telegram', '__ticket__', $ip);
             if (!$limit['ok']) {
                 Response::error($limit['reason'], 429, ['code' => 'rate_limited', 'retryAfter' => $limit['retryAfter'] ?? 60]);
                 return;
             }
             $ticket = Otp::createTicket($pdo, $ip);
             Response::ok([
-                'channel' => 'bale',
+                'channel' => 'telegram',
                 'ticket' => $ticket['ticket'],
-                'botUsername' => BaleBot::botUsername(),
-                'deepLink' => BaleBot::deepLink($ticket['ticket']),
+                'botUsername' => TelegramBot::botUsername(),
+                'deepLink' => TelegramBot::deepLink($ticket['ticket']),
                 'expiresIn' => Otp::ticketTtlMinutes() * 60,
                 'resendAfter' => Otp::resendAfterSeconds(),
             ]);
@@ -122,7 +122,7 @@ final class AuthController
         );
         if (!$sent && Mailer::transport() !== 'log') {
             // ارسال واقعی ناموفق — پیام عمومی (جزئیات در لاگ سرور)
-            Response::error('ارسال ایمیل ناموفق بود؛ بعداً تلاش کنید یا با بله وارد شوید', 502, ['code' => 'mail_failed']);
+            Response::error('ارسال ایمیل ناموفق بود؛ بعداً تلاش کنید یا با تلگرام وارد شوید', 502, ['code' => 'mail_failed']);
             return;
         }
 
@@ -138,13 +138,13 @@ final class AuthController
         Response::ok($out);
     }
 
-    /* ================= وضعیت بلیت بله ================= */
+    /* ================= وضعیت بلیت تلگرام ================= */
 
-    /** POST /api/auth/otp/bale/poll  {ticket} */
-    public function otpBalePoll(): void
+    /** POST /api/auth/otp/telegram/poll  {ticket} */
+    public function otpTelegramPoll(): void
     {
-        if (!BaleBot::configured()) {
-            Response::error('ورود با بله هنوز فعال نشده است', 503, ['code' => 'bale_disabled']);
+        if (!TelegramBot::configured()) {
+            Response::error('ورود با تلگرام هنوز فعال نشده است', 503, ['code' => 'telegram_disabled']);
             return;
         }
         $body = Request::json();
@@ -155,11 +155,11 @@ final class AuthController
         }
 
         // پیام‌های جدید ربات را می‌خوانیم و با بلیت‌ها تطبیق می‌دهیم
-        BaleBot::pollAndMatchTickets(Database::pdo());
+        TelegramBot::pollAndMatchTickets(Database::pdo());
 
         Response::ok([
             'status' => Otp::ticketStatus(Database::pdo(), $ticket),
-            'botUsername' => BaleBot::botUsername(),
+            'botUsername' => TelegramBot::botUsername(),
         ]);
     }
 
@@ -169,7 +169,7 @@ final class AuthController
     public function otpVerify(): void
     {
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms']);
         $code = Validator::str($body, 'code', 4, 8);
         $deviceName = Validator::str($body, 'deviceName', 1, 80, false) ?? 'دستگاه ناشناس';
         $deviceUuid = Validator::uuid($body, 'deviceUuid', false) ?? Uuid::v4();
@@ -195,18 +195,18 @@ final class AuthController
             }
             // بلیت باید قبلاً متصل شده باشد (کد برای همان چت ارسال شده باشد)
             if (Otp::ticketStatus($pdo, $ticket) !== 'code_sent') {
-                Response::error('کد هنوز به بله ارسال نشده است', 409, ['code' => 'ticket_not_linked']);
+                Response::error('کد هنوز به تلگرام ارسال نشده است', 409, ['code' => 'ticket_not_linked']);
                 return;
             }
             // chat_id از رکورد بلیتِ مصرف‌شده در نمی‌آید؛ کلاینت هم آن را نمی‌داند،
-            // پس آخرین کد فعالِ بله که بعد از مصرف همین بلیت ساخته شده را می‌یابیم.
-            $target = self::latestBaleTargetForTicket($pdo, $ticket);
+            // پس آخرین کد فعالِ تلگرام که بعد از مصرف همین بلیت ساخته شده را می‌یابیم.
+            $target = self::latestTelegramTargetForTicket($pdo, $ticket);
             if ($target === null) {
                 Response::error('کد فعال یافت نشد؛ از ابتدا وارد شوید', 409, ['code' => 'ticket_not_linked']);
                 return;
             }
-            $identityType = 'bale_chat_id';
-            $result = Otp::verifyCode($pdo, 'bale', $target, (string) $code);
+            $identityType = 'telegram_chat_id';
+            $result = Otp::verifyCode($pdo, 'telegram', $target, (string) $code);
         }
 
         if (!$result['ok']) {
@@ -246,32 +246,32 @@ final class AuthController
         } elseif ($channel === 'sms') {
             $out['user']['mobile'] = $target;
         } else {
-            $out['user']['baleChatId'] = $target;
+            $out['user']['telegramChatId'] = $target;
         }
         Response::ok($out);
     }
 
-    /** آخرین chat_id بله‌ای که بعد از مصرف این بلیت برایش کد ساخته شده است */
-    public static function latestBaleTargetForTicket(PDO $pdo, string $ticket): ?string
+    /** آخرین chat_id تلگرامی که بعد از مصرف این بلیت برایش کد ساخته شده است */
+    public static function latestTelegramTargetForTicket(PDO $pdo, string $ticket): ?string
     {
         $stmt = $pdo->prepare(
             'SELECT consumed_at FROM otp_requests
              WHERE identity_type = :t AND identity_value = :v AND consumed_at IS NOT NULL
              ORDER BY id DESC LIMIT 1'
         );
-        $stmt->execute([':t' => 'bale', ':v' => $ticket]);
+        $stmt->execute([':t' => 'telegram', ':v' => $ticket]);
         $consumedAt = $stmt->fetchColumn();
         if ($consumedAt === false) {
             return null;
         }
-        // کد واقعی بله: identity_value عددی است (chat_id)؛ بلیت‌ها ۶ حرف — فیلتر در PHP
+        // کد واقعی تلگرام: identity_value عددی است (chat_id)؛ بلیت‌ها ۶ حرف — فیلتر در PHP
         // (سازگار با MySQL و SQLite؛ بدون REGEXP)
         $stmt2 = $pdo->prepare(
             'SELECT identity_value FROM otp_requests
              WHERE identity_type = :t AND created_at >= :since
              ORDER BY id DESC LIMIT 20'
         );
-        $stmt2->execute([':t' => 'bale', ':since' => $consumedAt]);
+        $stmt2->execute([':t' => 'telegram', ':since' => $consumedAt]);
         foreach ($stmt2->fetchAll(PDO::FETCH_COLUMN) as $v) {
             $v = (string) $v;
             if (ctype_digit($v)) {

@@ -38,9 +38,9 @@ final class HealthController
         $public = Settings::publicBootstrap();
         $public['channels'] = [
             'email' => true,
-            'bale' => BaleBot::configured(),
+            'telegram' => TelegramBot::configured(),
             'sms' => Sms::enabled(),
-            'botUsername' => BaleBot::botUsername(),
+            'botUsername' => TelegramBot::botUsername(),
         ];
         Response::ok($public);
     }

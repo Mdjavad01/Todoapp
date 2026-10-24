@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * کارام — نقطه‌ی ورود API
  * فاز ۱: سلامت سرویس | فاز ۲: CRUD + سینک دوسویه | فاز ۳: احراز هویت OTP + نشست‌ها
- * فاز ۴: پنل مدیریت (ورود ادمین + داشبورد + کاربران + پلن‌ها + اطلاعیه‌ها + تنظیمات + لاگ)
+ * فاز ۴: پنل مدیریت | فاز ۴.۵: شورتکد ادمین + تنظیمات کامل | فاز ۵: پرداخت زیبال + اشتراک
  *
  * همه‌ی تاریخ‌ها UTC ذخیره و برگردانده می‌شوند.
  */
@@ -25,14 +25,17 @@ require __DIR__ . '/../src/Auth/Otp.php';
 require __DIR__ . '/../src/Auth/RefreshToken.php';
 require __DIR__ . '/../src/Services/Mailer.php';
 require __DIR__ . '/../src/Services/Sms.php';
-require __DIR__ . '/../src/Services/BaleBot.php';
+require __DIR__ . '/../src/Services/TelegramBot.php';
 require __DIR__ . '/../src/Services/Audit.php';
 require __DIR__ . '/../src/Services/Entities.php';
 require __DIR__ . '/../src/Services/SyncService.php';
+require __DIR__ . '/../src/Payments/Subscription.php';
+require __DIR__ . '/../src/Payments/ZibalProvider.php';
 require __DIR__ . '/../src/Controllers/HealthController.php';
 require __DIR__ . '/../src/Controllers/AuthController.php';
 require __DIR__ . '/../src/Controllers/RestEntityController.php';
 require __DIR__ . '/../src/Controllers/SyncController.php';
+require __DIR__ . '/../src/Controllers/PaymentController.php';
 require __DIR__ . '/../src/Controllers/AdminController.php';
 
 // همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
@@ -63,19 +66,22 @@ $router->get('/api/health', [new HealthController(), 'health']);
 $router->get('/api/v1/bootstrap', [new HealthController(), 'bootstrap']);
 
 // ---- گیت حالت تعمیر (فاز ۴.۵ — از پنل ادمین قابل تغییر) ----
-// سلامت سرویس و همه‌ی مسیرهای ادمین همیشه باز می‌مانند؛ بقیه‌ی API ۵۰۳ می‌شود.
-if (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) !== '/api/health'
-    && !str_starts_with((string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: ''), '/api/admin')
+// سلامت سرویس، همه‌ی مسیرهای ادمین و بازگشت درگاه پرداخت همیشه باز می‌مانند؛
+// بقیه‌ی API ۵۰۳ می‌شود (تا پرداختِ در جریان، با تأیید سرور گم نشود).
+$proxyPath = (string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '');
+if ($proxyPath !== '/api/health'
+    && !str_starts_with($proxyPath, '/api/admin')
+    && $proxyPath !== '/api/payments/callback'
     && Settings::bool('maintenance_mode')) {
     Response::error('سرویس موقتاً در حال به‌روزرسانی است؛ چند دقیقه‌ی دیگر برگردید', 503, ['code' => 'maintenance']);
     return;
 }
 
-// ---- احراز هویت OTP + نشست‌ها (فاز ۳) ----
+// ---- احراز هویت OTP + نشست‌ها (فاز ۳ — فاز ۵: بله ← تلگرام) ----
 $auth = new AuthController();
 $router->get('/api/auth/channels', [$auth, 'channels']);
 $router->post('/api/auth/otp/request', [$auth, 'otpRequest']);
-$router->post('/api/auth/otp/bale/poll', [$auth, 'otpBalePoll']);
+$router->post('/api/auth/otp/telegram/poll', [$auth, 'otpTelegramPoll']);
 $router->post('/api/auth/otp/verify', [$auth, 'otpVerify']);
 $router->post('/api/auth/refresh', [$auth, 'refresh']);
 $router->post('/api/auth/logout', [$auth, 'logout']);
@@ -111,6 +117,15 @@ $router->delete('/api/v1/subtasks/{uuid}', [$subtasks, 'destroy']);
 // ---- سینک دوسویه ----
 $router->post('/api/v1/sync', [new SyncController(), 'sync']);
 
+// ---- پرداخت و اشتراک (فاز ۵) ----
+$payments = new PaymentController();
+$router->get('/api/v1/plans', [$payments, 'plans']);
+$router->post('/api/v1/payments/orders', [$payments, 'createOrder']);
+$router->get('/api/v1/payments/orders/{uuid}', [$payments, 'orderStatus']);
+$router->get('/api/v1/me/subscription', [$payments, 'mySubscription']);
+// بازگشت از درگاه (بدون احراز — با امضای سمت سرور verify می‌شود)
+$router->get('/api/payments/callback', [$payments, 'gatewayCallback']);
+
 // ---- پنل مدیریت (فاز ۴) ----
 $admin = new AdminController();
 $router->post('/api/admin/login', [$admin, 'login']);
@@ -131,7 +146,7 @@ $router->delete('/api/admin/announcements/{id}', [$admin, 'announcementDelete'])
 $router->get('/api/admin/settings', [$admin, 'settingsIndex']);
 $router->patch('/api/admin/settings', [$admin, 'settingsUpdate']);
 $router->post('/api/admin/otp/request', [$admin, 'otpShortcutRequest']);
-$router->post('/api/admin/otp/bale/poll', [$admin, 'otpShortcutBalePoll']);
+$router->post('/api/admin/otp/telegram/poll', [$admin, 'otpShortcutTelegramPoll']);
 $router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);
 $router->get('/api/admin/audit', [$admin, 'auditIndex']);
 

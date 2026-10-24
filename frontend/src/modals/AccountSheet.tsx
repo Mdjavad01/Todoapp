@@ -6,7 +6,7 @@ import * as repo from '@/db/repo';
 import { toFa } from '@/lib/format';
 import {
   fetchChannels,
-  pollBaleTicket,
+  pollTelegramTicket,
   requestOtp,
   verifyOtp,
   listSessions,
@@ -17,12 +17,12 @@ import {
 } from '@/sync/auth';
 
 /**
- * شیت «حساب کاربری و سینک» — فاز ۳
- * ورود با کد یک‌بارمصرف از دو راه: ایمیل و ربات بله.
+ * شیت «حساب کاربری و سینک» — فاز ۳ (فاز ۵: بله ← تلگرام)
+ * ورود با کد یک‌بارمصرف از دو راه: ایمیل و ربات تلگرام.
  * نقطه‌ی ورود: سطر «پشتیبان‌گیری در حساب کاربری» در تنظیمات (مطابق طرح)
  */
 
-type Step = 'choose' | 'email' | 'bale' | 'sms' | 'code';
+type Step = 'choose' | 'email' | 'telegram' | 'sms' | 'code';
 
 const toFaDigits = (v: string | number): string =>
   toFa(String(v)).replace(/,/g, '');
@@ -39,7 +39,7 @@ export function AccountSheet() {
 
   // ورود
   const [step, setStep] = useState<Step>('choose');
-  const [channel, setChannel] = useState<'email' | 'bale' | 'sms' | null>(null);
+  const [channel, setChannel] = useState<'email' | 'telegram' | 'sms' | null>(null);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -51,10 +51,10 @@ export function AccountSheet() {
   const [resendIn, setResendIn] = useState(0);
   const [devCode, setDevCode] = useState<string | null>(null);
 
-  // بله
+  // تلگرام
   const [ticket, setTicket] = useState('');
   const [deepLink, setDeepLink] = useState('');
-  const [baleState, setBaleState] = useState<'waiting' | 'sent'>('waiting');
+  const [tgState, setTgState] = useState<'waiting' | 'sent'>('waiting');
   const [copied, setCopied] = useState(false);
 
   // پروفایل
@@ -70,8 +70,8 @@ export function AccountSheet() {
     setError(null);
     setCode('');
     setDevCode(null);
-    setBaleState('waiting');
-    void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, bale: false, sms: false, botUsername: '' }));
+    setTgState('waiting');
+    void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
     if (useAppStore.getState().session) {
       void listSessions().then(setSessions).catch(() => setSessions([]));
     }
@@ -84,16 +84,16 @@ export function AccountSheet() {
     return () => clearTimeout(t);
   }, [resendIn]);
 
-  // poll بله — تا وقتی روی مرحله‌ی بله‌ایم و منتظر کد هستیم
+  // poll تلگرام — تا وقتی روی مرحله‌ی تلگرامی‌ایم و منتظر کد هستیم
   useEffect(() => {
-    if (step !== 'bale' || baleState !== 'waiting' || !ticket) return;
+    if (step !== 'telegram' || tgState !== 'waiting' || !ticket) return;
     let alive = true;
     const iv = setInterval(async () => {
       try {
-        const res = await pollBaleTicket(ticket);
+        const res = await pollTelegramTicket(ticket);
         if (!alive) return;
         if (res.status === 'code_sent') {
-          setBaleState('sent');
+          setTgState('sent');
           setResendIn(0);
           setStep('code');
           setTimeout(() => codeRef.current?.focus(), 50);
@@ -109,7 +109,7 @@ export function AccountSheet() {
       alive = false;
       clearInterval(iv);
     };
-  }, [step, baleState, ticket]);
+  }, [step, tgState, ticket]);
 
   const startEmail = () => {
     setError(null);
@@ -117,10 +117,10 @@ export function AccountSheet() {
     setStep('email');
   };
 
-  const startBale = () => {
+  const startTelegram = () => {
     setError(null);
-    setChannel('bale');
-    setStep('bale');
+    setChannel('telegram');
+    setStep('telegram');
   };
 
   const startSms = () => {
@@ -176,14 +176,14 @@ export function AccountSheet() {
     }
   };
 
-  const startBaleLogin = async () => {
+  const startTelegramLogin = async () => {
     setError(null);
     setBusy(true);
     try {
-      const res = await requestOtp('bale');
+      const res = await requestOtp('telegram');
       setTicket(res.ticket ?? '');
       setDeepLink(res.deepLink ?? '');
-      setBaleState('waiting');
+      setTgState('waiting');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت بلیت ناموفق بود');
     } finally {
@@ -196,8 +196,8 @@ export function AccountSheet() {
     setBusy(true);
     try {
       const res =
-        channel === 'bale'
-          ? await verifyOtp({ channel: 'bale', ticket, code: code.trim() })
+        channel === 'telegram'
+          ? await verifyOtp({ channel: 'telegram', ticket, code: code.trim() })
           : channel === 'sms'
             ? await verifyOtp({ channel: 'sms', target: phone.trim(), code: code.trim() })
             : await verifyOtp({ channel: 'email', target: email.trim(), code: code.trim() });
@@ -211,6 +211,7 @@ export function AccountSheet() {
       setCode('');
       setTicket('');
       setDevCode(null);
+      setTgState('waiting');
       // آنبوردینگ ظاهر (فاز ۴.۵) — برای حسابی که هنوز جنسیت/تم انتخاب نکرده
       const needsOnboarding = (res.user.gender ?? 'unset') === 'unset';
       const localChoice = await repo.prefsGet<string>('gender-choice', 'none');
@@ -436,13 +437,13 @@ export function AccountSheet() {
                     ورود با شماره موبایل
                   </button>
                 ) : null}
-                {channels?.bale ? (
+                {channels?.telegram ? (
                   <button
                     className="w-full py-3.5 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
-                    onClick={startBale}
+                    onClick={startTelegram}
                   >
                     <Icon name="fingerprint" size={18} />
-                    ورود با ربات بله
+                    ورود با ربات تلگرام
                   </button>
                 ) : null}
               </div>
@@ -495,28 +496,28 @@ export function AccountSheet() {
             </div>
           ) : null}
 
-          {step === 'bale' ? (
+          {step === 'telegram' ? (
             <div className="flex flex-col gap-3">
-              <p className="text-label-md font-bold">ورود با ربات بله</p>
-              {baleState === 'waiting' && !ticket ? (
+              <p className="text-label-md font-bold">ورود با ربات تلگرام</p>
+              {tgState === 'waiting' && !ticket ? (
                 <>
                   <p className="text-body-sm text-on-surface-variant leading-relaxed">
-                    برای اطمینان از مالکیت چت بله، یک کد کوتاه به شما می‌دهیم که برای ربات می‌فرستید؛ بعد کد ورود به
+                    برای اطمینان از مالکیت چت تلگرام، یک کد کوتاه به شما می‌دهیم که برای ربات می‌فرستید؛ بعد کد ورود به
                     همان چت ارسال می‌شود.
                   </p>
                   <button
                     className="w-full py-3.5 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
-                    onClick={() => void startBaleLogin()}
+                    onClick={() => void startTelegramLogin()}
                     disabled={busy}
                   >
                     {busy ? '…' : 'ساخت کد اتصال'}
                   </button>
                 </>
               ) : null}
-              {baleState === 'waiting' && ticket ? (
+              {tgState === 'waiting' && ticket ? (
                 <>
                   <p className="text-body-sm text-on-surface-variant leading-relaxed">
-                    این کد را برای ربات <span dir="ltr" className="font-bold">@{channels?.botUsername}</span> در بله
+                    این کد را برای ربات <span dir="ltr" className="font-bold">@{channels?.botUsername}</span> در تلگرام
                     بفرستید (روی دکمه‌ی پایین بزنید تا چت باز شود):
                   </p>
                   <div className="flex items-center justify-center py-4 rounded-2xl bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30">
@@ -530,7 +531,7 @@ export function AccountSheet() {
                         rel="noreferrer"
                         className="flex-1 py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm text-center active:scale-95 transition-transform"
                       >
-                        باز کردن بله
+                        باز کردن تلگرام
                       </a>
                     ) : null}
                     <button
@@ -546,8 +547,8 @@ export function AccountSheet() {
                   </p>
                 </>
               ) : null}
-              {baleState === 'sent' ? (
-                <p className="text-body-sm text-primary font-bold">کد ورود به چت بله شما ارسال شد ✓</p>
+              {tgState === 'sent' ? (
+                <p className="text-body-sm text-primary font-bold">کد ورود به چت تلگرام شما ارسال شد ✓</p>
               ) : null}
               {error ? <p className="text-body-sm text-red-600 dark:text-red-300">{error}</p> : null}
               <button
@@ -555,7 +556,7 @@ export function AccountSheet() {
                 onClick={() => {
                   setError(null);
                   setTicket('');
-                  setBaleState('waiting');
+                  setTgState('waiting');
                   setStep('choose');
                 }}
               >
@@ -612,8 +613,8 @@ export function AccountSheet() {
                 کد ۶ رقمی
               </label>
               <p className="text-body-sm text-on-surface-variant mb-3">
-                {channel === 'bale'
-                  ? 'کد ارسال‌شده به چت بله‌تان را وارد کنید'
+                {channel === 'telegram'
+                  ? 'کد ارسال‌شده به چت تلگرام‌تان را وارد کنید'
                   : channel === 'sms'
                     ? `کد به شماره ${phone} پیامک شد`
                     : `کد به ${email} ارسال شد`}
@@ -664,7 +665,7 @@ export function AccountSheet() {
                 onClick={() => {
                   setError(null);
                   setCode('');
-                  setStep(channel === 'bale' ? 'bale' : 'email');
+                  setStep(channel === 'telegram' ? 'telegram' : 'email');
                 }}
               >
                 بازگشت

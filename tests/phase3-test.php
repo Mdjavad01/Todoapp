@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * پیش‌نیاز اجرا:
  *   php -S 127.0.0.1:8099 -t backend/public        → API
- *   php -S 127.0.0.1:8098 tests/bale-mock.php      → سرور ساختگی بله
+ *   php -S 127.0.0.1:8098 tests/telegram-mock.php   → سرور ساختگی تلگرام
  *
  * اجرا:  php tests/phase3-test.php
  * (DB محلی و لاگ‌ها هر بار از نو ساخته می‌شوند)
@@ -86,11 +86,11 @@ function resetEnvironment(): void
         }
     }
 
-    // پاک‌سازی لاگ ایمیل و کش بله و وضعیت سرور ساختگی
+    // پاک‌سازی لاگ ایمیل و کش تلگرام و وضعیت سرور ساختگی
     foreach ([
         ROOT . '/backend/storage/logs/mail.log',
-        ROOT . '/backend/storage/cache/bale-updates.json',
-        __DIR__ . '/bale-mock-state.json',
+        ROOT . '/backend/storage/cache/telegram-updates.json',
+        __DIR__ . '/telegram-mock-state.json',
     ] as $f) {
         if (is_file($f)) {
             @unlink($f);
@@ -114,23 +114,23 @@ function lastMailCode(string $email): ?string
     return null;
 }
 
-function baleMockAddMessage(int $updateId, int $chatId, string $text): void
+function tgMockAddMessage(int $updateId, int $chatId, string $text): void
 {
-    $file = __DIR__ . '/bale-mock-state.json';
+    $file = __DIR__ . '/telegram-mock-state.json';
     $s = json_decode((string) @file_get_contents($file), true) ?: ['updates' => [], 'sent' => []];
     $s['updates'][] = ['update_id' => $updateId, 'message' => ['message_id' => $updateId, 'chat' => ['id' => $chatId], 'text' => $text]];
     file_put_contents($file, json_encode($s, JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
-function baleMockSentCount(): int
+function tgMockSentCount(): int
 {
-    $s = json_decode((string) @file_get_contents(__DIR__ . '/bale-mock-state.json'), true) ?: ['sent' => []];
+    $s = json_decode((string) @file_get_contents(__DIR__ . '/telegram-mock-state.json'), true) ?: ['sent' => []];
     return count($s['sent'] ?? []);
 }
 
-function baleMockLastCode(int $chatId): ?string
+function tgMockLastCode(int $chatId): ?string
 {
-    $s = json_decode((string) @file_get_contents(__DIR__ . '/bale-mock-state.json'), true) ?: ['sent' => []];
+    $s = json_decode((string) @file_get_contents(__DIR__ . '/telegram-mock-state.json'), true) ?: ['sent' => []];
     for ($i = count($s['sent']) - 1; $i >= 0; $i--) {
         $m = $s['sent'][$i];
         if ((int) $m['chat_id'] === $chatId && preg_match('/کد ورود شما:\s*(\d{6})/u', (string) $m['text'], $mm)) {
@@ -174,7 +174,7 @@ echo "۱) زیرساخت\n";
 check('health → 200 و ok', $st === 200 && ($j['ok'] ?? false) === true);
 
 [$st, $j] = http('GET', '/api/auth/channels');
-check('channels → ایمیل و بله فعال + نام ربات', $st === 200 && $j['email'] === true && $j['bale'] === true && $j['botUsername'] === 'KaramTestBot');
+check('channels → ایمیل و تلگرام فعال + نام ربات', $st === 200 && $j['email'] === true && $j['telegram'] === true && $j['botUsername'] === 'KaramTestBot');
 
 /* ================= ۲) گیت ورود مستقیم فاز ۲ ================= */
 echo "۲) ورود مستقیم بدون کد باید بسته باشد\n";
@@ -338,56 +338,56 @@ check('فهرست لیست‌ها شامل لیست جدید', $st === 200 && co
 [$st, $j] = http('POST', '/api/v1/sync', ['cursor' => null, 'changes' => ['lists' => [], 'tasks' => [], 'subtasks' => []]], $tokB);
 check('سینک خالی → cursor برگشت', $st === 200 && isset($j['cursor']));
 
-/* ================= ۹) ورود با بله ================= */
-echo "۹) جریان بله\n";
-[$st, $j] = http('POST', '/api/auth/otp/request', ['channel' => 'bale']);
+/* ================= ۹) ورود با تلگرام ================= */
+echo "۹) جریان تلگرام\n";
+[$st, $j] = http('POST', '/api/auth/otp/request', ['channel' => 'telegram']);
 $ticket = $j['ticket'] ?? '';
-check('درخواست بله → بلیت + لینک ble.ir', $st === 200 && isTicketFormat($ticket) && str_contains($j['deepLink'] ?? '', 'ble.ir/KaramTestBot'));
+check('درخواست تلگرام → بلیت + لینک t.me', $st === 200 && isTicketFormat($ticket) && str_contains($j['deepLink'] ?? '', 't.me/KaramTestBot'));
 
-[$st, $j] = http('POST', '/api/auth/otp/bale/poll', ['ticket' => $ticket]);
+[$st, $j] = http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket]);
 check('poll اول → pending', $st === 200 && ($j['status'] ?? '') === 'pending');
 
-baleMockAddMessage(1, 99118822, '/start ' . $ticket);
+tgMockAddMessage(1, 99118822, '/start ' . $ticket);
 sleep(3); // کش ۲ ثانیه‌ای getUpdates باید منقضی شود
-[$st, $j] = http('POST', '/api/auth/otp/bale/poll', ['ticket' => $ticket]);
+[$st, $j] = http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket]);
 check('بعد از پیام کاربر → code_sent', $st === 200 && ($j['status'] ?? '') === 'code_sent');
 
-$baleCode = baleMockLastCode(99118822);
-check('ربات کد ۶ رقمی به چت فرستاد', preg_match('/^\d{6}$/', (string) $baleCode) === 1);
+$tgCode = tgMockLastCode(99118822);
+check('ربات کد ۶ رقمی به چت فرستاد', preg_match('/^\d{6}$/', (string) $tgCode) === 1);
 
-[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'bale', 'ticket' => $ticket, 'code' => '111111', 'deviceUuid' => '33333333-3333-4333-8333-333333333333']);
-check('کد غلط بله → رد', $st === 400);
-[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'bale', 'ticket' => $ticket, 'code' => $baleCode, 'deviceName' => 'بله', 'deviceUuid' => '33333333-3333-4333-8333-333333333333']);
+[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'telegram', 'ticket' => $ticket, 'code' => '111111', 'deviceUuid' => '33333333-3333-4333-8333-333333333333']);
+check('کد غلط تلگرام → رد', $st === 400);
+[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'telegram', 'ticket' => $ticket, 'code' => $tgCode, 'deviceName' => 'تلگرام', 'deviceUuid' => '33333333-3333-4333-8333-333333333333']);
 $tokC = $j['accessToken'] ?? null;
-check('کد درست بله → isNew=true + توکن', $st === 200 && $j['isNew'] === true && is_string($tokC));
+check('کد درست تلگرام → isNew=true + توکن', $st === 200 && $j['isNew'] === true && is_string($tokC));
 [$st, $j] = http('GET', '/api/v1/me', null, $tokC);
-$hasBale = false;
+$hasTelegram = false;
 foreach (($j['identities'] ?? []) as $idn) {
-    if ($idn['type'] === 'bale_chat_id' && $idn['value'] === '99118822') {
-        $hasBale = true;
+    if ($idn['type'] === 'telegram_chat_id' && $idn['value'] === '99118822') {
+        $hasTelegram = true;
     }
 }
-check('me → هویت bale_chat_id تأییدشده', $hasBale);
+check('me → هویت telegram_chat_id تأییدشده', $hasTelegram);
 
 // پیام ناشناخته → راهنمایی، بدون خطا
-$sentBefore = baleMockSentCount();
-baleMockAddMessage(2, 99118822, 'ZZZZZZ');
+$sentBefore = tgMockSentCount();
+tgMockAddMessage(2, 99118822, 'ZZZZZZ');
 sleep(3);
-[$st, $j] = http('POST', '/api/auth/otp/bale/poll', ['ticket' => $ticket]);
-check('poll با پیام ناشناخته → خطا نمی‌دهد و راهنمایی می‌فرستد', $st === 200 && baleMockSentCount() === $sentBefore + 1);
+[$st, $j] = http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket]);
+check('poll با پیام ناشناخته → خطا نمی‌دهد و راهنمایی می‌فرستد', $st === 200 && tgMockSentCount() === $sentBefore + 1);
 
-// ورود دوم با بله برای همان چت
+// ورود دوم با تلگرام برای همان چت
 sleep(2);
-[$st, $j] = http('POST', '/api/auth/otp/request', ['channel' => 'bale']);
+[$st, $j] = http('POST', '/api/auth/otp/request', ['channel' => 'telegram']);
 $ticket2 = $j['ticket'] ?? '';
 check('بلیت دوم برای همان چت', $st === 200 && $ticket2 !== '' && $ticket2 !== $ticket);
-baleMockAddMessage(3, 99118822, $ticket2);
+tgMockAddMessage(3, 99118822, $ticket2);
 sleep(3);
-[$st, $j] = http('POST', '/api/auth/otp/bale/poll', ['ticket' => $ticket2]);
+[$st, $j] = http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket2]);
 check('poll دوم → code_sent', ($j['status'] ?? '') === 'code_sent');
-$baleCode2 = baleMockLastCode(99118822);
-[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'bale', 'ticket' => $ticket2, 'code' => $baleCode2]);
-check('ورود دوم بله → isNew=false (همان کاربر)', $st === 200 && $j['isNew'] === false);
+$tgCode2 = tgMockLastCode(99118822);
+[$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'telegram', 'ticket' => $ticket2, 'code' => $tgCode2]);
+check('ورود دوم تلگرام → isNew=false (همان کاربر)', $st === 200 && $j['isNew'] === false);
 
 /* ================= ۱۰) اعتبارسنجی ورودی ================= */
 echo "۱۰) اعتبارسنجی\n";

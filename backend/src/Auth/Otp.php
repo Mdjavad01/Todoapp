@@ -10,7 +10,7 @@ declare(strict_types=1);
  *  - فقط هشِ کد (HMAC-SHA256 با APP_SECRET) در دیتابیس می‌نشیند.
  *  - محدودیت ارسال: فاصله‌ی حداقلی بین دو ارسال + سقف ساعتی برای هر هویت و هر IP.
  *  - سقف تلاش ناموفق؛ بعد از آن کد باطل می‌شود و باید کد جدید گرفت.
- *  - کد و بلیت بله (ticket) هر دو در جدول otp_requests با purpose=login ذخیره می‌شوند.
+ *  - کد و بلیت تلگرام (ticket) هر دو در جدول otp_requests با purpose=login ذخیره می‌شوند.
  */
 
 final class Otp
@@ -18,7 +18,7 @@ final class Otp
     /** طول کد */
     private const CODE_LEN = 6;
 
-    /** الفبای بلیت بله — بدون کاراکترهای گنگ (0/O و 1/I حذف شده‌اند) */
+    /** الفبای بلیت تلگرام — بدون کاراکترهای گنگ (0/O و 1/I حذف شده‌اند) */
     private const TICKET_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     private const PURPOSE_LOGIN = 'login';
@@ -73,7 +73,7 @@ final class Otp
         return $code;
     }
 
-    /** بلیت ۶ حرفی برای اتصال چت بله به درخواست ورود */
+    /** بلیت ۶ حرفی برای اتصال چت تلگرام به درخواست ورود */
     public static function generateTicket(): string
     {
         $n = strlen(self::TICKET_ALPHABET);
@@ -165,7 +165,7 @@ final class Otp
      *
      * برای «شورتکد ورود OTP» در پنل مدیریت، کدهای صادرشده به‌صورت موقت در فایل
      * storage/cache/issued-otp.jsonl ثبت می‌شوند تا مالک بتواند بدون دسترسی به
-     * صندوق ایمیل/بله/پیامک، جریان ورود را از پنل تست و تأیید کند.
+     * صندوق ایمیل/تلگرام/پیامک، جریان ورود را از پنل تست و تأیید کند.
      *
      * محدودسازی ریسک:
      *  - فایل بیرون از public_html است و .htaccess دسترسی به storage را بسته است.
@@ -199,13 +199,13 @@ final class Otp
         }
     }
 
-    /** آخرین کد ثبت‌شده برای یک بلیت بله (اتصال چت ← کد) */
+    /** آخرین کد ثبت‌شده برای یک بلیت تلگرام (اتصال چت ← کد) */
     public static function lastIssuedForTicket(string $ticket): ?array
     {
         return self::searchIssued(static fn (array $e): bool => ($e['ticket'] ?? '') === $ticket);
     }
 
-    /** آخرین کد ثبت‌شده برای یک هویت (ایمیل/بله/موبایل) */
+    /** آخرین کد ثبت‌شده برای یک هویت (ایمیل/تلگرام/موبایل) */
     public static function lastIssuedFor(string $type, string $value): ?array
     {
         return self::searchIssued(static fn (array $e): bool => ($e['type'] ?? '') === $type && strtolower((string) ($e['value'] ?? '')) === strtolower($value));
@@ -258,7 +258,7 @@ final class Otp
     }
 
     /**
-     * ساخت بلیت بله — رکوردی که identity_value آن خودِ بلیت است.
+     * ساخت بلیت تلگرام — رکوردی که identity_value آن خودِ بلیت است.
      * بعد از اتصال چت، این رکورد مصرف و برای همان chat_id کد واقعی ساخته می‌شود.
      * @return array{ticket:string, expiresAt:string}
      */
@@ -271,9 +271,9 @@ final class Otp
              VALUES (:t, :v, :h, :p, 0, :ip, :exp, :now)'
         );
         $stmt->execute([
-            ':t' => 'bale',
+            ':t' => 'telegram',
             ':v' => $ticket,
-            ':h' => self::hash($ticket, 'bale-ticket', $ticket),
+            ':h' => self::hash($ticket, 'telegram-ticket', $ticket),
             ':p' => self::PURPOSE_LOGIN,
             ':ip' => $ip !== '' ? $ip : null,
             ':exp' => gmdate('Y-m-d H:i:s', $now + self::ticketTtlMinutes() * 60),
@@ -284,7 +284,7 @@ final class Otp
 
     /* ---------------- بازیابی و تأیید ---------------- */
 
-    /** وضعیت بلیت بله: pending / code_sent / expired / unknown */
+    /** وضعیت بلیت تلگرام: pending / code_sent / expired / unknown */
     public static function ticketStatus(PDO $pdo, string $ticket): string
     {
         $stmt = $pdo->prepare(
@@ -292,7 +292,7 @@ final class Otp
              WHERE identity_type = :t AND identity_value = :v AND purpose = :p
              ORDER BY id DESC LIMIT 1'
         );
-        $stmt->execute([':t' => 'bale', ':v' => $ticket, ':p' => self::PURPOSE_LOGIN]);
+        $stmt->execute([':t' => 'telegram', ':v' => $ticket, ':p' => self::PURPOSE_LOGIN]);
         $row = $stmt->fetch();
         if ($row === false) {
             return 'unknown';
@@ -306,14 +306,14 @@ final class Otp
         return 'pending';
     }
 
-    /** همه‌ی بلیت‌های زنده (برای تطبیق پیام‌های بله) */
+    /** همه‌ی بلیت‌های زنده (برای تطبیق پیام‌های تلگرام) */
     public static function pendingTickets(PDO $pdo): array
     {
         $stmt = $pdo->prepare(
             'SELECT identity_value FROM otp_requests
              WHERE identity_type = :t AND consumed_at IS NULL AND expires_at > :now AND purpose = :p'
         );
-        $stmt->execute([':t' => 'bale', ':now' => gmdate('Y-m-d H:i:s'), ':p' => self::PURPOSE_LOGIN]);
+        $stmt->execute([':t' => 'telegram', ':now' => gmdate('Y-m-d H:i:s'), ':p' => self::PURPOSE_LOGIN]);
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $v) {
             $v = (string) $v;
@@ -330,7 +330,7 @@ final class Otp
         $pdo->prepare(
             'UPDATE otp_requests SET consumed_at = :now
              WHERE identity_type = :t AND identity_value = :v AND consumed_at IS NULL'
-        )->execute([':now' => gmdate('Y-m-d H:i:s'), ':t' => 'bale', ':v' => $ticket]);
+        )->execute([':now' => gmdate('Y-m-d H:i:s'), ':t' => 'telegram', ':v' => $ticket]);
     }
 
     /**

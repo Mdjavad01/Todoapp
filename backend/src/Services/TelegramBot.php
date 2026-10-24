@@ -3,20 +3,21 @@
 declare(strict_types=1);
 
 /**
- * کارام — درایور ربات بله (Bot API) — فاز ۳
+ * کارام — درایور ربات تلگرام (Bot API) — فاز ۵
+ * (جایگزین کامل پیام‌رسان بله — طبق تصمیم مالک، کد تأیید فقط از تلگرام می‌رود)
  *
- * جریان ورود با بله (بدون نیاز به شماره تلفن):
- *  ۱) اپ کدِ ۶ حرفی (بلیت) می‌گیرد و به کاربر نشان می‌دهد.
- *  ۲) کاربر بلیت را (یا لینک آماده‌ی ble.ir/ربات?start=بلیت) برای ربات می‌فرستد.
+ * جریان ورود با تلگرام:
+ *  ۱) اپ کدِ ۶ حرفی (بلیت) می‌گیرد و لینک آماده‌ی t.me می‌دهد.
+ *  ۲) کاربر روی لینک می‌زند (t.me/ربات?start=بلیت) و START را می‌فرستد.
  *  ۳) سرور هنگام poll اپ، پیام‌های جدید ربات را می‌خواند؛ اگر متن = بلیت معتبر بود،
  *     کد OTP واقعی را به همان چت می‌فرستد و بلیت را مصرف می‌کند.
  *  ۴) کاربر کد را در اپ وارد می‌کند و نشست صادر می‌شود.
  *
- * نکته‌ی فنی: برای اینکه هم‌زمان چند کاربر poll بزنند و API بله دچار تداخل نشود،
+ * نکته‌ی فنی: برای اینکه هم‌زمان چند کاربر poll بزنند و API تلگرام دچار تداخل نشود،
  * خواندن getUpdates با قفل فایل و کش ۲ ثانیه‌ای مشترک انجام می‌شود.
  */
 
-final class BaleBot
+final class TelegramBot
 {
     /** توکن ربات — اولویت با تنظیمات پنل، بعد .env */
     public static function configured(): bool
@@ -26,18 +27,18 @@ final class BaleBot
 
     public static function token(): string
     {
-        return (string) (Settings::get('bale_bot_token', (string) (Config::get('BALE_BOT_TOKEN', '') ?? '')) ?? '');
+        return (string) (Settings::get('telegram_bot_token', (string) (Config::get('TELEGRAM_BOT_TOKEN', '') ?? '')) ?? '');
     }
 
     public static function botUsername(): string
     {
-        return (string) (Settings::get('bale_bot_username', (string) (Config::get('BALE_BOT_USERNAME', '') ?? '')) ?? '');
+        return (string) (Settings::get('telegram_bot_username', (string) (Config::get('TELEGRAM_BOT_USERNAME', '') ?? '')) ?? '');
     }
 
     private static function apiBase(): string
     {
         // مبنای API بدون پسوند /bot — قابل تغییر برای تست محلی (mock)
-        $base = (string) (Config::get('BALE_API_BASE', 'https://tapi.bale.ai') ?? 'https://tapi.bale.ai');
+        $base = (string) (Config::get('TELEGRAM_API_BASE', 'https://api.telegram.org') ?? 'https://api.telegram.org');
         return rtrim($base, '/');
     }
 
@@ -45,7 +46,7 @@ final class BaleBot
     public static function deepLink(string $ticket): string
     {
         $u = self::botUsername();
-        return $u !== '' ? 'https://ble.ir/' . rawurlencode($u) . '?start=' . rawurlencode($ticket) : '';
+        return $u !== '' ? 'https://t.me/' . rawurlencode($u) . '?start=' . rawurlencode($ticket) : '';
     }
 
     /* ---------------- API ---------------- */
@@ -69,12 +70,12 @@ final class BaleBot
         }
         [$status, $body] = self::httpPostJson($url, '');
         if ($status !== 200) {
-            error_log("[karam][bale] getUpdates status={$status} body=" . var_export($body, true));
+            error_log("[karam][telegram] getUpdates status={$status} body=" . var_export($body, true));
             return null;
         }
         $json = json_decode((string) $body, true);
         if (!is_array($json) || ($json['ok'] ?? false) !== true || !isset($json['result']) || !is_array($json['result'])) {
-            error_log("[karam][bale] getUpdates JSON نامعتبر: " . var_export($body, true));
+            error_log("[karam][telegram] getUpdates JSON نامعتبر: " . var_export($body, true));
             return null;
         }
         return $json['result'];
@@ -121,7 +122,7 @@ final class BaleBot
         $err = curl_error($ch);
         curl_close($ch);
         if ($resp === false) {
-            error_log('[karam][bale] خطای ارتباط با API بله: ' . $err);
+            error_log('[karam][telegram] خطای ارتباط با API تلگرام: ' . $err);
             return [0, null];
         }
         return [$status, (string) $resp];
@@ -131,7 +132,7 @@ final class BaleBot
 
     private static function cachePath(): string
     {
-        return dirname(__DIR__, 2) . '/storage/cache/bale-updates.json';
+        return dirname(__DIR__, 2) . '/storage/cache/telegram-updates.json';
     }
 
     /**
@@ -167,7 +168,7 @@ final class BaleBot
                 }
             }
 
-            // کش ۲ ثانیه‌ای — چند درخواست هم‌زمان فقط یک‌بار API بله را صدا می‌زنند
+            // کش ۲ ثانیه‌ای — چند درخواست هم‌زمان فقط یک‌بار API تلگرام را صدا می‌زنند
             if (time() - (int) $state['fetchedAt'] >= 2) {
                 $updates = self::getUpdates((int) $state['offset'] ?: null);
                 if ($updates !== null) {
@@ -241,16 +242,16 @@ final class BaleBot
                  WHERE identity_type = :t AND identity_value = :v AND consumed_at IS NULL AND expires_at > :now
                  LIMIT 1'
             );
-            $stmt->execute([':t' => 'bale', ':v' => $ticket, ':now' => gmdate('Y-m-d H:i:s')]);
+            $stmt->execute([':t' => 'telegram', ':v' => $ticket, ':now' => gmdate('Y-m-d H:i:s')]);
             if ($stmt->fetchColumn() === false) {
                 $pdo->rollBack();
                 return;
             }
 
-            $code = Otp::createCode($pdo, 'bale', (string) $chatId, ''); // ip خالی = ارسال سمت سرور
+            $code = Otp::createCode($pdo, 'telegram', (string) $chatId, ''); // ip خالی = ارسال سمت سرور
             Otp::consumeTicket($pdo, $ticket);
             // ژورنال شورتکد ادمین: پیوند بلیت ← چت ← کد (خواندن فقط از پنل)
-            Otp::recordIssued(['type' => 'bale', 'value' => (string) $chatId, 'code' => $code['code'], 'ticket' => $ticket]);
+            Otp::recordIssued(['type' => 'telegram', 'value' => (string) $chatId, 'code' => $code['code'], 'ticket' => $ticket]);
 
             $pdo->commit();
         } catch (Throwable $e) {
@@ -260,6 +261,6 @@ final class BaleBot
             throw $e;
         }
 
-        self::sendMessage($chatId, "کارام\nکد ورود شما: " . $code['code'] . "\nاین کد " . Otp::ttlMinutes() . " دقیقه اعتبار دارد.");
+        self::sendMessage($chatId, "کارام 🌿\nکد ورود شما: " . $code['code'] . "\nاین کد " . Otp::ttlMinutes() . " دقیقه اعتبار دارد.\nاگر شما درخواست نداده بودید، این پیام را نادیده بگیرید.");
     }
 }

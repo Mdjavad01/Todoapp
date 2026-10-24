@@ -25,11 +25,11 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `idx_users_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- هویت‌های کاربر: ایمیل / موبایل / chat_id بله
+-- هویت‌های کاربر: ایمیل / موبایل / chat_id تلگرام
 CREATE TABLE IF NOT EXISTS `user_identities` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`     BIGINT UNSIGNED NOT NULL,
-  `type`        ENUM('email','mobile','bale_chat_id') NOT NULL,
+  `type`        ENUM('email','mobile','telegram_chat_id') NOT NULL,
   `value`       VARCHAR(190) NOT NULL,
   `is_primary`  TINYINT(1)   NOT NULL DEFAULT 0,
   `verified_at` DATETIME     NULL DEFAULT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS `user_identities` (
 -- درخواست‌های کد تأیید (OTP) — فقط هشِ کد ذخیره می‌شود
 CREATE TABLE IF NOT EXISTS `otp_requests` (
   `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `identity_type`  ENUM('email','bale') NOT NULL,
+  `identity_type`  ENUM('email','telegram','mobile') NOT NULL,
   `identity_value` VARCHAR(190) NOT NULL,
   `code_hash`      VARCHAR(255) NOT NULL,
   `purpose`        ENUM('login','admin_2fa') NOT NULL DEFAULT 'login',
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `uuid`          CHAR(36)  NOT NULL,
   `order_id`      BIGINT UNSIGNED NOT NULL,
-  `gateway`       ENUM('zibal','aqayepardakht','card_to_card') NOT NULL,
+  `gateway`       ENUM('zibal','aqayepardakht') NOT NULL,
   `status`        ENUM('created','redirected','paid','failed','pending_review','approved','rejected','refunded') NOT NULL DEFAULT 'created',
   `amount_rials`  BIGINT    NOT NULL,
   `gateway_ref`   VARCHAR(190) NULL COMMENT 'ref/track درگاه',
@@ -243,19 +243,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   CONSTRAINT `fk_payments_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- رسیدهای کارت‌به‌کارت (فایل بیرون از مسیر عمومی ذخیره می‌شود)
-CREATE TABLE IF NOT EXISTS `receipts` (
-  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `order_id`    BIGINT UNSIGNED NOT NULL,
-  `file_path`   VARCHAR(255) NOT NULL COMMENT 'مسیر امن بیرون از public_html',
-  `mime`        VARCHAR(80)  NOT NULL,
-  `size_bytes`  INT UNSIGNED NOT NULL,
-  `uploaded_ip` VARCHAR(45)  NULL,
-  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_receipts_order` (`order_id`),
-  CONSTRAINT `fk_receipts_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- پرداخت‌ها؛ رسید کارت‌به‌کارت از فاز ۵ حذف شد (فقط درگاه آنلاین)
 
 -- اشتراک‌ها — جدا از روش پرداخت (منبع فعال‌سازی مشخص است)
 CREATE TABLE IF NOT EXISTS `subscriptions` (
@@ -264,7 +252,7 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `user_id`    BIGINT UNSIGNED NOT NULL,
   `plan_id`    BIGINT UNSIGNED NULL DEFAULT NULL,
   `order_id`   BIGINT UNSIGNED NULL DEFAULT NULL,
-  `source`     ENUM('web_gateway','card_to_card','admin_grant','store_bazaar') NOT NULL,
+  `source`     ENUM('web_gateway','admin_grant','store_bazaar') NOT NULL COMMENT 'کارت‌به‌کارت حذف شد؛ store_bazaar رزرو نسخه اندروید',
   `starts_at`  DATETIME  NOT NULL,
   `expires_at` DATETIME  NULL DEFAULT NULL COMMENT 'NULL=دائمی',
   `created_at` DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -399,7 +387,7 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
 
 CREATE TABLE IF NOT EXISTS `provider_logs` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `provider`   ENUM('smtp','bale','zibal','aqayepardakht') NOT NULL,
+  `provider`   ENUM('smtp','bale','telegram','sms','zibal','aqayepardakht') NOT NULL,
   `direction`  ENUM('out','in') NOT NULL DEFAULT 'out',
   `status`     ENUM('success','error') NOT NULL,
   `identity`   VARCHAR(190) NULL COMMENT 'گیرنده/فرستنده',
@@ -438,10 +426,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('voice_pitch', '100'),
   ('voice_lang', 'fa-IR'),
   ('gateway_zibal_enabled', '0'),
-  ('gateway_aqayepardakht_enabled', '0'),
-  ('gateway_card_enabled', '0'),
-  ('card_numbers', '[]'),
-  ('card_payment_guide', ''),
+  ('zibal_merchant', ''),
   ('provider_email_enabled', '0'),
   ('mail_transport', ''),
   ('smtp_host', ''),
@@ -450,9 +435,8 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('smtp_user', ''),
   ('smtp_pass', ''),
   ('smtp_from', ''),
-  ('provider_bale_enabled', '0'),
-  ('bale_bot_token', ''),
-  ('bale_bot_username', ''),
+  ('telegram_bot_token', ''),
+  ('telegram_bot_username', ''),
   ('provider_sms_enabled', '0'),
   ('provider_sms_url', ''),
   ('provider_sms_method', 'POST'),

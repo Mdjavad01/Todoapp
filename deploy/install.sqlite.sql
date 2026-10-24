@@ -32,8 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities (user_id);
 
 CREATE TABLE IF NOT EXISTS otp_requests (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  identity_type  TEXT(16) NOT NULL,            -- email | bale
-  identity_value TEXT(190) NOT NULL,           -- ایمیل، بلیت ۶ حرفی یا chat_id بله
+  identity_type  TEXT(16) NOT NULL,            -- email | telegram | mobile
+  identity_value TEXT(190) NOT NULL,           -- ایمیل، بلیت ۶ حرفی یا chat_id تلگرام
   code_hash      TEXT(255) NOT NULL,
   purpose        TEXT(16) NOT NULL DEFAULT 'login',
   attempts       INTEGER NOT NULL DEFAULT 0,
@@ -280,9 +280,16 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('maintenance_mode', '0'),
   ('min_app_version', '1.0.0'),
   ('paywall_title', 'کارام پرو (Karam Pro)'),
-  ('gateway_zibal_enabled', '0'),
-  ('gateway_aqayepardakht_enabled', '0'),
-  ('gateway_card_enabled', '0'),
-  ('card_numbers', '[]'),
+  ('api_allow_registration', '1'),
+  ('api_max_sync_items', '2000'),
+  ('voice_enabled', '0'),
+  ('voice_provider', 'off'),
+  ('voice_rate', '100'),
+  ('voice_pitch', '100'),
+  ('voice_lang', 'fa-IR'),
+  ('gateway_zibal_enabled', '1'),
+  ('zibal_merchant', 'zibal'),
   ('provider_email_enabled', '0'),
-  ('provider_bale_enabled', '0');
+  ('telegram_bot_token', ''),
+  ('telegram_bot_username', ''),
+  ('provider_sms_enabled', '0');

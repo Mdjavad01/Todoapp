@@ -7,6 +7,7 @@ import { queueSync, runSync, setSyncListeners, startSyncLoop, type SyncState } f
 import { getSession, type SyncSession } from '@/sync/session';
 import { refreshSession } from '@/sync/api';
 import * as auth from '@/sync/auth';
+import * as payments from '@/sync/payments';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
@@ -19,7 +20,16 @@ export interface AppSettings {
   minAppVersion: string;
   maintenance: boolean;
   voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
-  channels: { email: boolean; bale: boolean; sms: boolean; botUsername: string } | null;
+  channels: { email: boolean; telegram: boolean; sms: boolean; botUsername: string } | null;
+}
+
+/** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription) */
+export interface PremiumState {
+  loaded: boolean;
+  isPremium: boolean;
+  lifetime: boolean;
+  daysLeft: number | null;
+  plan: { code: string; title: string } | null;
 }
 
 /** نگاشت اکسنت به مقادیر RGB برای متغیرهای CSS */
@@ -57,6 +67,9 @@ interface AppState {
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
+  premium: PremiumState;
+  /** سفارشی که بعد از بازگشت از درگاه باید نتیجه‌اش نشان داده شود (فاز ۵) */
+  paymentResult: string | null;
 
   init(): Promise<void>;
   refresh(): Promise<void>;
@@ -69,6 +82,8 @@ interface AppState {
   reloadSession(): Promise<void>;
   signOut(): Promise<void>;
   syncNow(): Promise<void>;
+  reloadPremium(): Promise<void>;
+  clearPaymentResult(): void;
 
   setDark(d: boolean): void;
   setAccent(a: AccentColor): void;
@@ -140,6 +155,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   session: null,
   syncState: { status: 'idle', lastSyncAt: null, error: null },
+  premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null },
+  paymentResult: null,
 
   async init() {
     await ensureSeeded();
@@ -174,6 +191,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       /* آفلاین — پیش‌فرض‌ها */
     }
+
+    // بازگشت از درگاه پرداخت (فاز ۵) — ?payResult={orderUuid}&state=…
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const payResult = params.get('payResult');
+      if (payResult) {
+        params.delete('payResult');
+        params.delete('state');
+        const qs = params.toString();
+        window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+        if (get().session) void get().reloadPremium();
+        set({ view: 'paywall', paymentResult: payResult });
+      }
+    } catch {
+      /* محیط بدون history — نادیده */
+    }
+
+    // وضعیت اشتراک (فاز ۵) — اگر وارد شده باشد
+    if (get().session) void get().reloadPremium();
 
     set({ ready: true });
   },
@@ -211,11 +247,41 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async signOut() {
     await auth.logout();
-    set({ session: null, syncState: { status: 'idle', lastSyncAt: null, error: null } });
+    set({
+      session: null,
+      syncState: { status: 'idle', lastSyncAt: null, error: null },
+      premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null },
+      paymentResult: null,
+    });
   },
 
   async syncNow() {
     await runSync();
+  },
+
+  async reloadPremium() {
+    if (!get().session) {
+      set({ premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null } });
+      return;
+    }
+    try {
+      const sub = await payments.fetchSubscription();
+      set({
+        premium: {
+          loaded: true,
+          isPremium: sub.isPremium,
+          lifetime: sub.lifetime,
+          daysLeft: sub.daysLeft,
+          plan: sub.plan,
+        },
+      });
+    } catch {
+      /* آفلاین/نشست منقضی — آخرین وضعیت می‌ماند */
+    }
+  },
+
+  clearPaymentResult() {
+    set({ paymentResult: null });
   },
 
   setDark(dark) {

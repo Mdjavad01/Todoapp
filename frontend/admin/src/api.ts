@@ -179,10 +179,10 @@ export const api = {
   updateSettings: (body: Record<string, string>) =>
     request<{ message: string; changed: string[] }>('/settings', { method: 'PATCH', body }),
 
-  // ---- شورتکد ورود OTP (فاز ۴.۵) ----
-  otpRequest: (channel: 'email' | 'bale' | 'sms', target?: string) =>
+  // ---- شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام) ----
+  otpRequest: (channel: 'email' | 'telegram' | 'sms', target?: string) =>
     request<{
-      channel: 'email' | 'bale' | 'sms';
+      channel: 'email' | 'telegram' | 'sms';
       target?: string;
       code?: string;
       ticket?: string;
@@ -191,15 +191,15 @@ export const api = {
       expiresAt?: string;
       sent?: { ok: boolean; mode: string };
     }>('/otp/request', { method: 'POST', body: target ? { channel, target } : { channel } }),
-  otpBalePoll: (ticket: string) =>
+  otpTelegramPoll: (ticket: string) =>
     request<{ status: 'pending' | 'code_sent' | 'expired' | 'unknown'; code?: string; chatId?: string; botUsername?: string }>(
-      '/otp/bale/poll',
+      '/otp/telegram/poll',
       { method: 'POST', body: { ticket } },
     ),
-  otpVerify: (body: { channel: 'email' | 'bale' | 'sms'; target?: string; ticket?: string; code: string }) =>
+  otpVerify: (body: { channel: 'email' | 'telegram' | 'sms'; target?: string; ticket?: string; code: string }) =>
     request<{
       isNew: boolean;
-      user: { uuid: string; displayName: string | null; gender: string; email?: string; mobile?: string; baleChatId?: string };
+      user: { uuid: string; displayName: string | null; gender: string; email?: string; mobile?: string; telegramChatId?: string };
       accessToken: string;
       refreshToken: string;
     }>('/otp/verify', { method: 'POST', body }),

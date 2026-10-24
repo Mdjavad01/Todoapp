@@ -1,6 +1,6 @@
 /**
- * کارام — سرویس ورود با کد یک‌بارمصرف (فاز ۳)
- * دو کانال: ایمیل (کد مستقیم) و بله (بلیت اتصال به ربات، بعد کد).
+ * کارام — سرویس ورود با کد یک‌بارمصرف (فاز ۳ — فاز ۵: بله ← تلگرام)
+ * دو کانال: ایمیل (کد مستقیم) و تلگرام (بلیت اتصال به ربات، بعد کد).
  */
 
 import { apiFetch, authedFetch } from './api';
@@ -8,7 +8,7 @@ import { clearSession, getDeviceUuid, getSession, setSession, type AuthChannel, 
 
 export interface AuthChannels {
   email: boolean;
-  bale: boolean;
+  telegram: boolean;
   sms: boolean;
   botUsername: string;
 }
@@ -26,7 +26,7 @@ export interface OtpRequestResult {
 
 export interface VerifyResult {
   isNew: boolean;
-  user: { uuid: string; displayName: string | null; gender?: 'unset' | 'male' | 'female'; email?: string; mobile?: string; baleChatId?: string };
+  user: { uuid: string; displayName: string | null; gender?: 'unset' | 'male' | 'female'; email?: string; mobile?: string; telegramChatId?: string };
 }
 
 export interface ActiveSession {
@@ -49,10 +49,10 @@ export async function requestOtp(channel: AuthChannel, target?: string): Promise
   return apiFetch<OtpRequestResult>('/auth/otp/request', { method: 'POST', body });
 }
 
-export type BalePollStatus = 'pending' | 'code_sent' | 'expired' | 'unknown';
+export type TelegramPollStatus = 'pending' | 'code_sent' | 'expired' | 'unknown';
 
-export async function pollBaleTicket(ticket: string): Promise<{ status: BalePollStatus }> {
-  return apiFetch<{ status: BalePollStatus }>('/auth/otp/bale/poll', {
+export async function pollTelegramTicket(ticket: string): Promise<{ status: TelegramPollStatus }> {
+  return apiFetch<{ status: TelegramPollStatus }>('/auth/otp/telegram/poll', {
     method: 'POST',
     body: { ticket },
   });
@@ -82,7 +82,8 @@ export async function verifyOtp(params: {
     },
   });
 
-  const identity = res.user.email ?? (res.user.mobile ? `موبایل: ${res.user.mobile}` : res.user.baleChatId ? `بله: ${res.user.baleChatId}` : '');
+  const identity = res.user.email
+    ?? (res.user.mobile ? `موبایل: ${res.user.mobile}` : res.user.telegramChatId ? `تلگرام: ${res.user.telegramChatId}` : '');
   const session: SyncSession = {
     userUuid: res.user.uuid,
     email: identity,
@@ -141,7 +142,7 @@ export interface BootstrapPayload {
   minAppVersion: string;
   maintenance: boolean;
   voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
-  channels: { email: boolean; bale: boolean; sms: boolean; botUsername: string };
+  channels: { email: boolean; telegram: boolean; sms: boolean; botUsername: string };
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {

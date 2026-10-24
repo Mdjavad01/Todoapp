@@ -807,19 +807,19 @@ final class AdminController
     /* ================= شورتکد ورود OTP (فاز ۴.۵) =================
      *
      * میان‌بر مالک برای تست کامل جریان ورود OTP بدون دسترسی به صندوق ایمیل/
-     * بله/پیامک: کد صادرشده مستقیماً در پاسخ ادمین برمی‌گردد (ژورنال سرور) و
+     * تلگرام/پیامک: کد صادرشده مستقیماً در پاسخ ادمین برمی‌گردد (ژورنال سرور) و
      * می‌شود همان‌جا تأیید و نشست کاربر را گرفت. همه‌ی این اعمال در audit ثبت
      * می‌شوند و دسترسی لازم: users.manage.
      */
 
-    /** POST /api/admin/otp/request  {channel:'email'|'bale'|'sms', target?} */
+    /** POST /api/admin/otp/request  {channel:'email'|'telegram'|'sms', target?} */
     public function otpShortcutRequest(): void
     {
         $ctx = AdminGuard::requireAdmin();
         AdminGuard::requirePermission($ctx, 'users.manage');
         AdminGuard::requireCsrf($ctx);
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms']);
         $pdo = Database::pdo();
 
         if ($channel === 'email') {
@@ -864,24 +864,24 @@ final class AdminController
             return;
         }
 
-        // ---- بله: بلیت اتصال (فشار START از حساب بله‌ی واقعی لازم است) ----
-        if (!BaleBot::configured()) {
-            Response::error('توکن ربات بله در تنظیمات ثبت نشده است', 503, ['code' => 'bale_disabled']);
+        // ---- تلگرام: بلیت اتصال (فشار START از حساب تلگرام واقعی لازم است) ----
+        if (!TelegramBot::configured()) {
+            Response::error('توکن ربات تلگرام در تنظیمات ثبت نشده است', 503, ['code' => 'telegram_disabled']);
             return;
         }
         $ticket = Otp::createTicket($pdo, Request::ip());
-        Audit::admin($ctx['admin']['id'], 'otp.shortcut_request', 'user', null, ['channel' => 'bale', 'ticket' => $ticket['ticket']]);
+        Audit::admin($ctx['admin']['id'], 'otp.shortcut_request', 'user', null, ['channel' => 'telegram', 'ticket' => $ticket['ticket']]);
         Response::ok([
-            'channel' => 'bale',
+            'channel' => 'telegram',
             'ticket' => $ticket['ticket'],
-            'botUsername' => BaleBot::botUsername(),
-            'deepLink' => BaleBot::deepLink($ticket['ticket']),
+            'botUsername' => TelegramBot::botUsername(),
+            'deepLink' => TelegramBot::deepLink($ticket['ticket']),
             'expiresAt' => $ticket['expiresAt'],
         ]);
     }
 
-    /** POST /api/admin/otp/bale/poll  {ticket} → status + کد (اگر چت متصل شده باشد) */
-    public function otpShortcutBalePoll(): void
+    /** POST /api/admin/otp/telegram/poll  {ticket} → status + کد (اگر چت متصل شده باشد) */
+    public function otpShortcutTelegramPoll(): void
     {
         $ctx = AdminGuard::requireAdmin();
         AdminGuard::requirePermission($ctx, 'users.manage');
@@ -892,10 +892,10 @@ final class AdminController
             throw new ValidationError('بلیت نامعتبر است');
         }
 
-        BaleBot::pollAndMatchTickets(Database::pdo());
+        TelegramBot::pollAndMatchTickets(Database::pdo());
         $status = Otp::ticketStatus(Database::pdo(), $ticket);
 
-        $out = ['status' => $status, 'botUsername' => BaleBot::botUsername()];
+        $out = ['status' => $status, 'botUsername' => TelegramBot::botUsername()];
         if ($status === 'code_sent') {
             // کد برای چتِ متصل‌شده ارسال شده — از ژورنال برای شورتکد برمی‌گردانیم
             $issued = Otp::lastIssuedForTicket($ticket);
@@ -914,7 +914,7 @@ final class AdminController
         AdminGuard::requirePermission($ctx, 'users.manage');
         AdminGuard::requireCsrf($ctx);
         $body = Request::json();
-        $channel = Validator::enum($body, 'channel', ['email', 'bale', 'sms']);
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms']);
         $code = Validator::str($body, 'code', 4, 8);
         $deviceName = Validator::str($body, 'deviceName', 1, 80, false) ?? 'پنل مدیریت (شورتکد)';
         $deviceUuid = Uuid::v4();
@@ -938,16 +938,16 @@ final class AdminController
                 throw new ValidationError('بلیت نامعتبر است');
             }
             if (Otp::ticketStatus($pdo, $ticket) !== 'code_sent') {
-                Response::error('چت بله هنوز به بلیت متصل نشده است', 409, ['code' => 'ticket_not_linked']);
+                Response::error('چت تلگرام هنوز به بلیت متصل نشده است', 409, ['code' => 'ticket_not_linked']);
                 return;
             }
-            $target = AuthController::latestBaleTargetForTicket($pdo, $ticket);
+            $target = AuthController::latestTelegramTargetForTicket($pdo, $ticket);
             if ($target === null) {
                 Response::error('کد فعال یافت نشد؛ از ابتدا شروع کنید', 409, ['code' => 'ticket_not_linked']);
                 return;
             }
-            $identityType = 'bale_chat_id';
-            $result = Otp::verifyCode($pdo, 'bale', $target, (string) $code);
+            $identityType = 'telegram_chat_id';
+            $result = Otp::verifyCode($pdo, 'telegram', $target, (string) $code);
         }
 
         if (!$result['ok']) {
@@ -985,14 +985,14 @@ final class AdminController
         } elseif ($channel === 'sms') {
             $out['user']['mobile'] = $target;
         } else {
-            $out['user']['baleChatId'] = $target;
+            $out['user']['telegramChatId'] = $target;
         }
         Response::ok($out);
     }
 
     /* ================= تنظیمات ================= */
 
-    /** کلیدهای مجاز + قواعد اعتبارسنجی هر کلید (فاز ۴.۵: API/ویس/پروایدرها/کارت کامل) */
+    /** کلیدهای مجاز + قواعد اعتبارسنجی هر کلید (فاز ۵: تلگرام/زیبال — کارت‌به‌کارت حذف شد) */
     private static function settingRules(): array
     {
         return [
@@ -1018,22 +1018,18 @@ final class AdminController
             'smtp_user' => ['type' => 'str', 'min' => 0, 'max' => 190],
             'smtp_pass' => ['type' => 'str', 'min' => 0, 'max' => 190],
             'smtp_from' => ['type' => 'str', 'min' => 0, 'max' => 190],
-            // --- پروایدر بله ---
-            'provider_bale_enabled' => ['type' => 'bool'],
-            'bale_bot_token' => ['type' => 'str', 'min' => 0, 'max' => 190],
-            'bale_bot_username' => ['type' => 'str', 'min' => 0, 'max' => 100],
+            // --- پروایدر تلگرام (کد تأیید ورود) ---
+            'telegram_bot_token' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'telegram_bot_username' => ['type' => 'str', 'min' => 0, 'max' => 100],
             // --- پروایدر پیامک (HTTP عمومی) ---
             'provider_sms_enabled' => ['type' => 'bool'],
             'provider_sms_url' => ['type' => 'str', 'min' => 0, 'max' => 500],
             'provider_sms_method' => ['type' => 'enum', 'values' => ['GET', 'POST']],
             'provider_sms_headers' => ['type' => 'json'],
             'provider_sms_body' => ['type' => 'str', 'min' => 0, 'max' => 1000],
-            // --- پرداخت و کارت‌به‌کارت (شخصی‌سازی کامل) ---
+            // --- پرداخت آنلاین (درگاه زیبال) ---
             'gateway_zibal_enabled' => ['type' => 'bool'],
-            'gateway_aqayepardakht_enabled' => ['type' => 'bool'],
-            'gateway_card_enabled' => ['type' => 'bool'],
-            'card_numbers' => ['type' => 'cards'],
-            'card_payment_guide' => ['type' => 'str', 'min' => 0, 'max' => 500],
+            'zibal_merchant' => ['type' => 'str', 'min' => 0, 'max' => 190],
         ];
     }
 
@@ -1125,32 +1121,6 @@ final class AdminController
                 if (strlen((string) $stored) > 2000) {
                     throw new ValidationError("مقدار «{$key}» خیلی بزرگ است");
                 }
-            } elseif ($rule['type'] === 'cards') {
-                if (is_string($value)) {
-                    $decoded = json_decode($value, true);
-                } else {
-                    $decoded = $value;
-                }
-                if (!is_array($decoded)) {
-                    throw new ValidationError("مقدار «{$key}» باید آرایه باشد");
-                }
-                $clean = [];
-                foreach ($decoded as $card) {
-                    $num = is_array($card) ? (string) ($card['number'] ?? '') : (string) $card;
-                    $digits = preg_replace('/\D+/', '', $num) ?? '';
-                    if (strlen($digits) < 16 || strlen($digits) > 24) {
-                        throw new ValidationError('شماره کارت باید ۱۶ تا ۲۴ رقم باشد');
-                    }
-                    $clean[] = is_array($card)
-                        ? [
-                            'number' => $digits,
-                            'holder' => mb_substr((string) ($card['holder'] ?? ''), 0, 100),
-                            'bank' => mb_substr((string) ($card['bank'] ?? ''), 0, 60),
-                            'note' => mb_substr((string) ($card['note'] ?? ''), 0, 200),
-                        ]
-                        : $digits;
-                }
-                $stored = json_encode($clean, JSON_UNESCAPED_UNICODE);
             } else { // str
                 if (!is_string($value)) {
                     throw new ValidationError("مقدار «{$key}» باید متن باشد");

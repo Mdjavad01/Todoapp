@@ -30,7 +30,7 @@ final class Settings
             return $row;
         }
         // اگر در پنل خالی ذخیره شده («پاک‌شده») اجازه بده .env حرف بزند
-        $env = Config::get($key); // بعضی کلیدها هم‌نام env هستند (bale_bot_token و …)
+        $env = Config::get($key); // بعضی کلیدها هم‌نام env هستند (telegram_bot_token و …)
         if ($env !== null && $env !== '') {
             return $env;
         }

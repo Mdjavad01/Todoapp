@@ -332,21 +332,21 @@ check('هویت موبایل برگشت', ($j['user']['mobile'] ?? '') === '0938
 [$st, $j] = http('GET', '/api/auth/channels');
 check('کانال‌های عمومی: sms=true', ($j['sms'] ?? null) === true);
 
-/* ================= ۹) شورتکد بله (با توکن آزمایشی از پنل) ================= */
-echo "\n۹) شورتکد بله — توکن از تنظیمات پنل\n";
-[$st, $j] = http('PATCH', '/api/admin/settings', ['bale_bot_token' => '123:TESTTOKEN', 'bale_bot_username' => 'karam_test_bot'], $bossToken, $bossCsrf);
-check('ثبت توکن بله از پنل → 200', $st === 200, (string) ($j['error'] ?? ''));
+/* ================= ۹) شورتکد تلگرام (با توکن آزمایشی از پنل) ================= */
+echo "\n۹) شورتکد تلگرام — توکن از تنظیمات پنل\n";
+[$st, $j] = http('PATCH', '/api/admin/settings', ['telegram_bot_token' => '123:TESTTOKEN', 'telegram_bot_username' => 'karam_test_bot'], $bossToken, $bossCsrf);
+check('ثبت توکن تلگرام از پنل → 200', $st === 200, (string) ($j['error'] ?? ''));
 
-[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'bale'], $bossToken, $bossCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'telegram'], $bossToken, $bossCsrf);
 check('ساخت بلیت از پنل → 200', $st === 200 && isset($j['ticket']) && isset($j['deepLink']), (string) ($j['error'] ?? ''));
-$baleTicket = (string) ($j['ticket'] ?? '');
-check('لینک بله به نام ربات پنل ساخته شد', str_contains((string) ($j['deepLink'] ?? ''), 'karam_test_bot'));
+$tgTicket = (string) ($j['ticket'] ?? '');
+check('لینک تلگرام به نام ربات پنل ساخته شد', str_contains((string) ($j['deepLink'] ?? ''), 'karam_test_bot'));
 
-[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'bale', 'ticket' => $baleTicket, 'code' => '123456'], $bossToken, $bossCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'telegram', 'ticket' => $tgTicket, 'code' => '123456'], $bossToken, $bossCsrf);
 check('تأیید قبل از اتصال چت → 409', $st === 409 && ($j['code'] ?? '') === 'ticket_not_linked');
 
-[$st] = http('PATCH', '/api/admin/settings', ['bale_bot_token' => ''], $bossToken, $bossCsrf);
-check('خالی‌کردن توکن بله → 200', $st === 200);
+[$st] = http('PATCH', '/api/admin/settings', ['telegram_bot_token' => ''], $bossToken, $bossCsrf);
+check('خالی‌کردن توکن تلگرام → 200', $st === 200);
 
 /* ================= ۱۰) سقف سینک از تنظیمات ================= */
 echo "\n۱۰) سقف سینک پویا (api_max_sync_items)\n";

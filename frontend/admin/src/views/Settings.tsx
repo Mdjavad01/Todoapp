@@ -1,7 +1,7 @@
 /**
- * کارام — پنل مدیریت: تنظیمات سرور (فاز ۴.۵ — گروه‌بندی کامل)
- * گروه‌ها: عمومی و API · ظاهر اپ و ویس · پروایدر ایمیل · پروایدر بله ·
- *          پروایدر پیامک · پرداخت و کارت‌به‌کارت (ویرایشگر کامل کارت‌ها)
+ * کارام — پنل مدیریت: تنظیمات سرور (فاز ۵ — گروه‌بندی کامل)
+ * گروه‌ها: عمومی و API · ظاهر اپ و ویس · پروایدر ایمیل · پروایدر تلگرام ·
+ *          پروایدر پیامک · پرداخت آنلاین (زیبال)
  * دسترسی: settings.manage
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -84,12 +84,11 @@ const GROUPS: GroupDef[] = [
     ],
   },
   {
-    title: 'پروایدر بله',
-    description: 'توکن ربات ورود با بله — از @BotFather بله',
+    title: 'پروایدر تلگرام',
+    description: 'ربات کد تأیید ورود — توکن را از @BotFather تلگرام بگیرید. با پر بودن توکن، کانال ورود با تلگرام فعال می‌شود.',
     fields: [
-      { key: 'provider_bale_enabled', label: 'سرویس بله فعال', kind: 'bool' },
-      { key: 'bale_bot_token', label: 'توکن ربات', kind: 'text', dir: 'ltr', secret: true },
-      { key: 'bale_bot_username', label: 'نام کاربری ربات (بدون @)', kind: 'text', dir: 'ltr' },
+      { key: 'telegram_bot_token', label: 'توکن ربات', kind: 'text', dir: 'ltr', secret: true },
+      { key: 'telegram_bot_username', label: 'نام کاربری ربات (بدون @)', kind: 'text', dir: 'ltr' },
     ],
   },
   {
@@ -107,13 +106,11 @@ const GROUPS: GroupDef[] = [
     ],
   },
   {
-    title: 'پرداخت و کارت‌به‌کارت',
-    description: 'درگاه‌ها (فاز ۵) و کارت‌های بانکی — کاملاً قابل شخصی‌سازی',
+    title: 'پرداخت آنلاین (درگاه زیبال)',
+    description: 'فروش اشتراک کارام پرو از درگاه زیبال — کد مرچنت را از پنل زیبال بگیرید (برای تست: zibal).',
     fields: [
-      { key: 'gateway_zibal_enabled', label: 'درگاه زیبال', kind: 'bool' },
-      { key: 'gateway_aqayepardakht_enabled', label: 'درگاه آقای پرداخت', kind: 'bool' },
-      { key: 'gateway_card_enabled', label: 'پرداخت کارت‌به‌کارت', kind: 'bool' },
-      { key: 'card_payment_guide', label: 'راهنمای پرداخت کارت‌به‌کارت (در اپ نمایش داده می‌شود)', kind: 'textarea' },
+      { key: 'gateway_zibal_enabled', label: 'درگاه زیبال فعال', kind: 'bool', help: 'با روشن کردن این گزینه، دکمه‌ی خرید در اپ به درگاه وصل می‌شود' },
+      { key: 'zibal_merchant', label: 'کد مرچنت زیبال', kind: 'text', dir: 'ltr', help: 'مرچنت واقعی از panel.zibal.ir — مقدار zibal فقط برای تست' },
     ],
   },
 ];
@@ -130,7 +127,6 @@ export default function Settings({
   const [rows, setRows] = useState<SettingRow[] | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [shownSecrets, setShownSecrets] = useState<Set<string>>(new Set());
-  const [cards, setCards] = useState<{ number: string; holder: string; bank: string; note: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const canManage = hasPerm(session, 'settings.manage');
 
@@ -141,24 +137,6 @@ export default function Settings({
       for (const it of res.items) map[it.key] = it.value;
       setRows(res.items);
       setDraft(map);
-      try {
-        const parsed = JSON.parse(map['card_numbers'] || '[]');
-        setCards(
-          Array.isArray(parsed)
-            ? parsed.map((c: unknown) => {
-                const card = typeof c === 'string' ? { number: c } : (c as Record<string, string>);
-                return {
-                  number: String(card.number ?? ''),
-                  holder: String(card.holder ?? ''),
-                  bank: String(card.bank ?? ''),
-                  note: String(card.note ?? ''),
-                };
-              })
-            : [],
-        );
-      } catch {
-        setCards([]);
-      }
     } catch {
       onToast('error', 'بارگذاری تنظیمات ناموفق بود');
     }
@@ -169,20 +147,10 @@ export default function Settings({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // تغییرات کارت‌ها هم در draft منعکس می‌شود
-  const setCardsDirty = (next: typeof cards) => {
-    setCards(next);
-    setDraft((d) => ({ ...d, card_numbers: JSON.stringify(next) }));
-  };
-
   const dirtyKeys = useMemo(() => {
     if (!rows) return [] as string[];
-    const keys = rows.filter((r) => draft[r.key] !== undefined && draft[r.key] !== r.value).map((r) => r.key);
-    if (!keys.includes('card_numbers') && JSON.stringify(cards) !== (rows.find((r) => r.key === 'card_numbers')?.value ?? '')) {
-      keys.push('card_numbers');
-    }
-    return keys;
-  }, [rows, draft, cards]);
+    return rows.filter((r) => draft[r.key] !== undefined && draft[r.key] !== r.value).map((r) => r.key);
+  }, [rows, draft]);
 
   const save = async () => {
     if (dirtyKeys.length === 0) return;
@@ -336,101 +304,6 @@ export default function Settings({
           <div className="mt-2 divide-y divide-slate-100">
             {g.fields.map(renderField)}
           </div>
-
-          {/* ویرایشگر کارت‌های بانکی — فقط در گروه پرداخت */}
-          {g.title === 'پرداخت و کارت‌به‌کارت' ? (
-            <div className="mt-3 rounded-xl bg-slate-50 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-700">کارت‌های بانکی ({cards.length.toLocaleString('fa-IR')})</p>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  disabled={!canManage}
-                  onClick={() => setCardsDirty([...cards, { number: '', holder: '', bank: '', note: '' }])}
-                >
-                  + افزودن کارت
-                </button>
-              </div>
-              {cards.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-400">هنوز کارتی ثبت نشده است.</p>
-              ) : (
-                <div className="mt-2 space-y-3">
-                  {cards.map((c, i) => (
-                    <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <div>
-                          <p className="label">شماره کارت (۱۶ رقم)</p>
-                          <input
-                            className="field text-left"
-                            dir="ltr"
-                            inputMode="numeric"
-                            placeholder="6037997512345678"
-                            disabled={!canManage}
-                            value={c.number}
-                            onChange={(e) => {
-                              const next = [...cards];
-                              next[i] = { ...c, number: e.target.value };
-                              setCardsDirty(next);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <p className="label">به نام</p>
-                          <input
-                            className="field"
-                            disabled={!canManage}
-                            value={c.holder}
-                            onChange={(e) => {
-                              const next = [...cards];
-                              next[i] = { ...c, holder: e.target.value };
-                              setCardsDirty(next);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <p className="label">بانک</p>
-                          <input
-                            className="field"
-                            disabled={!canManage}
-                            value={c.bank}
-                            onChange={(e) => {
-                              const next = [...cards];
-                              next[i] = { ...c, bank: e.target.value };
-                              setCardsDirty(next);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <p className="label">یادداشت (مثلاً «کارت اصلی»)</p>
-                          <input
-                            className="field"
-                            disabled={!canManage}
-                            value={c.note}
-                            onChange={(e) => {
-                              const next = [...cards];
-                              next[i] = { ...c, note: e.target.value };
-                              setCardsDirty(next);
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-ghost mt-2 text-xs text-rose-600 hover:!bg-rose-50"
-                        disabled={!canManage}
-                        onClick={() => setCardsDirty(cards.filter((_, idx) => idx !== i))}
-                      >
-                        حذف این کارت
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="mt-2 text-[11px] text-slate-400">
-                این کارت‌ها در صفحه‌ی پرداخت اپ (کارت‌به‌کارت) نمایش داده می‌شوند؛ شماره به‌صورت خودکار از ارقام اضافه پاک می‌شود.
-              </p>
-            </div>
-          ) : null}
         </div>
       ))}
 

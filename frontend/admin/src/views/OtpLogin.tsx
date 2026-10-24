@@ -1,32 +1,32 @@
 /**
- * کارام — پنل مدیریت: شورتکد ورود OTP (فاز ۴.۵)
- * میان‌بر مالک برای تست کامل جریان ورود بدون دسترسی به ایمیل/بله/پیامک:
+ * کارام — پنل مدیریت: شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام)
+ * میان‌بر مالک برای تست کامل جریان ورود بدون دسترسی به ایمیل/تلگرام/پیامک:
  * کد از سرور مستقیماً همین‌جا نمایش و تأیید داده می‌شود (همه‌ی اعمال در audit ثبت می‌شوند).
  *
  * میان‌برهای ثابت:
- *   - بله (ربات):  شماره بله مالک ۰۹۳۸۹۶۵۹۹۱۰
- *   - ایمیل:       md1.javad401@gmail.com
- *   - موبایل:      ۰۹۳۸۹۶۵۹۹۱۰
+ *   - تلگرام (ربات): باید از حساب تلگرام خودتان روی «باز کردن تلگرام» بزنید و START بفرستید
+ *   - ایمیل:         md1.javad401@gmail.com
+ *   - موبایل:        ۰۹۳۸۹۶۵۹۹۱۰
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { Spinner } from '../ui';
 import { IconCheck, IconKey, IconWarning } from '../icons';
 
-type Channel = 'email' | 'bale' | 'sms';
+type Channel = 'email' | 'telegram' | 'sms';
 
 const OWNER_EMAIL = 'md1.javad401@gmail.com';
 const OWNER_PHONE = '09389659910';
 
 interface VerifyOk {
   isNew: boolean;
-  user: { uuid: string; displayName: string | null; gender: string; email?: string; mobile?: string; baleChatId?: string };
+  user: { uuid: string; displayName: string | null; gender: string; email?: string; mobile?: string; telegramChatId?: string };
   accessToken: string;
   refreshToken: string;
 }
 
 const CHANNELS: { key: Channel; label: string; hint: string; targetLabel: string }[] = [
-  { key: 'bale', label: 'ربات بله', hint: 'بعد از شروع، باید از حساب بله‌ی خودتان روی دکمه‌ی «باز کردن بله» بزنید و START را بفرستید؛ کد همان‌جا در پنل ظاهر می‌شود.', targetLabel: 'شماره بله مالک (نمایشی)' },
+  { key: 'telegram', label: 'ربات تلگرام', hint: 'بعد از شروع، باید از حساب تلگرام خودتان روی دکمه‌ی «باز کردن تلگرام» بزنید و START را بفرستید؛ کد همان‌جا در پنل ظاهر می‌شود.', targetLabel: 'شناسه تلگرام مالک (نمایشی)' },
   { key: 'email', label: 'ایمیل', hint: 'کد به صندوق ایمیل هم ارسال می‌شود؛ ولی برای شورتکد، همان‌جا زیر نشان داده می‌شود.', targetLabel: 'آدرس ایمیل' },
   { key: 'sms', label: 'پیامک موبایل', hint: 'اگر پروایدر پیامک تنظیم نشده باشد، کد فقط در همین پنل نمایش داده می‌شود (حالت log).', targetLabel: 'شماره موبایل' },
 ];
@@ -64,6 +64,8 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
     resetFlow();
   };
 
+  // برای کانال تلگرام هدف نمایشی مهم نیست — مقدار خالی بماند
+
   const resetFlow = () => {
     stopPolling();
     setCode(null);
@@ -82,8 +84,8 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
     setEnteredCode('');
     setCode(null);
     try {
-      const res = await api.otpRequest(channel, channel === 'bale' ? undefined : target.trim());
-      if (channel === 'bale') {
+      const res = await api.otpRequest(channel, channel === 'telegram' ? undefined : target.trim());
+      if (channel === 'telegram') {
         setTicket(res.ticket ?? '');
         setDeepLink(res.deepLink ?? '');
         setPollStatus('polling');
@@ -92,12 +94,12 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
         const t = res.ticket ?? '';
         pollRef.current = setInterval(async () => {
           try {
-            const p = await api.otpBalePoll(t);
+            const p = await api.otpTelegramPoll(t);
             if (p.status === 'code_sent' && p.code) {
               stopPolling();
               setCode(p.code);
               setPollStatus('sent');
-              onToast('success', 'چت بله متصل شد و کد صادر شد');
+              onToast('success', 'چت تلگرام متصل شد و کد صادر شد');
             } else if (p.status === 'expired') {
               stopPolling();
               setPollStatus('idle');
@@ -125,7 +127,7 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
         channel,
         code: enteredCode.trim(),
       };
-      if (channel === 'bale') body.ticket = ticket;
+      if (channel === 'telegram') body.ticket = ticket;
       else body.target = target.trim();
       const res = await api.otpVerify(body);
       setResult(res);
@@ -137,7 +139,7 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
     }
   };
 
-  const canVerify = channel === 'bale' ? ticket !== '' && pollStatus === 'sent' : target.includes('@') || channel === 'sms';
+  const canVerify = channel === 'telegram' ? ticket !== '' && pollStatus === 'sent' : target.includes('@') || channel === 'sms';
 
   return (
     <div className="space-y-4">
@@ -159,12 +161,12 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
       <div className="grid gap-3 sm:grid-cols-3">
         <button
           type="button"
-          onClick={() => switchChannel('bale')}
-          className={`card p-4 text-right transition-colors ${channel === 'bale' ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
+          onClick={() => switchChannel('telegram')}
+          className={`card p-4 text-right transition-colors ${channel === 'telegram' ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
         >
-          <p className="text-sm font-bold text-slate-700">ورود با بله</p>
-          <p dir="ltr" className="mt-1 text-xs text-slate-400">{OWNER_PHONE}</p>
-          <p className="mt-1 text-[11px] text-slate-400">ربات بله — اتصال چت</p>
+          <p className="text-sm font-bold text-slate-700">ورود با تلگرام</p>
+          <p dir="ltr" className="mt-1 text-xs text-slate-400">ربات تلگرام</p>
+          <p className="mt-1 text-[11px] text-slate-400">اتصال چت + کد در پنل</p>
         </button>
         <button
           type="button"
@@ -196,31 +198,31 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
               className="field"
               dir="ltr"
               value={target}
-              disabled={channel === 'bale' || busy}
+              disabled={channel === 'telegram' || busy}
               onChange={(e) => setTarget(e.target.value)}
               placeholder={channel === 'email' ? 'you@example.com' : '09xxxxxxxxx'}
             />
             <button type="button" className="btn-primary shrink-0" disabled={busy || pollStatus === 'polling'} onClick={() => void start()}>
-              {busy ? '…' : channel === 'bale' ? 'شروع اتصال' : 'دریافت کد'}
+              {busy ? '…' : channel === 'telegram' ? 'شروع اتصال' : 'دریافت کد'}
             </button>
           </div>
           <p className="mt-1.5 text-[11px] leading-5 text-slate-400">{meta.hint}</p>
         </div>
 
-        {/* بله: بلیت + لینک + وضعیت */}
-        {channel === 'bale' && ticket ? (
+        {/* تلگرام: بلیت + لینک + وضعیت */}
+        {channel === 'telegram' && ticket ? (
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-xs text-slate-500">
               بلیت: <span dir="ltr" className="font-black tracking-widest text-slate-700">{ticket}</span>
             </p>
             {deepLink ? (
               <a href={deepLink} target="_blank" rel="noreferrer" className="btn-ghost mt-2 inline-flex text-brand-600">
-                باز کردن بله و ارسال START ↗
+                باز کردن تلگرام و ارسال START ↗
               </a>
             ) : null}
             {pollStatus === 'polling' ? (
               <p className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-                <Spinner label="" /> در انتظار پیام START از حساب بله شما…
+                <Spinner label="" /> در انتظار پیام START از حساب تلگرام شما…
               </p>
             ) : null}
           </div>
@@ -282,7 +284,7 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
               <IconCheck size={18} /> ورود OTP موفق بود
             </p>
             <p className="mt-1">کاربر: {result.isNew ? 'جدید' : 'موجود'} — {result.user.displayName ?? 'بدون نام'}</p>
-            <p dir="ltr" className="text-left">{result.user.email ?? result.user.mobile ?? result.user.baleChatId}</p>
+            <p dir="ltr" className="text-left">{result.user.email ?? result.user.mobile ?? result.user.telegramChatId}</p>
             <p dir="ltr" className="text-left text-[10px] text-emerald-600">uuid: {result.user.uuid}</p>
             <details className="mt-2">
               <summary className="cursor-pointer select-none text-emerald-700">توکن‌های نشست (برای تست API)</summary>
