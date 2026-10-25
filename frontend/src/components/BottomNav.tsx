@@ -63,7 +63,7 @@ export function Toast() {
   if (!toast) return null;
   return (
     <div
-      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] bg-inverse-surface text-inverse-on-surface text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl fade-in max-w-[85%] text-center"
+      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] bg-inverse-surface dark:bg-slate-600 text-inverse-on-surface dark:text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl fade-in max-w-[85%] text-center"
       role="status"
       onClick={clearToast}
     >

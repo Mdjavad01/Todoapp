@@ -78,6 +78,77 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* ============================================================
+   جاروی خوانایی دارک‌مود (v8)
+   توکن‌های متنی برای تم روز طراحی شده‌اند و روی پس‌زمینه‌ی شب #283044
+   ناخوانا بودند (متن‌های on-surface-variant / on-surface / outline /
+   primary فیروزه‌ای تیره و…). همگی به معادل روشنِ همان نقش نگاشت می‌شوند.
+   کلاس‌های dark: صریحِ داخل کامپوننت‌ها سرِ جای خودشان می‌مانند و
+   مقادیر زیر فقط جایگزین مقدار روزِ هر توکن در تم شب می‌شوند.
+   ============================================================ */
+.dark .text-outline {
+  color: #8fa0bd;
+}
+.dark .text-outline-variant {
+  color: #7c8db0;
+}
+.dark .text-on-surface-variant {
+  color: #bcc7e2;
+}
+.dark .text-on-surface,
+.dark .text-on-background {
+  color: #eef0ff;
+}
+.dark .text-primary {
+  color: #6bd8cb;
+}
+.dark .text-primary-deep {
+  color: #6bd8cb;
+}
+.dark .text-secondary {
+  color: #d0bcff;
+}
+.dark .text-tertiary {
+  color: #ffb95f;
+}
+.dark .text-error {
+  color: #ffb4ab;
+}
+.dark .text-on-error-container {
+  color: #ffdad6;
+}
+.dark .placeholder\:text-outline::placeholder,
+.dark .placeholder\:text-on-surface-variant::placeholder {
+  color: #8fa0bd;
+}
+
+/* سطوحی که جفت dark: نداشتند — همان مقیاس کارت‌های تیره‌ی موجود (slate-800 و روشن‌تر) */
+.dark .bg-surface-container-lowest {
+  background-color: #1e293b;
+}
+.dark .bg-surface-container-low {
+  background-color: #233049;
+}
+.dark .bg-surface-container {
+  background-color: #2a3752;
+}
+.dark .hover\:bg-surface-container:hover {
+  background-color: #2a3752;
+}
+.dark .bg-surface-container-high {
+  background-color: #31405f;
+}
+.dark .bg-surface-container-highest {
+  background-color: #394a6e;
+}
+.dark .bg-surface,
+.dark .bg-background {
+  background-color: #283044;
+}
+.dark .bg-surface-variant {
+  background-color: #33415f;
+}
+
 /* ---------- انیمیشن ورود bottom sheet ---------- */
 @keyframes sheet-up {
   from {

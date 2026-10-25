@@ -23,7 +23,15 @@ import { onAppResume } from '@/lib/native';
 export default function App() {
   const ready = useAppStore((s) => s.ready);
   const view = useAppStore((s) => s.view);
+  const dark = useAppStore((s) => s.dark);
   const mainRef = useRef<HTMLElement>(null);
+
+  // رنگ نوار مرورگر/نوار وضعیت هم‌رنگ تم — حذف حس «نوار سیاه» بالا
+  useEffect(() => {
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', dark ? '#283044' : '#00685f');
+  }, [dark]);
 
   // اسکرول به بالای محتوا در تغییر صفحه (مطابق رفتار طرح)
   useEffect(() => {
@@ -41,8 +49,10 @@ export default function App() {
     return off;
   }, []);
 
+  // min-h-dvh در موبایل: ارتفاع پویای واقعی ویوپورت — با min-h-screen (100vh) وقتی نوار آدرس مرورگر باز است،
+  // قاب از صفحه کوتاه‌تر می‌شود و items-center فاصله‌ی خالی بالا/پایین می‌سازد
   return (
-    <div className="min-h-screen flex items-center justify-center p-0 sm:p-4 transition-colors duration-300">
+    <div className="min-h-dvh sm:min-h-screen w-full flex items-center justify-center p-0 sm:p-4 transition-colors duration-300">
       {/* موبایل: تمام‌صفحه زیر نوار وضعیت واقعی (safe-area) — دسکتاپ: قاب تلفن با نوار شبیه‌سازی‌شده */}
       <div className="relative w-full max-w-[410px] h-[100dvh] sm:h-[calc(100dvh-2rem)] sm:max-h-[884px] bg-background dark:bg-inverse-surface rounded-none sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border-0 sm:border-[8px] sm:border-slate-800 transition-colors duration-200 pt-safe sm:pt-0">
         <StatusBar />
