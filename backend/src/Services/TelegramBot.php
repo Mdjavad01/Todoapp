@@ -28,9 +28,21 @@ final class TelegramBot
     public static function token(): string
     {
         $raw = (string) (Settings::get('telegram_bot_token', (string) (Config::get('TELEGRAM_BOT_TOKEN', '') ?? '')) ?? '');
+        // کیبورد فارسی موبایل ارقام را فارسی (۰-۹) تایپ می‌کند؛ توکن تلگرام فقط رقم لاتین می‌پذیرد
+        $raw = self::normalizeDigits($raw);
         // خطای رایج کپی‌پیست موبایل: فاصله/خط جدید/نقل‌قول/نویسه‌ی نامرئی در توکن
         // → cURL «HTTP 0» می‌دهد. فقط نویسه‌های مجاز توکن (رقم، حرف، :، -، _) می‌مانند.
         return (string) preg_replace('/[^0-9A-Za-z:_\-]/', '', $raw);
+    }
+
+    /** تبدیل ارقام فارسی/عربی به لاتین — مستقل از کلاس‌های دیگر */
+    private static function normalizeDigits(string $v): string
+    {
+        return str_replace(
+            ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹', '٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+            $v
+        );
     }
 
     public static function botUsername(): string
@@ -38,10 +50,19 @@ final class TelegramBot
         return (string) (Settings::get('telegram_bot_username', (string) (Config::get('TELEGRAM_BOT_USERNAME', '') ?? '')) ?? '');
     }
 
-    private static function apiBase(): string
+    /**
+     * مبنای API بدون پسوند /bot — عمومی تا صفحه‌ی وضعیت هم از همین یک منبع استفاده کند.
+     * دفاع ریشه‌ای: اگر .env مقدار خالی/نامعتبر داشته باشد (مثل TELEGRAM_API_BASE="" که
+     * از .env.example کپی شده) به‌جای آدرس خراب و خطای cURL «No host part in the URL»،
+     * آدرس رسمی تلگرام استفاده می‌شود.
+     */
+    public static function apiBase(): string
     {
-        // مبنای API بدون پسوند /bot — قابل تغییر برای تست محلی (mock)
-        $base = (string) (Config::get('TELEGRAM_API_BASE', 'https://api.telegram.org') ?? 'https://api.telegram.org');
+        $base = trim((string) (Config::get('TELEGRAM_API_BASE', '') ?? ''));
+        $base = trim($base, "\"' \t\n\r");
+        if (preg_match('#^https?://[a-z0-9._\-]+(:\d{2,5})?(/.*)?$#i', $base) !== 1) {
+            $base = 'https://api.telegram.org';
+        }
         return rtrim($base, '/');
     }
 

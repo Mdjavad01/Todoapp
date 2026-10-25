@@ -273,9 +273,13 @@ function karamTelegramCheckPage(): void
         }
     }
 
-    /* --- مبنای API (تشخیص باقی‌ماندن تنظیم mock تست) --- */
-    $apiBase = rtrim((string) (Config::get('TELEGRAM_API_BASE', 'https://api.telegram.org') ?? 'https://api.telegram.org'), '/');
-    $rows[] = ['مبنای API تلگرام', $apiBase === 'https://api.telegram.org' ? 'ok' : 'warn', htmlspecialchars($apiBase, ENT_QUOTES, 'UTF-8') . ($apiBase === 'https://api.telegram.org' ? ' (پیش‌فرض — درست)' : ' — غیر از آدرس رسمی است؛ اگر از تست قبلی مانده، در .env کلید TELEGRAM_API_BASE را حذف کنید.')];
+    /* --- مبنای API (یک منبع حقیقت: TelegramBot::apiBase با دفاع ضد مقدار خالی .env) --- */
+    $apiBase = TelegramBot::apiBase();
+    if ($apiBase === 'https://api.telegram.org') {
+        $rows[] = ['مبنای API تلگرام', 'ok', 'آدرس رسمی — درست (اگر در .env مقدار خالی/تستی مانده باشد، خودکار نادیده گرفته می‌شود).'];
+    } else {
+        $rows[] = ['مبنای API تلگرام', 'warn', htmlspecialchars($apiBase, ENT_QUOTES, 'UTF-8') . ' — غیر از آدرس رسمی است؛ فقط برای تست محلی درست است — روی هاست در .env کلید TELEGRAM_API_BASE را حذف کنید.'];
+    }
 
     /* --- وضعیت webhook --- */
     if ($tokenOk) {

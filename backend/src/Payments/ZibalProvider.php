@@ -34,7 +34,13 @@ final class ZibalProvider
     /** مبنای API — فقط برای تست محلی با سرور ساختگی قابل تغییر است */
     public static function apiBase(): string
     {
-        $base = (string) (Config::get('ZIBAL_API_BASE', 'https://gateway.zibal.ir') ?? 'https://gateway.zibal.ir');
+        // دفاع ریشه‌ای: مقدار خالی/نامعتبر در .env (مثل ZIBAL_API_BASE="") = آدرس رسمی زیبال
+        // (همان الگوی خطای «No host part in the URL» که برای تلگرام رخ داد — پیش‌گیرانه)
+        $base = trim((string) (Config::get('ZIBAL_API_BASE', '') ?? ''));
+        $base = trim($base, "\"' \t\n\r");
+        if (preg_match('#^https?://[a-z0-9._\-]+(:\d{2,5})?(/.*)?$#i', $base) !== 1) {
+            $base = 'https://gateway.zibal.ir';
+        }
         return rtrim($base, '/');
     }
 
