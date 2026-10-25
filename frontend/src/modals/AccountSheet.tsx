@@ -213,11 +213,16 @@ export function AccountSheet() {
       setTicket('');
       setDevCode(null);
       setTgState('waiting');
-      // آنبوردینگ ظاهر (فاز ۴.۵) — برای حسابی که هنوز جنسیت/تم انتخاب نکرده
-      const needsOnboarding = (res.user.gender ?? 'unset') === 'unset';
-      const localChoice = await repo.prefsGet<string>('gender-choice', 'none');
-      if (needsOnboarding && localChoice === 'none') {
-        useAppStore.setState({ accountSheet: false, genderSheet: true });
+      // آنبوردینگ کامل (v10) — حساب تازه: خوش‌آمد + ثبت نام + انتخاب ظاهر
+      if (res.isNew) {
+        await repo.prefsSet('welcome-done', 'none');
+        useAppStore.setState({ accountSheet: false, welcomeSheet: true });
+      } else if ((res.user.gender ?? 'unset') === 'unset') {
+        // حساب‌های قدیمی‌تر: فقط شیت ظاهر (مثل قبل)
+        const localChoice = await repo.prefsGet<string>('gender-choice', 'none');
+        if (localChoice === 'none') {
+          useAppStore.setState({ accountSheet: false, genderSheet: true });
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'کد تأیید نشد');

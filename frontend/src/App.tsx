@@ -15,6 +15,8 @@ import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
 import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
+import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
+import { CoachAdd } from '@/components/CoachAdd';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
 import { onAppResume } from '@/lib/native';
@@ -79,6 +81,7 @@ export default function App() {
         </main>
 
         {ready ? <Fab /> : null}
+        <CoachAdd />
         <BottomNav />
         <Toast />
 
@@ -88,6 +91,7 @@ export default function App() {
         <NewListSheet />
         <AccountSheet />
         <GenderOnboardingSheet />
+        <WelcomeOnboardingSheet />
       </div>
     </div>
   );

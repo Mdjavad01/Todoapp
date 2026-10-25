@@ -66,6 +66,10 @@ interface AppState {
   searchFilter: string;
   accountSheet: boolean;
   genderSheet: boolean;
+  /** آنبوردینگ کامل (v10) — خوش‌آمد + نام + ظاهر؛ بعد از اولین ورود */
+  welcomeSheet: boolean;
+  /** حباب راهنمای «اولین کار» (v10) — بالای دکمه‌ی + تا اولین افزودن یا بستن */
+  coachAdd: boolean;
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
@@ -81,6 +85,10 @@ interface AppState {
 
   openAccountSheet(): void;
   openGenderSheet(): void;
+  /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
+  saveDisplayName(name: string): Promise<void>;
+  /** بستن حباب راهنمای اولین کار — دیگر نمایش داده نمی‌شود */
+  dismissCoachAdd(): void;
   reloadSession(): Promise<void>;
   signOut(): Promise<void>;
   syncNow(): Promise<void>;
@@ -158,6 +166,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchFilter: 'all',
   accountSheet: false,
   genderSheet: false,
+  welcomeSheet: false,
+  coachAdd: false,
   appSettings: {
     appName: 'کارام',
     paywallTitle: 'کارام پرو',
@@ -174,20 +184,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     await ensureSeeded();
     await get().refresh();
-    const [dark, accent, biometric, alerts, savedName, fontScale] = await Promise.all([
+    const [dark, accent, biometric, alerts, savedName, fontScale, coachSeen, welcomeDone] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
       repo.prefsGet<boolean>('biometricLock', true),
       repo.prefsGet<boolean>('alerts', true),
       repo.prefsGet<string>('userName', ''),
       repo.prefsGet<FontScale>('fontScale', 'medium'),
+      // v10 — حباب راهنمای اولین کار و وضعیت آنبوردینگ کامل
+      repo.prefsGet<boolean>('coach-add-seen', false),
+      repo.prefsGet<string>('welcome-done', 'none'),
     ]);
     // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
     const userName = savedName === 'علی' ? '' : savedName;
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen });
     applyDark(dark);
     applyAccent(accent);
     applyFontScale(fontScale);
@@ -204,10 +217,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳)
     if (get().session) void refreshSession().then(() => get().reloadSession());
 
+    // آنبوردینگ کامل (v10) — نشست فعال بدون نام و بدون تکمیل آنبوردینگ قبلی
+    {
+      const sess = get().session;
+      const hasName = !!sess?.displayName?.trim() || !!userName.trim();
+      if (sess && !hasName && welcomeDone === 'none') set({ welcomeSheet: true });
+    }
+
     // تنظیمات عمومی سرور (فاز ۴.۵) — در نبود شبکه با پیش‌فرض‌ها ادامه می‌دهیم
     try {
       const bs = await auth.fetchBootstrap();
-      useAppStore.setState({ appSettings: bs });
+      // دفاع v10: اگر پاسخ JSON معتبرِ بوت‌استرپ نبود (مثلاً صفحه‌ی HTML با کد 200)، پیش‌فرض‌ها می‌مانند
+      if (bs && bs.voice && typeof bs.voice.enabled === 'boolean') {
+        useAppStore.setState({ appSettings: bs });
+      }
     } catch {
       /* آفلاین — پیش‌فرض‌ها */
     }
@@ -257,6 +280,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openGenderSheet() {
     set({ genderSheet: true });
+  },
+
+  async saveDisplayName(name) {
+    const clean = name.trim().replace(/\s+/g, ' ').slice(0, 30);
+    if (!clean) return;
+    set({ userName: clean });
+    await repo.prefsSet('userName', clean);
+    if (get().session) {
+      try {
+        await auth.updateProfile(clean);
+        await get().reloadSession();
+      } catch {
+        /* آفلاین — نام محلی ذخیره شد؛ با سینک بعدی پروفایل هم به‌روز می‌شود */
+      }
+    }
+  },
+
+  dismissCoachAdd() {
+    if (!get().coachAdd) return;
+    set({ coachAdd: false });
+    void repo.prefsSet('coach-add-seen', true);
   },
 
   async reloadSession() {
@@ -337,7 +381,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openModal(modal, taskId = null) {
-    if (modal === 'quickAdd') set({ pendingDate: null });
+    if (modal === 'quickAdd') {
+      set({ pendingDate: null });
+      // حباب راهنما رسالتش را ادا کرد — کاربر راه افزودن را بلد است
+      if (get().coachAdd) get().dismissCoachAdd();
+    }
     set({ modal, detailTaskId: modal === 'taskDetail' ? taskId : null });
   },
 
@@ -384,9 +432,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   async toggleTask(id) {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
+    const completing = !task.completedAt;
     await repo.tasksToggleComplete(id, !task.completedAt);
     await get().refresh();
     queueSync();
+    // جشن اولین تکمیل واقعی کاربر (v10) — مستقل از داده‌ی دمو، با pref کنترل می‌شود
+    if (completing && !(await repo.prefsGet<boolean>('first-done-celebrated', false))) {
+      await repo.prefsSet('first-done-celebrated', true);
+      get().showToast('🎯 آفرین! اولین کارت انجام شد؛ همین‌طور ادامه بده');
+    }
   },
 
   async addQuickTask({ title, listId, dueDate }) {

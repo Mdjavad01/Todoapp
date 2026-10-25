@@ -44,9 +44,10 @@ export function TaskDetailSheet() {
   const appSettings = useAppStore((s) => s.appSettings);
 
   // خواندن صوتی کار (فاز ۴.۵) — با موتور صوتی خود دستگاه؛ بدون هیچ وابستگی خارجی
+  // دفاع v10: اگر bootstrap ناقص بود (پاسخ HTML سرور با 200)، اپ نچسبد
   const voiceAvailable =
-    appSettings.voice.enabled &&
-    appSettings.voice.provider === 'web_speech' &&
+    !!appSettings.voice?.enabled &&
+    appSettings.voice?.provider === 'web_speech' &&
     typeof window !== 'undefined' &&
     'speechSynthesis' in window;
 

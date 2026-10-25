@@ -102,9 +102,12 @@ export async function refreshSession(): Promise<boolean> {
       };
       await setSession(fresh);
       return true;
-    } catch {
-      // refresh نامعتبر/چرخیده/منقضی — نشست تمام است
-      await clearSession();
+    } catch (e) {
+      // دفاع v10: فقط خطای احراز (۴۰۱) یعنی نشست واقعاً تمام است؛
+      // قطعی اینترنت یا خطای سرور نباید کاربر آفلاین را لاگ‌اوت کند
+      if (e instanceof ApiError && e.status === 401) {
+        await clearSession();
+      }
       return false;
     } finally {
       refreshInFlight = null;
