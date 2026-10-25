@@ -5,7 +5,7 @@ import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۳.۲.۱';
+const APP_VERSION = '۳.۳.۰';
 
 /** گزینه‌های اندازه‌ی فونت — preview فقط برای پیش‌نمایش دکمه‌هاست */
 const FONT_SIZES: { value: FontScale; label: string; hint: string; preview: number }[] = [
@@ -14,37 +14,7 @@ const FONT_SIZES: { value: FontScale; label: string; hint: string; preview: numb
   { value: 'large', label: 'بزرگ', hint: 'راحت‌تر', preview: 16 },
 ];
 
-/** پرسش‌های پرتکرار راهنما — محتوای واقعی و آفلاین */
-const HELP_ITEMS: { q: string; a: string }[] = [
-  {
-    q: 'چطور کار جدید اضافه کنم؟',
-    a: 'دکمه‌ی سبز + پایین صفحه را بزنید، عنوان کار را بنویسید و «ثبت و ذخیره کار» را بزنید. اگر تاریخ و ساعت داخل عنوان باشد — مثلاً «فردا ساعت ۱۷ خرید نان» — کارام خودش تشخیص می‌دهد و زمان‌بندی می‌کند. برای انتخاب دقیق تاریخ از دکمه‌ی «تقویم شمسی» در همان صفحه استفاده کنید.',
-  },
-  {
-    q: 'لیست جدید چطور بسازم؟',
-    a: 'در صفحه‌ی خانه کنار «لیست‌های من» روی «لیست جدید» بزنید و یک نام و ایموجی انتخاب کنید. برای شروع سریع، از بخش «قالب‌ها» چک‌لیست آماده مثل خرید هفتگی را با یک ضربه به لیست‌هایتان اضافه کنید.',
-  },
-  {
-    q: 'ورود با تلگرام و سینک ابری چگونه است؟',
-    a: 'از تنظیمات ← «حساب کاربری و سینک ابری» وارد شوید؛ ربات تلگرام کارام کد تأیید را می‌فرستد. بعد از ورود، داده‌ها بین همه‌ی دستگاه‌های شما سینک می‌شود. بدون ورود هم اپ کامل و آفلاین کار می‌کند (حالت مهمان).',
-  },
-  {
-    q: 'چطور از داده‌هایم پشتیبان بگیرم یا به گوشی جدید منتقل کنم؟',
-    a: 'تنظیمات ← «پشتیبان‌گیری از داده‌ها» ← «دریافت فایل پشتیبان». فایل را در جای امن نگه دارید؛ روی هر دستگاهی با «بازیابی از فایل» همه‌ی لیست‌ها و کارها برمی‌گردد.',
-  },
-  {
-    q: 'ظاهر اپ را چطور شخصی‌سازی کنم؟',
-    a: 'تم روز/شب با آیکن ماه و خورشید بالای صفحه عوض می‌شود؛ رنگ برجستگی برند و اندازه‌ی فونت همین‌جا در تنظیمات است و ظاهر دخترانه/پسرانه از گزینه‌ی «ظاهر اپ» تغییر می‌کند.',
-  },
-  {
-    q: 'اطلاع‌رسانی ساعت‌دار نمی‌آید؛ چه کنم؟',
-    a: 'اول گزینه‌ی «اعلان‌ها و دورزدن باتری (هشدار دقیق)» در همین صفحه فعال باشد. بعد در تنظیمات خود گوشی، اعلان کارام را روی حالت «صدا و نمایش روی صفحه» بگذارید و اپ را از بهینه‌سازی باتری مستثنا کنید — بعضی گوشی‌ها اپ را در پس‌زمینه می‌بندند.',
-  },
-  {
-    q: 'داده‌هایم کجا ذخیره می‌شود؟',
-    a: 'همه‌ی داده‌ها اول روی همین دستگاه (IndexedDB) ذخیره می‌شود و کاملاً آفلاین کار می‌کند. اگر وارد حساب شده باشید، همان داده‌ها برای سینک بین دستگاه‌ها به سرور کارام هم همگام می‌شود.',
-  },
-];
+/** پرسش‌های راهنما به پاپ‌آپ GuideSheet (v11) منتقل شدند — اینجا فقط ردیف بازکننده است */
 
 const ACCENT_DOTS: Record<AccentColor, { bg: string; ring: string }> = {
   teal: { bg: 'bg-teal-600', ring: 'ring-teal-600' },
@@ -67,6 +37,7 @@ export function SettingsView() {
   const setView = useAppStore((s) => s.setView);
   const openAccountSheet = useAppStore((s) => s.openAccountSheet);
   const openGenderSheet = useAppStore((s) => s.openGenderSheet);
+  const openGuideSheet = useAppStore((s) => s.openGuideSheet);
   const session = useAppStore((s) => s.session);
   const showToast = useAppStore((s) => s.showToast);
   const syncState = useAppStore((s) => s.syncState);
@@ -309,22 +280,24 @@ export function SettingsView() {
         </div>
       </div>
 
-      {/* راهنمای کارام (v9) */}
-      <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden text-body-md">
-        <div className="p-3.5 flex items-center gap-2.5 border-b border-outline-variant/20">
+      {/* راهنمای کارام (v11) — پاپ‌آپ مرکزی جذاب */}
+      <div
+        className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 p-3.5 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform"
+        onClick={openGuideSheet}
+        role="button"
+        aria-label="باز کردن راهنمای کارام"
+        id="settings-guide"
+      >
+        <div className="flex items-center gap-2.5">
           <Icon name="help" size={22} className="text-outline" />
-          <span className="font-bold">راهنمای کارام</span>
-          <span className="text-xs text-on-surface-variant mr-auto">پرسش‌های پرتکرار</span>
+          <div className="flex flex-col">
+            <span className="font-bold">راهنمای کارام</span>
+            <span className="text-xs text-on-surface-variant">۹ پرسش و پاسخ — همه‌چیز درباره‌ی کارام</span>
+          </div>
         </div>
-        {HELP_ITEMS.map((h, i) => (
-          <details key={h.q} className={`group ${i > 0 ? 'border-t border-outline-variant/20' : ''}`}>
-            <summary className="p-3.5 flex justify-between items-center cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-              <span className="font-semibold pr-1">{h.q}</span>
-              <Icon name="expand_more" size={18} className="text-outline transition-transform duration-200 group-open:rotate-180 shrink-0" />
-            </summary>
-            <p className="px-4 pb-3.5 text-body-sm text-on-surface-variant leading-relaxed">{h.a}</p>
-          </details>
-        ))}
+        <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+          <Icon name="arrow_back_ios" size={14} />
+        </span>
       </div>
 
       {/* حالت مهمان / حساب */}

@@ -14,6 +14,7 @@ import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
 import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
+import { GuideSheet } from '@/modals/GuideSheet';
 import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
 import { CoachAdd } from '@/components/CoachAdd';
@@ -90,6 +91,7 @@ export default function App() {
         <CalendarSheet />
         <NewListSheet />
         <AccountSheet />
+        <GuideSheet />
         <GenderOnboardingSheet />
         <WelcomeOnboardingSheet />
       </div>

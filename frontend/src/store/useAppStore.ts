@@ -66,6 +66,8 @@ interface AppState {
   searchFilter: string;
   accountSheet: boolean;
   genderSheet: boolean;
+  /** راهنمای کارام (v11) — پاپ‌آپ مرکزی با پرسش‌های پرتکرار */
+  guideSheet: boolean;
   /** آنبوردینگ کامل (v10) — خوش‌آمد + نام + ظاهر؛ بعد از اولین ورود */
   welcomeSheet: boolean;
   /** حباب راهنمای «اولین کار» (v10) — بالای دکمه‌ی + تا اولین افزودن یا بستن */
@@ -85,6 +87,8 @@ interface AppState {
 
   openAccountSheet(): void;
   openGenderSheet(): void;
+  /** باز کردن پاپ‌آپ راهنمای کارام (v11) */
+  openGuideSheet(): void;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
   saveDisplayName(name: string): Promise<void>;
   /** بستن حباب راهنمای اولین کار — دیگر نمایش داده نمی‌شود */
@@ -166,6 +170,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchFilter: 'all',
   accountSheet: false,
   genderSheet: false,
+  guideSheet: false,
   welcomeSheet: false,
   coachAdd: false,
   appSettings: {
@@ -280,6 +285,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openGenderSheet() {
     set({ genderSheet: true });
+  },
+
+  openGuideSheet() {
+    set({ guideSheet: true });
   },
 
   async saveDisplayName(name) {
