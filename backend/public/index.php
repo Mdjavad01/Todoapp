@@ -46,10 +46,13 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
-// مسیر لاگ اختصاصی (اگر پوشه‌ی storage/logs نوشتنی باشد)
-$logDir = dirname(__DIR__) . '/storage/logs';
-if (is_dir($logDir) && is_writable($logDir)) {
-    ini_set('error_log', $logDir . '/php-error.log');
+// مسیر لاگ اختصاصی — دو چیدمان: مخزن (backend/public → backend/storage)
+// و هاست اشتراکی (api/ در ریشه‌ی دامین → api/storage)
+foreach ([dirname(__DIR__) . '/storage/logs', __DIR__ . '/storage/logs'] as $logDir) {
+    if (is_dir($logDir) && is_writable($logDir)) {
+        ini_set('error_log', $logDir . '/php-error.log');
+        break;
+    }
 }
 
 set_exception_handler(static function (Throwable $e): void {
