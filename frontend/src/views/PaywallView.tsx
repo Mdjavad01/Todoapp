@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
-import { toFa } from '@/lib/format';
+import { toFa, faDateTimeUtc } from '@/lib/format';
 import { isNativeApp, onBrowserFinished, openExternal } from '@/lib/native';
-import { createPaymentOrder, fetchOrderStatus, fetchPlans, type Plan } from '@/sync/payments';
+import {
+  createPaymentOrder,
+  fetchOrderStatus,
+  fetchPlans,
+  fetchDepositConfig,
+  createDepositRequest,
+  fetchMyDepositRequests,
+  type Plan,
+  type DepositConfig,
+  type DepositRequest,
+} from '@/sync/payments';
 
 /**
  * بخش ۱۱ — صفحه‌ی اشتراک کارام پرو (فاز ۵)
@@ -54,6 +64,14 @@ export function PaywallView() {
   const [selected, setSelected] = useState<string>('annual');
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+
+  // کارت‌به‌کارت با تأیید ادمین (فاز ۸)
+  const [depositCfg, setDepositCfg] = useState<DepositConfig | null>(null);
+  const [depositRequests, setDepositRequests] = useState<DepositRequest[]>([]);
+  const [depositRef, setDepositRef] = useState('');
+  const [depositNote, setDepositNote] = useState('');
+  const [depositSubmitting, setDepositSubmitting] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
 
   // نتیجه‌ی پرداخت (بازگشت از درگاه)
   const [resultState, setResultState] = useState<'checking' | 'succeeded' | 'failed' | null>(null);
@@ -191,6 +209,91 @@ export function PaywallView() {
   };
 
   const list = plans ?? FALLBACK_PLANS;
+  const selectedPlan = list.find((p) => p.code === selected);
+
+  /* ---------- کارت‌به‌کارت (فاز ۸) ---------- */
+
+  const refreshDeposits = useCallback(() => {
+    fetchMyDepositRequests()
+      .then((items) => {
+        setDepositRequests(Array.isArray(items) ? items : []);
+        if (items.some((r) => r.status === 'approved')) void reloadPremium();
+      })
+      .catch(() => {});
+  }, [reloadPremium]);
+
+  useEffect(() => {
+    if (!session) return;
+    let alive = true;
+    fetchDepositConfig()
+      .then((c) => {
+        if (alive) setDepositCfg(c);
+      })
+      .catch(() => {});
+    refreshDeposits();
+    return () => {
+      alive = false;
+    };
+  }, [session, refreshDeposits]);
+
+  const copyCard = async () => {
+    if (!depositCfg?.card) return;
+    try {
+      await navigator.clipboard.writeText(depositCfg.card.number);
+      showToast('شماره کارت کپی شد');
+      return;
+    } catch {
+      /* فالبک مرورگرهای قدیمی پایین‌تر */
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = depositCfg.card.number;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast('شماره کارت کپی شد');
+    } catch {
+      showToast('کپی خودکار نشد؛ لطفاً دستی انتخاب و کپی کنید');
+    }
+  };
+
+  const submitDeposit = async () => {
+    if (depositSubmitting) return;
+    const ref = depositRef.trim();
+    if (ref.length < 4) {
+      setDepositError('شماره پیگیری را وارد کنید (حداقل ۴ رقم)');
+      return;
+    }
+    setDepositError(null);
+    setDepositSubmitting(true);
+    try {
+      const req = await createDepositRequest(selected, ref, depositNote);
+      setDepositRef('');
+      setDepositNote('');
+      setDepositRequests((prev) => [req, ...prev].slice(0, 10));
+      showToast('درخواست واریز ثبت شد؛ پس از بررسی ادمین فعال می‌شود');
+    } catch (e) {
+      setDepositError(e instanceof Error ? e.message : 'ثبت درخواست ناموفق بود');
+    } finally {
+      setDepositSubmitting(false);
+    }
+  };
+
+  const depositStatusLabel: Record<DepositRequest['status'], string> = {
+    pending: 'در انتظار بررسی',
+    approved: 'تأیید شد ✓',
+    rejected: 'رد شد',
+  };
+  const depositStatusClass: Record<DepositRequest['status'], string> = {
+    pending: 'bg-amber-400/15 text-amber-600 dark:text-amber-300',
+    approved: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300',
+    rejected: 'bg-red-500/15 text-red-600 dark:text-red-300',
+  };
+  const groupCard = (n: string): string => n.replace(/(\d{4})(?=\d)/g, '$1 ');
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-paywall">
@@ -339,6 +442,152 @@ export function PaywallView() {
           خرید اشتراک نیاز به حساب کاربری دارد؛ داده‌های آفلاین شما بعد از ورود حفظ و سینک می‌شود
         </p>
       )}
+
+      {/* پرداخت کارت به کارت با تأیید ادمین (فاز ۸) */}
+      {session && depositCfg?.enabled && depositCfg.card ? (
+        <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-4 space-y-3">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex p-2 rounded-xl bg-primary/10 text-primary">
+              <Icon name="credit_card" size={22} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-body-md font-black">پرداخت کارت به کارت</p>
+              <p className="text-[11px] text-on-surface-variant">واریز دستی — فعال‌سازی بعد از تأیید ادمین</p>
+            </div>
+          </div>
+
+          {/* شماره کارت + کپی */}
+          <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <p dir="ltr" className="text-right text-lg font-black tracking-widest text-primary">
+                {toFa(groupCard(depositCfg.card.number))}
+              </p>
+              {depositCfg.card.holder ? (
+                <p className="text-[11px] text-on-surface-variant mt-0.5">به نام: {depositCfg.card.holder}</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="shrink-0 flex items-center gap-1.5 rounded-xl bg-primary text-on-primary px-3 py-2 text-xs font-bold active:scale-95 transition-transform"
+              onClick={() => void copyCard()}
+            >
+              <Icon name="content_copy" size={16} />
+              کپی
+            </button>
+          </div>
+
+          {/* راهنمای پرداخت */}
+          {depositCfg.card.guide ? (
+            <p className="text-xs text-on-surface-variant leading-6 whitespace-pre-line bg-surface-container dark:bg-slate-700/60 rounded-xl p-3">
+              {depositCfg.card.guide}
+            </p>
+          ) : null}
+
+          {/* مبلغ پلن انتخابی */}
+          {selectedPlan ? (
+            <p className="text-xs text-on-surface-variant">
+              مبلغ دقیق برای پلن «{PLAN_LABELS[selectedPlan.code] ?? selectedPlan.title}»:{' '}
+              <span className="font-black text-on-surface dark:text-inverse-on-surface">{hezarToman(selectedPlan.priceRials)}</span> هزار تومان — پلن را از بالای همین صفحه انتخاب کنید
+            </p>
+          ) : null}
+
+          {/* فرم ثبت درخواست */}
+          <div className="space-y-2">
+            <div>
+              <label htmlFor="deposit-ref" className="text-xs font-bold text-on-surface-variant block mb-1">
+                شماره پیگیری حواله <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="deposit-ref"
+                type="text"
+                dir="ltr"
+                inputMode="numeric"
+                autoComplete="off"
+                className="w-full rounded-xl border border-outline-variant/40 bg-surface-container-lowest dark:bg-slate-700/60 px-3 py-2.5 text-body-sm text-left focus:outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="۴ تا ۴۰ رقم"
+                value={depositRef}
+                onChange={(e) => setDepositRef(e.target.value)}
+                maxLength={40}
+              />
+            </div>
+            <div>
+              <label htmlFor="deposit-note" className="text-xs font-bold text-on-surface-variant block mb-1">
+                یادداشت (اختیاری)
+              </label>
+              <textarea
+                id="deposit-note"
+                rows={2}
+                className="w-full rounded-xl border border-outline-variant/40 bg-surface-container-lowest dark:bg-slate-700/60 px-3 py-2.5 text-body-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="مثلاً نام بانک یا زمان واریز"
+                value={depositNote}
+                onChange={(e) => setDepositNote(e.target.value)}
+                maxLength={300}
+              />
+            </div>
+
+            {depositError ? (
+              <p className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-3">{depositError}</p>
+            ) : null}
+
+            <button
+              type="button"
+              className="w-full py-3 rounded-2xl border-2 border-primary text-primary font-bold active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              onClick={() => void submitDeposit()}
+              disabled={depositSubmitting}
+            >
+              {depositSubmitting ? (
+                <span className="inline-block w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              ) : (
+                <Icon name="task_alt" size={20} />
+              )}
+              <span>{depositSubmitting ? 'در حال ثبت…' : 'ثبت درخواست واریز'}</span>
+            </button>
+          </div>
+
+          {/* درخواست‌های قبلی من */}
+          {depositRequests.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black text-on-surface-variant">درخواست‌های من</p>
+                <button
+                  type="button"
+                  className="text-[11px] font-bold text-primary flex items-center gap-1"
+                  onClick={() => {
+                    refreshDeposits();
+                    showToast('وضعیت به‌روز شد');
+                  }}
+                >
+                  <Icon name="refresh" size={14} />
+                  به‌روزرسانی
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2 custom-scrollbar">
+                {depositRequests.map((r) => (
+                  <div key={r.uuid} className="rounded-xl border border-outline-variant/30 bg-surface-container dark:bg-slate-700/60 p-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold truncate">
+                        {r.planTitle ?? r.planCode} · {hezarToman(r.amountRials)} هزار تومان
+                      </p>
+                      <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${depositStatusClass[r.status]}`}>
+                        {depositStatusLabel[r.status]}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-on-surface-variant">
+                      پیگیری: <span dir="ltr">{toFa(r.reference)}</span> · {faDateTimeUtc(r.createdAt)}
+                    </p>
+                    {r.status === 'rejected' && r.reviewNote ? (
+                      <p className="text-[11px] text-red-600 dark:text-red-300">دلیل رد: {r.reviewNote}</p>
+                    ) : null}
+                    {r.status === 'approved' ? (
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-300">اشتراک شما فعال شد — اگر به‌روز نشد، سینک بزنید</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -35,6 +35,25 @@ export function faTime(hhmm: string): string {
   return toFa(hhmm);
 }
 
+const faDateTime = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+  day: 'numeric',
+  month: 'long',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+/**
+ * تاریخ و ساعت شمسی از رشته‌ی UTC سرور («YYYY-MM-DD HH:MM:SS») — برای
+ * نمایش زمان ثبت/بررسی درخواست‌های واریز. خروجی نمونه: ۳ آبان، ۱۴:۰۵
+ */
+export function faDateTimeUtc(serverUtc: string | null | undefined): string {
+  if (!serverUtc) return '';
+  const iso = serverUtc.includes('T') ? serverUtc : serverUtc.replace(' ', 'T') + 'Z';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return faDateTime.format(d);
+}
+
 /** برچسب نسبی روز: امروز / فردا / دیروز / نام روز هفته / تاریخ کوتاه */
 export function relativeDayLabel(isoDate: string | null, today: Date): string {
   if (!isoDate) return '';

@@ -196,6 +196,27 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_subs_user ON subscriptions (user_id, expires_at);
 
+-- درخواست‌های واریز کارت‌به‌کارت (فاز ۸) — تأیید نهایی با ادمین
+CREATE TABLE IF NOT EXISTS deposit_requests (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid            TEXT(36) NOT NULL UNIQUE,
+  user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  plan_id         INTEGER REFERENCES plans (id),
+  plan_code       TEXT(50) NOT NULL,
+  amount_rials    INTEGER NOT NULL DEFAULT 0,
+  reference       TEXT(64) NOT NULL,
+  note            TEXT(500),
+  status          TEXT(16) NOT NULL DEFAULT 'pending',
+  review_note     TEXT(500),
+  reviewed_by     INTEGER,
+  reviewed_at     TEXT(19),
+  subscription_id INTEGER,
+  created_at      TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+  updated_at      TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deposit_user ON deposit_requests (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_deposit_status ON deposit_requests (status, created_at);
+
 CREATE TABLE IF NOT EXISTS admin_roles (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   code        TEXT(30) NOT NULL UNIQUE,
@@ -289,6 +310,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('voice_lang', 'fa-IR'),
   ('gateway_zibal_enabled', '1'),
   ('zibal_merchant', 'zibal'),
+  ('deposit_card_enabled', '1'),
+  ('deposit_card_number', '6104337812345678'),
+  ('deposit_card_holder', 'ادمین کارام'),
+  ('deposit_card_guide', 'مبلغ دقیق همان پلن انتخابی است. بعد از واریز، شماره پیگیری حواله را ثبت کنید؛ معمولاً کمتر از ۱۲ ساعت بررسی و اشتراک فعال می‌شود.'),
   ('provider_email_enabled', '0'),
   ('telegram_bot_token', ''),
   ('telegram_bot_username', ''),

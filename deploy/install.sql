@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `user_id`    BIGINT UNSIGNED NOT NULL,
   `plan_id`    BIGINT UNSIGNED NULL DEFAULT NULL,
   `order_id`   BIGINT UNSIGNED NULL DEFAULT NULL,
-  `source`     ENUM('web_gateway','admin_grant','store_bazaar') NOT NULL COMMENT 'کارت‌به‌کارت حذف شد؛ store_bazaar رزرو نسخه اندروید',
+  `source`     ENUM('web_gateway','admin_grant','store_bazaar','card_deposit') NOT NULL COMMENT 'منبع فعال‌سازی: درگاه / اعطای ادمین / بازار / کارت‌به‌کارت',
   `starts_at`  DATETIME  NOT NULL,
   `expires_at` DATETIME  NULL DEFAULT NULL COMMENT 'NULL=دائمی',
   `created_at` DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -263,6 +263,31 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   CONSTRAINT `fk_subs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_subs_plan` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`),
   CONSTRAINT `fk_subs_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- درخواست‌های واریز کارت‌به‌کارت (فاز ۸) — تأیید نهایی با ادمین
+CREATE TABLE IF NOT EXISTS `deposit_requests` (
+  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `uuid`            CHAR(36)  NOT NULL,
+  `user_id`         BIGINT UNSIGNED NOT NULL,
+  `plan_id`         BIGINT UNSIGNED NULL DEFAULT NULL,
+  `plan_code`       VARCHAR(50) NOT NULL,
+  `amount_rials`    BIGINT    NOT NULL DEFAULT 0,
+  `reference`       VARCHAR(64) NOT NULL COMMENT 'شماره پیگیری/مرجع حواله کاربر',
+  `note`            VARCHAR(500) NULL,
+  `status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `review_note`     VARCHAR(500) NULL COMMENT 'یادداشت ادمین / دلیل رد',
+  `reviewed_by`     BIGINT UNSIGNED NULL DEFAULT NULL,
+  `reviewed_at`     DATETIME  NULL DEFAULT NULL,
+  `subscription_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `created_at`      DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_deposit_uuid` (`uuid`),
+  KEY `idx_deposit_user` (`user_id`,`status`),
+  KEY `idx_deposit_status` (`status`,`created_at`),
+  CONSTRAINT `fk_deposit_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_deposit_plan` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------
@@ -427,6 +452,10 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('voice_lang', 'fa-IR'),
   ('gateway_zibal_enabled', '0'),
   ('zibal_merchant', ''),
+  ('deposit_card_enabled', '0'),
+  ('deposit_card_number', ''),
+  ('deposit_card_holder', ''),
+  ('deposit_card_guide', 'مبلغ دقیق همان پلن انتخابی است. بعد از واریز، شماره پیگیری حواله را ثبت کنید؛ معمولاً کمتر از ۱۲ ساعت بررسی و اشتراک فعال می‌شود.'),
   ('provider_email_enabled', '0'),
   ('mail_transport', ''),
   ('smtp_host', ''),

@@ -113,6 +113,16 @@ const GROUPS: GroupDef[] = [
       { key: 'zibal_merchant', label: 'کد مرچنت زیبال', kind: 'text', dir: 'ltr', help: 'مرچنت واقعی از panel.zibal.ir — مقدار zibal فقط برای تست' },
     ],
   },
+  {
+    title: 'کارت به کارت (واریز با تأیید ادمین)',
+    description: 'روش پرداخت دستی: کاربر کارت‌به‌کارت می‌کند و شماره پیگیری را در اپ ثبت می‌کند؛ شما از تب «واریزی‌ها» تأیید یا رد می‌کنید.',
+    fields: [
+      { key: 'deposit_card_enabled', label: 'کارت‌به‌کارت فعال', kind: 'bool', help: 'با روشن کردنش، کارت «پرداخت کارت به کارت» در صفحه‌ی پرو اپ نشان داده می‌شود' },
+      { key: 'deposit_card_number', label: 'شماره کارت (۱۶ رقم، بدون فاصله)', kind: 'text', dir: 'ltr', help: 'مثال: 6104337812345678 — در اپ گروه‌چهاررقمی و با کپی نشان داده می‌شود' },
+      { key: 'deposit_card_holder', label: 'نام صاحب حساب', kind: 'text', help: 'مثال: علی محمدی — کنار شماره کارت نمایش داده می‌شود' },
+      { key: 'deposit_card_guide', label: 'راهنمای پرداخت (برای کاربر)', kind: 'textarea', help: 'مثلاً ساعات بررسی، بانک مقصد، الزام مبلغ دقیق' },
+    ],
+  },
 ];
 
 const SECRET_MASK = '••••••••';

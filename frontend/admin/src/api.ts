@@ -179,6 +179,14 @@ export const api = {
   updateSettings: (body: Record<string, string>) =>
     request<{ message: string; changed: string[]; telegram?: { ok: boolean; bot?: string; error?: string } }>('/settings', { method: 'PATCH', body }),
 
+  // ---- واریزی کارت‌به‌کارت (فاز ۸) ----
+  deposits: (params: { status?: string; page?: number }) =>
+    request<Paginated<AdminDepositRow>>(`/deposits${qs(params)}`),
+  approveDeposit: (id: number, note?: string) =>
+    request<{ message: string; premiumUntil: string }>(`/deposits/${id}/approve`, { method: 'POST', body: note ? { note } : {} }),
+  rejectDeposit: (id: number, note?: string) =>
+    request<{ message: string }>(`/deposits/${id}/reject`, { method: 'POST', body: note ? { note } : {} }),
+
   // ---- شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام) ----
   otpRequest: (channel: 'email' | 'telegram' | 'sms', target?: string) =>
     request<{
@@ -293,5 +301,20 @@ export interface AdminAuditRow {
   entityId: string | null;
   details: Record<string, unknown> | null;
   ip: string | null;
+  createdAt: string;
+}
+
+export interface AdminDepositRow {
+  id: number;
+  uuid: string;
+  user: { uuid: string | null; displayName: string | null };
+  planCode: string;
+  planTitle: string | null;
+  amountRials: number;
+  reference: string;
+  note: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewNote: string | null;
+  reviewedAt: string | null;
   createdAt: string;
 }

@@ -84,6 +84,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   web_gateway: 'درگاه وب',
   admin_grant: 'اعطای مدیر',
   store_bazaar: 'مارکت (کافه‌بازار)',
+  card_deposit: 'کارت به کارت',
 };
 
 export const TYPE_LABELS: Record<string, string> = {

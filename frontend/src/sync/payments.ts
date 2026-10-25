@@ -66,3 +66,48 @@ export async function fetchSubscription(): Promise<SubscriptionStatus> {
   const res = await authedFetch<{ subscription: SubscriptionStatus }>('/v1/me/subscription');
   return res.subscription;
 }
+
+/* ---------------- کارت‌به‌کارت با تأیید ادمین (فاز ۸) ---------------- */
+
+export interface DepositConfig {
+  enabled: boolean;
+  card?: {
+    number: string;
+    holder: string;
+    guide: string;
+  };
+}
+
+export type DepositStatus = 'pending' | 'approved' | 'rejected';
+
+export interface DepositRequest {
+  uuid: string;
+  planCode: string;
+  planTitle: string | null;
+  amountRials: number;
+  reference: string;
+  status: DepositStatus;
+  reviewNote: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+/** پیکربندی کارت‌به‌کارت — شماره کارت ادمین و راهنما (فقط اگر فعال باشد) */
+export async function fetchDepositConfig(): Promise<DepositConfig> {
+  return authedFetch<DepositConfig>('/v1/payments/deposit/config');
+}
+
+/** ثبت درخواست واریز کارت‌به‌کارت — بعد از تأیید ادمین اشتراک فعال می‌شود */
+export async function createDepositRequest(planCode: string, reference: string, note?: string): Promise<DepositRequest> {
+  const res = await authedFetch<{ message: string; request: DepositRequest }>('/v1/payments/deposit/requests', {
+    method: 'POST',
+    body: { planCode, reference, note: note?.trim() ? note.trim() : undefined },
+  });
+  return res.request;
+}
+
+/** درخواست‌های واریز من — ۱۰ مورد آخر با وضعیت */
+export async function fetchMyDepositRequests(): Promise<DepositRequest[]> {
+  const res = await authedFetch<{ requests: DepositRequest[] }>('/v1/payments/deposit/requests/mine');
+  return res.requests;
+}

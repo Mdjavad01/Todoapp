@@ -1033,6 +1033,11 @@ final class AdminController
             // --- پرداخت آنلاین (درگاه زیبال) ---
             'gateway_zibal_enabled' => ['type' => 'bool'],
             'zibal_merchant' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            // --- کارت‌به‌کارت با تأیید ادمین (فاز ۸) ---
+            'deposit_card_enabled' => ['type' => 'bool'],
+            'deposit_card_number' => ['type' => 'str', 'min' => 0, 'max' => 40],
+            'deposit_card_holder' => ['type' => 'str', 'min' => 0, 'max' => 120],
+            'deposit_card_guide' => ['type' => 'str', 'min' => 0, 'max' => 600],
         ];
     }
 
@@ -1157,6 +1162,192 @@ final class AdminController
         }
 
         Response::ok(array_merge(['message' => 'تنظیمات ذخیره شد', 'changed' => array_keys($changed)], $extra));
+    }
+
+    /* ================= واریزی کارت‌به‌کارت (فاز ۸) ================= */
+
+    /** GET /api/admin/deposits?status=pending&page=1 — دسترسی: orders.view */
+    public function depositsIndex(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'orders.view');
+        DepositSchema::ensure();
+        [$page, $perPage] = self::pageParams();
+        $pdo = Database::pdo();
+
+        $where = ['1=1'];
+        $params = [];
+        $status = Request::query('status');
+        if ($status !== null && in_array($status, ['pending', 'approved', 'rejected'], true)) {
+            $where[] = 'd.status = :st';
+            $params[':st'] = $status;
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM deposit_requests d WHERE {$whereSql}");
+        $countStmt->execute($params);
+        $total = (int) $countStmt->fetchColumn();
+
+        $offset = ($page - 1) * $perPage;
+        $stmt = $pdo->prepare(
+            "SELECT d.id, d.uuid, d.plan_code, d.amount_rials, d.reference, d.note, d.status,
+                    d.review_note, d.reviewed_at, d.created_at,
+                    u.uuid AS user_uuid, u.display_name,
+                    p.title AS plan_title
+             FROM deposit_requests d
+             LEFT JOIN users u ON u.id = d.user_id
+             LEFT JOIN plans p ON p.id = d.plan_id
+             WHERE {$whereSql}
+             ORDER BY d.id DESC LIMIT {$perPage} OFFSET {$offset}"
+        );
+        $stmt->execute($params);
+
+        $items = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $items[] = [
+                'id' => (int) $r['id'],
+                'uuid' => (string) $r['uuid'],
+                'user' => [
+                    'uuid' => $r['user_uuid'] !== null ? (string) $r['user_uuid'] : null,
+                    'displayName' => $r['display_name'] !== null ? (string) $r['display_name'] : null,
+                ],
+                'planCode' => (string) $r['plan_code'],
+                'planTitle' => $r['plan_title'] !== null ? (string) $r['plan_title'] : null,
+                'amountRials' => (int) $r['amount_rials'],
+                'reference' => (string) $r['reference'],
+                'note' => $r['note'] !== null ? (string) $r['note'] : null,
+                'status' => (string) $r['status'],
+                'reviewNote' => $r['review_note'] !== null ? (string) $r['review_note'] : null,
+                'reviewedAt' => $r['reviewed_at'] !== null ? (string) $r['reviewed_at'] : null,
+                'createdAt' => (string) $r['created_at'],
+            ];
+        }
+        Response::ok(['items' => $items, 'total' => $total, 'page' => $page, 'perPage' => $perPage, 'pages' => (int) ceil($total / $perPage)]);
+    }
+
+    /**
+     * POST /api/admin/deposits/{id}/approve — تأیید واریز و فعال‌سازی اشتراک (source='card_deposit')
+     * دسترسی: orders.review · بدنه: {note?} (یادداشت داخلی/برای کاربر)
+     */
+    public function depositApprove(array $params): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'orders.review');
+        AdminGuard::requireCsrf($ctx);
+        DepositSchema::ensure();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id < 1) {
+            throw new ValidationError('شناسه درخواست نامعتبر است');
+        }
+        $note = Validator::str(Request::json(), 'note', 0, 300, false);
+        $pdo = Database::pdo();
+
+        $pdo->beginTransaction();
+        try {
+            $lock = Database::driver() === 'mysql' ? ' FOR UPDATE' : '';
+            $stmt = $pdo->prepare('SELECT id, uuid, user_id, plan_id, plan_code, status FROM deposit_requests WHERE id = :id' . $lock);
+            $stmt->execute([':id' => $id]);
+            $dep = $stmt->fetch();
+            if ($dep === false) {
+                $pdo->rollBack();
+                Response::error('درخواست واریز یافت نشد', 404);
+                return;
+            }
+            if ((string) $dep['status'] !== 'pending') {
+                $pdo->rollBack();
+                Response::error('این درخواست قبلاً بررسی شده است', 409, ['code' => 'deposit_already_reviewed']);
+                return;
+            }
+
+            $planStmt = $pdo->prepare('SELECT id, code, title, months FROM plans WHERE id = :id LIMIT 1');
+            $planStmt->execute([':id' => (int) $dep['plan_id']]);
+            $plan = $planStmt->fetch();
+            if ($plan === false) {
+                $pdo->rollBack();
+                Response::error('پلن این درخواست یافت نشد؛ پلن را بررسی یا درخواست را رد کنید', 422, ['code' => 'plan_missing']);
+                return;
+            }
+
+            // تمدید از انتهای اعتبار فعلی — همان منطق درگاه (months=0 → دائمی)
+            $activated = Subscription::activate($pdo, (int) $dep['user_id'], (int) $plan['id'], (int) $plan['months'], null, 'card_deposit');
+            $subId = (int) $pdo->lastInsertId();
+
+            $pdo->prepare(
+                "UPDATE deposit_requests
+                 SET status = 'approved', review_note = :note, reviewed_by = :aid, reviewed_at = :now, subscription_id = :sid, updated_at = :now2
+                 WHERE id = :id AND status = 'pending'"
+            )->execute([
+                ':note' => $note,
+                ':aid' => (int) $ctx['admin']['id'],
+                ':now' => gmdate('Y-m-d H:i:s'),
+                ':now2' => gmdate('Y-m-d H:i:s'),
+                ':sid' => $subId > 0 ? $subId : null,
+                ':id' => $id,
+            ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        Audit::admin($ctx['admin']['id'], 'deposit.approve', 'deposit_request', (string) $dep['uuid'], [
+            'planCode' => (string) $plan['code'],
+            'months' => (int) $plan['months'],
+            'premiumUntil' => $activated['premiumUntil'],
+        ]);
+
+        Response::ok([
+            'message' => (int) $plan['months'] === 0 ? 'واریز تأیید شد و اشتراک دائمی فعال گردید' : 'واریز تأیید شد و اشتراک فعال گردید',
+            'premiumUntil' => $activated['premiumUntil'],
+        ]);
+    }
+
+    /** POST /api/admin/deposits/{id}/reject — رد واریز با دلیل (برای کاربر نمایش داده می‌شود) · دسترسی: orders.review */
+    public function depositReject(array $params): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'orders.review');
+        AdminGuard::requireCsrf($ctx);
+        DepositSchema::ensure();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id < 1) {
+            throw new ValidationError('شناسه درخواست نامعتبر است');
+        }
+        $note = Validator::str(Request::json(), 'note', 0, 300, false);
+        $pdo = Database::pdo();
+
+        $stmt = $pdo->prepare('SELECT id, uuid, status FROM deposit_requests WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $dep = $stmt->fetch();
+        if ($dep === false) {
+            Response::error('درخواست واریز یافت نشد', 404);
+            return;
+        }
+        if ((string) $dep['status'] !== 'pending') {
+            Response::error('این درخواست قبلاً بررسی شده است', 409, ['code' => 'deposit_already_reviewed']);
+            return;
+        }
+
+        $now = gmdate('Y-m-d H:i:s');
+        $pdo->prepare(
+            "UPDATE deposit_requests
+             SET status = 'rejected', review_note = :note, reviewed_by = :aid, reviewed_at = :now, updated_at = :now2
+             WHERE id = :id AND status = 'pending'"
+        )->execute([
+            ':note' => $note,
+            ':aid' => (int) $ctx['admin']['id'],
+            ':now' => $now,
+            ':now2' => $now,
+            ':id' => $id,
+        ]);
+
+        Audit::admin($ctx['admin']['id'], 'deposit.reject', 'deposit_request', (string) $dep['uuid'], [
+            'note' => $note,
+        ]);
+
+        Response::ok(['message' => 'درخواست واریز رد شد']);
     }
 
     /* ================= لاگ رخدادها ================= */

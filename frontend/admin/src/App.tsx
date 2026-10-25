@@ -21,13 +21,15 @@ import Announcements from './views/Announcements';
 import Settings from './views/Settings';
 import OtpLogin from './views/OtpLogin';
 import Audit from './views/Audit';
-type Route = 'dashboard' | 'users' | 'otplogin' | 'plans' | 'announcements' | 'settings' | 'audit';
+import Deposits from './views/Deposits';
+type Route = 'dashboard' | 'users' | 'otplogin' | 'plans' | 'deposits' | 'announcements' | 'settings' | 'audit';
 
 const NAV: { key: Route; label: string; icon: typeof IconDashboard; perm?: string }[] = [
   { key: 'dashboard', label: 'داشبورد', icon: IconDashboard },
   { key: 'otplogin', label: 'شورتکد ورود OTP', icon: IconKey, perm: 'users.manage' },
   { key: 'users', label: 'کاربران', icon: IconUsers, perm: 'users.view' },
   { key: 'plans', label: 'پلن‌ها', icon: IconCard, perm: 'plans.manage' },
+  { key: 'deposits', label: 'واریزی‌ها', icon: IconCard, perm: 'orders.view' },
   { key: 'announcements', label: 'اطلاعیه‌ها', icon: IconMegaphone, perm: 'announcements.manage' },
   { key: 'settings', label: 'تنظیمات', icon: IconSettings, perm: 'settings.manage' },
   { key: 'audit', label: 'رخدادها', icon: IconHistory, perm: 'audit.view' },
@@ -161,6 +163,7 @@ export default function App() {
           {activeRoute === 'otplogin' && <OtpLogin onToast={show} />}
           {activeRoute === 'users' && <Users onToast={show} session={session} />}
           {activeRoute === 'plans' && <Plans onToast={show} session={session} />}
+          {activeRoute === 'deposits' && <Deposits onToast={show} session={session} />}
           {activeRoute === 'announcements' && <Announcements onToast={show} />}
           {activeRoute === 'settings' && <Settings onToast={show} session={session} />}
           {activeRoute === 'audit' && <Audit onToast={show} />}

@@ -23,6 +23,7 @@ require $srcDir . '/src/Http/Response.php';
 require $srcDir . '/src/Http/Router.php';
 require $srcDir . '/src/Support/Uuid.php';
 require $srcDir . '/src/Support/Settings.php';
+require $srcDir . '/src/Support/DepositSchema.php';
 require $srcDir . '/src/Security/Validator.php';
 require $srcDir . '/src/Auth/AccessToken.php';
 require $srcDir . '/src/Auth/Guard.php';
@@ -42,6 +43,7 @@ require $srcDir . '/src/Controllers/AuthController.php';
 require $srcDir . '/src/Controllers/RestEntityController.php';
 require $srcDir . '/src/Controllers/SyncController.php';
 require $srcDir . '/src/Controllers/PaymentController.php';
+require $srcDir . '/src/Controllers/DepositController.php';
 require $srcDir . '/src/Controllers/AdminController.php';
 
 // همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
@@ -135,6 +137,13 @@ $router->get('/api/v1/me/subscription', [$payments, 'mySubscription']);
 // بازگشت از درگاه (بدون احراز — با امضای سمت سرور verify می‌شود)
 $router->get('/api/payments/callback', [$payments, 'gatewayCallback']);
 
+// ---- کارت‌به‌کارت با تأیید ادمین (فاز ۸) ----
+// ثبت و پیگیری سمت کاربر؛ تأیید فقط از پنل ادمین (مسیرهای /api/admin/deposits پایین‌تر)
+$deposits = new DepositController();
+$router->get('/api/v1/payments/deposit/config', [$deposits, 'config']);
+$router->post('/api/v1/payments/deposit/requests', [$deposits, 'createRequest']);
+$router->get('/api/v1/payments/deposit/requests/mine', [$deposits, 'myRequests']);
+
 // ---- پنل مدیریت (فاز ۴) ----
 $admin = new AdminController();
 $router->post('/api/admin/login', [$admin, 'login']);
@@ -154,6 +163,9 @@ $router->patch('/api/admin/announcements/{id}', [$admin, 'announcementUpdate']);
 $router->delete('/api/admin/announcements/{id}', [$admin, 'announcementDelete']);
 $router->get('/api/admin/settings', [$admin, 'settingsIndex']);
 $router->patch('/api/admin/settings', [$admin, 'settingsUpdate']);
+$router->get('/api/admin/deposits', [$admin, 'depositsIndex']);
+$router->post('/api/admin/deposits/{id}/approve', [$admin, 'depositApprove']);
+$router->post('/api/admin/deposits/{id}/reject', [$admin, 'depositReject']);
 $router->post('/api/admin/otp/request', [$admin, 'otpShortcutRequest']);
 $router->post('/api/admin/otp/telegram/poll', [$admin, 'otpShortcutTelegramPoll']);
 $router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);
