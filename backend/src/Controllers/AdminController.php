@@ -53,7 +53,7 @@ final class AdminController
 
         $pdo = Database::pdo();
         $stmt = $pdo->prepare(
-            'SELECT a.id, a.password_hash, a.is_active, a.failed_attempts, a.locked_until,
+            'SELECT a.id, a.username, a.password_hash, a.is_active, a.failed_attempts, a.locked_until,
                     r.code AS role_code, r.title AS role_title, r.permissions AS role_permissions
              FROM admins a JOIN admin_roles r ON r.id = a.role_id
              WHERE a.username = :u LIMIT 1'
@@ -238,10 +238,11 @@ final class AdminController
         $q = Request::query('q');
         if ($q !== null) {
             $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], mb_substr($q, 0, 100)) . '%';
-            $where[] = '(u.display_name LIKE :like OR u.uuid = :exact OR EXISTS (
+            $where[] = '(u.display_name LIKE :like1 OR u.uuid = :exact OR EXISTS (
                             SELECT 1 FROM user_identities i
-                            WHERE i.user_id = u.id AND i.value LIKE :like))';
-            $params[':like'] = $like;
+                            WHERE i.user_id = u.id AND i.value LIKE :like2))';
+            $params[':like1'] = $like;
+            $params[':like2'] = $like;
             $params[':exact'] = mb_substr($q, 0, 36);
         }
 
@@ -497,7 +498,7 @@ final class AdminController
 
         $ins = $pdo->prepare(
             "INSERT INTO subscriptions (uuid, user_id, plan_id, order_id, source, starts_at, expires_at, created_at, updated_at)
-             VALUES (:uuid, :uid, :pid, NULL, 'admin_grant', :start, :exp, :now, :now)"
+             VALUES (:uuid, :uid, :pid, NULL, 'admin_grant', :start, :exp, :created, :updated)"
         );
         $ins->execute([
             ':uuid' => Uuid::v4(),
@@ -505,7 +506,8 @@ final class AdminController
             ':pid' => $plan !== false && $plan !== null ? (int) $plan['id'] : null,
             ':start' => gmdate('Y-m-d H:i:s', $now),
             ':exp' => $subExpires,
-            ':now' => gmdate('Y-m-d H:i:s', $now),
+            ':created' => gmdate('Y-m-d H:i:s', $now),
+            ':updated' => gmdate('Y-m-d H:i:s', $now),
         ]);
 
         Audit::admin($ctx['admin']['id'], 'user.premium_grant', 'user', (string) $user['uuid'], [
@@ -702,7 +704,7 @@ final class AdminController
         $pdo = Database::pdo();
         $ins = $pdo->prepare(
             'INSERT INTO announcements (uuid, title, body, type, is_active, starts_at, ends_at, created_at, updated_at)
-             VALUES (:uuid, :title, :body, :type, :act, :starts, :ends, :now, :now)'
+             VALUES (:uuid, :title, :body, :type, :act, :starts, :ends, :created, :updated)'
         );
         $ins->execute([
             ':uuid' => Uuid::v4(),
@@ -712,7 +714,8 @@ final class AdminController
             ':act' => $isActive ? 1 : 0,
             ':starts' => $startsAt,
             ':ends' => $endsAt,
-            ':now' => gmdate('Y-m-d H:i:s'),
+            ':created' => gmdate('Y-m-d H:i:s'),
+            ':updated' => gmdate('Y-m-d H:i:s'),
         ]);
         $id = (int) $pdo->lastInsertId();
         Audit::admin($ctx['admin']['id'], 'announcement.create', 'announcement', (string) $id, ['title' => $title]);

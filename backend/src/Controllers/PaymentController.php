@@ -73,25 +73,27 @@ final class PaymentController
         try {
             $pdo->prepare(
                 "INSERT INTO orders (uuid, user_id, plan_id, amount_rials, discount_rials, status, description, created_at, updated_at)
-                 VALUES (:uuid, :uid, :pid, :amount, 0, 'created', :desc, :now, :now)"
+                 VALUES (:uuid, :uid, :pid, :amount, 0, 'created', :desc, :created, :updated)"
             )->execute([
                 ':uuid' => $orderUuid,
                 ':uid' => $user['id'],
                 ':pid' => (int) $plan['id'],
                 ':amount' => $amount,
                 ':desc' => $description,
-                ':now' => $now,
+                ':created' => $now,
+                ':updated' => $now,
             ]);
             $orderId = (int) $pdo->lastInsertId();
 
             $pdo->prepare(
                 "INSERT INTO payments (uuid, order_id, gateway, status, amount_rials, created_at, updated_at)
-                 VALUES (:uuid, :oid, 'zibal', 'created', :amount, :now, :now)"
+                 VALUES (:uuid, :oid, 'zibal', 'created', :amount, :created, :updated)"
             )->execute([
                 ':uuid' => Uuid::v4(),
                 ':oid' => $orderId,
                 ':amount' => $amount,
-                ':now' => $now,
+                ':created' => $now,
+                ':updated' => $now,
             ]);
             $pdo->commit();
         } catch (Throwable $e) {
@@ -218,8 +220,8 @@ final class PaymentController
             if ($refMatches && $amountOk) {
                 $pdo->beginTransaction();
                 try {
-                    $pdo->prepare("UPDATE payments SET status = 'paid', verified_at = :now, verify_payload = :vp, updated_at = :now WHERE id = :id")
-                        ->execute([':now' => $now, ':vp' => mb_substr((string) ($verify['raw'] ?? ''), 0, 2000), ':id' => (int) $row['payment_id']]);
+                    $pdo->prepare("UPDATE payments SET status = 'paid', verified_at = :verified, verify_payload = :vp, updated_at = :updated WHERE id = :id")
+                        ->execute([':verified' => $now, ':updated' => $now, ':vp' => mb_substr((string) ($verify['raw'] ?? ''), 0, 2000), ':id' => (int) $row['payment_id']]);
                     $pdo->prepare("UPDATE orders SET status = 'paid', updated_at = :now WHERE id = :id")
                         ->execute([':now' => $now, ':id' => (int) $row['id']]);
 
@@ -237,8 +239,8 @@ final class PaymentController
                     }
                     error_log('[karam][payment] فعال‌سازی اشتراک ناموفق: ' . $e->getMessage());
                     // پول گرفته شده ولی فعال‌سازی خطا خورد — سفارش «paid» می‌ماند تا دستی/دوباره بررسی شود
-                    $pdo->prepare("UPDATE payments SET status = 'paid', verified_at = :now, verify_payload = :vp, updated_at = :now WHERE id = :id")
-                        ->execute([':now' => $now, ':vp' => mb_substr((string) ($verify['raw'] ?? ''), 0, 2000), ':id' => (int) $row['payment_id']]);
+                    $pdo->prepare("UPDATE payments SET status = 'paid', verified_at = :verified, verify_payload = :vp, updated_at = :updated WHERE id = :id")
+                        ->execute([':verified' => $now, ':updated' => $now, ':vp' => mb_substr((string) ($verify['raw'] ?? ''), 0, 2000), ':id' => (int) $row['payment_id']]);
                     $pdo->prepare("UPDATE orders SET status = 'paid', updated_at = :now WHERE id = :id")
                         ->execute([':now' => $now, ':id' => (int) $row['id']]);
                     $back($orderUuid, 'succeeded');

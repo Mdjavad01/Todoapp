@@ -53,7 +53,7 @@ final class Subscription
 
         $pdo->prepare(
             "INSERT INTO subscriptions (uuid, user_id, plan_id, order_id, source, starts_at, expires_at, created_at, updated_at)
-             VALUES (:uuid, :uid, :pid, :oid, :src, :start, :exp, :now, :now)"
+             VALUES (:uuid, :uid, :pid, :oid, :src, :start, :exp, :created, :updated)"
         )->execute([
             ':uuid' => Uuid::v4(),
             ':uid' => $userId,
@@ -62,7 +62,8 @@ final class Subscription
             ':src' => $source,
             ':start' => gmdate('Y-m-d H:i:s', $now),
             ':exp' => $subExpires,
-            ':now' => gmdate('Y-m-d H:i:s', $now),
+            ':created' => gmdate('Y-m-d H:i:s', $now),
+            ':updated' => gmdate('Y-m-d H:i:s', $now),
         ]);
 
         return ['premiumUntil' => $premiumUntil, 'expiresAt' => $subExpires, 'isLifetime' => $isLifetime];

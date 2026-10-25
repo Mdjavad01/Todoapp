@@ -116,14 +116,14 @@ if ($pdo instanceof PDO) {
         $testUuid = substr($testUuid . '00000000-0000-0000-0000-000000000000', 0, 36);
         $now = gmdate('Y-m-d H:i:s');
         $pdo->prepare("INSERT INTO users (uuid, display_name, gender, status, last_login_at, created_at, updated_at)
-                       VALUES (:u, 'diag3-probe', 'unset', 'active', :now, :now, :now)")
-            ->execute([':u' => $testUuid, ':now' => $now]);
+                       VALUES (:u, 'diag3-probe', 'unset', 'active', :ll, :created, :updated)")
+            ->execute([':u' => $testUuid, ':ll' => $now, ':created' => $now, ':updated' => $now]);
         $uid = (int) $pdo->lastInsertId();
         d3Line('probe:INSERT users (با last_login_at)', 'OK id=' . $uid, true);
 
         $pdo->prepare("INSERT INTO user_identities (user_id, type, value, is_primary, verified_at, created_at)
-                       VALUES (:uid, 'email', 'diag3-probe@invalid', 1, :now, :now)")
-            ->execute([':uid' => $uid, ':now' => $now]);
+                       VALUES (:uid, 'email', 'diag3-probe@invalid', 1, :verified, :created)")
+            ->execute([':uid' => $uid, ':verified' => $now, ':created' => $now]);
         d3Line('probe:INSERT user_identities', 'OK', true);
 
         $pdo->prepare("INSERT INTO refresh_tokens (user_id, device_id, device_name, token_hash, expires_at, issued_at)

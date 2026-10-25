@@ -28,7 +28,10 @@ final class Database
         $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false, // Prepared Statement واقعی
+            // Prepared Statement واقعی — توجه: با EMULATE_PREPARES=false نباید یک named placeholder
+            // را در یک کوئری دو بار به‌کار برد (خطای HY093 Invalid parameter number)؛
+            // هر تکرار باید نام یکتا داشته باشد (مثل :created و :updated).
+            PDO::ATTR_EMULATE_PREPARES => false,
             PDO::ATTR_STRINGIFY_FETCHES => false,
         ];
 

@@ -486,8 +486,8 @@ final class AuthController
         $pdo->beginTransaction();
         try {
             $pdo->prepare("INSERT INTO users (uuid, display_name, gender, status, created_at, updated_at)
-                           VALUES (:uuid, :name, 'unset', :status, :now, :now)")
-                ->execute([':uuid' => $userUuid, ':name' => $displayName, ':status' => 'active', ':now' => $now]);
+                           VALUES (:uuid, :name, 'unset', :status, :created_at, :updated_at)")
+                ->execute([':uuid' => $userUuid, ':name' => $displayName, ':status' => 'active', ':created_at' => $now, ':updated_at' => $now]);
             $userId = (int) $pdo->lastInsertId();
 
             $pdo->prepare('INSERT INTO user_identities (user_id, type, value, is_primary, verified_at, created_at)

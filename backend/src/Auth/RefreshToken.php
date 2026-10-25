@@ -94,8 +94,8 @@ final class RefreshToken
             $stmtDev->execute([':id' => $row['id']]);
             $dev = (array) $stmtDev->fetch();
 
-            $pdo->prepare('UPDATE refresh_tokens SET revoked_at = :now, last_used_at = :now WHERE id = :id')
-                ->execute([':now' => $now, ':id' => $row['id']]);
+            $pdo->prepare('UPDATE refresh_tokens SET revoked_at = :revoked, last_used_at = :used WHERE id = :id')
+                ->execute([':revoked' => $now, ':used' => $now, ':id' => $row['id']]);
 
             $fresh = self::issue($pdo, $userId, (string) ($dev['device_id'] ?? ''), $dev['device_name'] ?? null);
 
