@@ -83,6 +83,28 @@ final class TelegramBot
         return $status === 200;
     }
 
+    /**
+     * وضعیت webhook ثبت‌شده روی توکن (صفحه‌ی وضعیت Worker کرون نمایش می‌دهد).
+     * @return array{ok:bool, url:string, pendingUpdateCount:int, lastErrorMessage:string, lastErrorDate:string}|array{ok:false, error:string}
+     */
+    public static function getWebhookInfo(): array
+    {
+        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/getWebhookInfo';
+        [$status, $body] = self::httpPostJson($url, '');
+        $json = is_string($body) ? json_decode($body, true) : null;
+        if ($status === 200 && is_array($json) && ($json['ok'] ?? false) === true && is_array($json['result'] ?? null)) {
+            $r = $json['result'];
+            return [
+                'ok' => true,
+                'url' => (string) ($r['url'] ?? ''),
+                'pendingUpdateCount' => (int) ($r['pending_update_count'] ?? 0),
+                'lastErrorMessage' => (string) ($r['last_error_message'] ?? ''),
+                'lastErrorDate' => (string) ($r['last_error_date'] ?? ''),
+            ];
+        }
+        return ['ok' => false, 'error' => 'HTTP ' . $status];
+    }
+
     /** @return array<int,array>|null null = خطای اتصال */
     private static function getUpdates(?int $offset): ?array
     {
