@@ -60,6 +60,29 @@ final class TelegramBot
         return $status === 200;
     }
 
+    /** بررسی اعتبار توکن ربات (پنل ادمین هنگام ذخیره‌ی توکن صدایش می‌زند) */
+    public static function getMe(): array
+    {
+        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/getMe';
+        [$status, $body] = self::httpPostJson($url, '');
+        $json = is_string($body) ? json_decode($body, true) : null;
+        if ($status === 200 && is_array($json) && ($json['ok'] ?? false) === true) {
+            $u = $json['result']['username'] ?? '';
+            return ['ok' => true, 'username' => is_string($u) ? $u : ''];
+        }
+        $desc = is_array($json) ? (string) ($json['description'] ?? '') : '';
+        return ['ok' => false, 'error' => $desc !== '' ? $desc : 'HTTP ' . $status];
+    }
+
+    /** حذف webhook ثبت‌شده‌ی قبلی — کارام با getUpdates کار می‌کند و webhook باید خالی باشد */
+    public static function clearWebhook(): bool
+    {
+        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/deleteWebhook';
+        [$status] = self::httpPostJson($url, '');
+        error_log("[karam][telegram] deleteWebhook status={$status} (رفع تداخل webhook قبلی)");
+        return $status === 200;
+    }
+
     /** @return array<int,array>|null null = خطای اتصال */
     private static function getUpdates(?int $offset): ?array
     {
@@ -69,6 +92,11 @@ final class TelegramBot
             $url .= '&offset=' . $offset;
         }
         [$status, $body] = self::httpPostJson($url, '');
+        if ($status === 409) {
+            // تداخل: روی همین توکن webhook فعالی ثبت شده (معمولاً اپ قبلی) — حذفش می‌کنیم و دوباره تلاش می‌کنیم
+            self::clearWebhook();
+            [$status, $body] = self::httpPostJson($url, '');
+        }
         if ($status !== 200) {
             error_log("[karam][telegram] getUpdates status={$status} body=" . var_export($body, true));
             return null;

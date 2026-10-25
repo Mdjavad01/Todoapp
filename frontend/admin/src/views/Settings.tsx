@@ -158,8 +158,17 @@ export default function Settings({
     try {
       const body: Record<string, string> = {};
       for (const k of dirtyKeys) body[k] = draft[k] ?? '';
-      await api.updateSettings(body);
-      onToast('success', 'تنظیمات ذخیره شد');
+      const res = await api.updateSettings(body);
+      // تست زنده‌ی توکن ربات تلگرام (سرور هنگام ذخیره انجام می‌دهد)
+      if (res?.telegram) {
+        if (res.telegram.ok) {
+          onToast('success', `توکن ربات معتبر است (${res.telegram.bot ?? 'ربات'}) — تداخل webhook هم پاک شد`);
+        } else {
+          onToast('error', `توکن ربات نامعتبر است: ${res.telegram.error ?? 'خطای ناشناخته'}`);
+        }
+      } else {
+        onToast('success', 'تنظیمات ذخیره شد');
+      }
       await load();
     } catch (e) {
       onToast('error', e instanceof Error ? e.message : 'ذخیره ناموفق بود');

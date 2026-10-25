@@ -1142,7 +1142,21 @@ final class AdminController
         }
 
         Audit::admin($ctx['admin']['id'], 'settings.update', 'settings', null, $changed);
-        Response::ok(['message' => 'تنظیمات ذخیره شد', 'changed' => array_keys($changed)]);
+
+        // اگر توکن ربات تلگرام ذخیره/تغییر کرد: اعتبارش را زنده تست کن + webhook قدیمی را پاک کن
+        // (اگر اپ دیگری روی همین توکن webhook گذاشته باشد، getUpdates با 409 شکست می‌خورد)
+        $extra = [];
+        if (isset($changed['telegram_bot_token']) && $changed['telegram_bot_token'] !== '') {
+            $me = TelegramBot::getMe();
+            if ($me['ok'] === true) {
+                TelegramBot::clearWebhook();
+                $extra['telegram'] = ['ok' => true, 'bot' => '@' . (string) $me['username']];
+            } else {
+                $extra['telegram'] = ['ok' => false, 'error' => (string) $me['error']];
+            }
+        }
+
+        Response::ok(array_merge(['message' => 'تنظیمات ذخیره شد', 'changed' => array_keys($changed)], $extra));
     }
 
     /* ================= لاگ رخدادها ================= */

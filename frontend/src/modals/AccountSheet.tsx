@@ -239,6 +239,8 @@ export function AccountSheet() {
   const handleSignOut = async () => {
     await signOut();
     setSessions([]);
+    // کانال‌های ورود ممکن است از آخرین خواندن تغییر کرده باشند (مثلاً فعال‌شدن تلگرام از پنل) — تازه بگیر
+    void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
     showToast('از حساب خارج شدید؛ داده‌ها روی همین دستگاه باقی می‌مانند');
   };
 

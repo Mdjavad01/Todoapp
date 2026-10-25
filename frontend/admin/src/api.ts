@@ -177,7 +177,7 @@ export const api = {
 
   settings: () => request<{ items: { key: string; value: string; updatedAt: string }[]; editable: string[] }>('/settings'),
   updateSettings: (body: Record<string, string>) =>
-    request<{ message: string; changed: string[] }>('/settings', { method: 'PATCH', body }),
+    request<{ message: string; changed: string[]; telegram?: { ok: boolean; bot?: string; error?: string } }>('/settings', { method: 'PATCH', body }),
 
   // ---- شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام) ----
   otpRequest: (channel: 'email' | 'telegram' | 'sms', target?: string) =>

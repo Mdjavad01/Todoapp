@@ -1,7 +1,8 @@
 /**
  * ساخت Service Worker بعد از بیلد Vite:
  * - لیست کامل فایل‌های dist به‌صورت precache
- * - استراتژی cache-first برای همه‌ی درخواست‌های same-origin
+ * - استراتژی cache-first برای منابع استاتیک same-origin
+ * - API هرگز کش نمی‌شود (داده‌ی ورود/کانال‌ها/تنظیمات باید همیشه تازه باشد)
  * - آفلاین کامل بعد از اولین لود
  * اجرا: node scripts/generate-sw.mjs (بعد از vite build)
  */
@@ -53,6 +54,12 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // فقط دامین خودمان
+
+  // API هرگز کش نمی‌شود — همیشه شبکه (حتی آفلاین پاسخ کهنه برنمی‌گردد؛ اپ خودش خطا را مدیریت می‌کند)
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // ناوبری‌ها: اول شبکه، در خطا کش و سپس index.html
   if (req.mode === 'navigate') {
