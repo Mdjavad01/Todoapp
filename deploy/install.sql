@@ -377,6 +377,8 @@ CREATE TABLE IF NOT EXISTS `announcements` (
   `title`      VARCHAR(150) NOT NULL,
   `body`       TEXT         NOT NULL,
   `type`       ENUM('info','warning','premium') NOT NULL DEFAULT 'info',
+  `link_url`   VARCHAR(500) NULL DEFAULT NULL COMMENT 'لینک دکمه‌ی بنر (اختیاری)',
+  `image_url`  VARCHAR(500) NULL DEFAULT NULL COMMENT 'تصویر/GIF بنر — فقط همان دامنه (اختیاری)',
   `is_active`  TINYINT(1)   NOT NULL DEFAULT 1,
   `starts_at`  DATETIME     NULL DEFAULT NULL,
   `ends_at`    DATETIME     NULL DEFAULT NULL,

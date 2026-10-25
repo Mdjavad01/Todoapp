@@ -119,7 +119,7 @@ interface AppState {
   setSearch(q: string, filter?: string): void;
 
   toggleTask(id: string): Promise<void>;
-  addQuickTask(input: { title: string; listId: string; dueDate: string | null }): Promise<void>;
+  addQuickTask(input: { title: string; listId: string; dueDate: string | null; priority?: TaskEntity['priority'] }): Promise<void>;
   addInlineTask(listId: string, title: string): Promise<void>;
   updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat'>>): Promise<void>;
   deleteTask(id: string): Promise<void>;
@@ -462,7 +462,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  async addQuickTask({ title, listId, dueDate }) {
+  async addQuickTask(input) {
+    const { title, listId, dueDate } = input;
     if (!title.trim()) return;
     // تشخیص ساده‌ی ساعت از متن
     const timeMatch = title.match(/(?:ساعت\s*)([۰-۹0-9]{1,2})\s*[:：]\s*([۰-۹0-9]{2})/);
@@ -478,6 +479,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       title: cleanTitle || title,
       dueDate,
       dueTime,
+      priority: input.priority ?? 'normal',
     });
     await get().refresh();
     queueSync();

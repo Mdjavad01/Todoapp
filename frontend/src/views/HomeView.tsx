@@ -1,5 +1,6 @@
 import { Icon } from '@/components/Icon';
 import { MicButton } from '@/components/Sheet';
+import { AdBanner } from '@/components/AdBanner';
 import { useAppStore } from '@/store/useAppStore';
 import { homeStats, sortedLists, LIST_BAR_COLORS, GREETING_TEXT } from '@/lib/selectors';
 import { toFa, faFullDate } from '@/lib/format';
@@ -22,6 +23,9 @@ export function HomeView() {
 
   return (
     <section className="p-margin flex flex-col gap-5" id="view-home">
+      {/* بنر تبلیغ/اطلاعیه از پنل ادمین (فاز ۹) — اگر اطلاعیه‌ی فعالی باشد */}
+      <AdBanner />
+
       {/* خوش‌آمدگویی و تاریخ شمسی */}
       <div className="flex justify-between items-start">
         <div>

@@ -285,6 +285,8 @@ export interface AdminAnnouncement {
   title: string;
   body: string;
   type: 'info' | 'warning' | 'premium';
+  linkUrl: string | null;
+  imageUrl: string | null;
   isActive: boolean;
   startsAt: string | null;
   endsAt: string | null;

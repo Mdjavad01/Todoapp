@@ -111,3 +111,22 @@ export async function fetchMyDepositRequests(): Promise<DepositRequest[]> {
   const res = await authedFetch<{ requests: DepositRequest[] }>('/v1/payments/deposit/requests/mine');
   return res.requests;
 }
+
+/* ---------------- روش‌های پرداخت (فاز ۹ — انتخاب روش قبل از پرداخت) ---------------- */
+
+export interface PaymentMethod {
+  code: string; // 'online' | 'card' | 'agpay'
+  title: string;
+  description: string;
+  enabled: boolean;
+  soon: boolean;
+}
+
+/**
+ * فهرست روش‌های پرداخت و وضعیت فعال بودن هرکدام — ورود لازم است.
+ * روش‌های آینده با enabled=false برمی‌گردند تا در صفحه‌ی انتخاب با بج «به‌زودی» دیده شوند.
+ */
+export async function fetchPaymentMethods(): Promise<PaymentMethod[]> {
+  const res = await authedFetch<{ methods: PaymentMethod[] }>('/v1/payments/methods');
+  return res.methods;
+}

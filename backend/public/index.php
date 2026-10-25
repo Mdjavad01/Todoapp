@@ -24,6 +24,7 @@ require $srcDir . '/src/Http/Router.php';
 require $srcDir . '/src/Support/Uuid.php';
 require $srcDir . '/src/Support/Settings.php';
 require $srcDir . '/src/Support/DepositSchema.php';
+require $srcDir . '/src/Support/AnnouncementsSchema.php';
 require $srcDir . '/src/Security/Validator.php';
 require $srcDir . '/src/Auth/AccessToken.php';
 require $srcDir . '/src/Auth/Guard.php';
@@ -44,6 +45,7 @@ require $srcDir . '/src/Controllers/RestEntityController.php';
 require $srcDir . '/src/Controllers/SyncController.php';
 require $srcDir . '/src/Controllers/PaymentController.php';
 require $srcDir . '/src/Controllers/DepositController.php';
+require $srcDir . '/src/Controllers/AnnouncementController.php';
 require $srcDir . '/src/Controllers/AdminController.php';
 
 // همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
@@ -75,6 +77,9 @@ set_exception_handler(static function (Throwable $e): void {
 $router = new Router();
 $router->get('/api/health', [new HealthController(), 'health']);
 $router->get('/api/v1/bootstrap', [new HealthController(), 'bootstrap']);
+
+// ---- اطلاعیه‌ها/تبلیغات فعال برای بنر صفحه‌ی خانه (فاز ۹ — عمومی) ----
+$router->get('/api/v1/announcements/active', [new AnnouncementController(), 'active']);
 
 // ---- گیت حالت تعمیر (فاز ۴.۵ — از پنل ادمین قابل تغییر) ----
 // سلامت سرویس، همه‌ی مسیرهای ادمین و بازگشت درگاه پرداخت همیشه باز می‌مانند؛
@@ -134,6 +139,8 @@ $router->get('/api/v1/plans', [$payments, 'plans']);
 $router->post('/api/v1/payments/orders', [$payments, 'createOrder']);
 $router->get('/api/v1/payments/orders/{uuid}', [$payments, 'orderStatus']);
 $router->get('/api/v1/me/subscription', [$payments, 'mySubscription']);
+// فهرست روش‌های پرداخت و وضعیت فعال بودن هرکدام (فاز ۹ — انتخاب روش قبل از پرداخت)
+$router->get('/api/v1/payments/methods', [$payments, 'methods']);
 // بازگشت از درگاه (بدون احراز — با امضای سمت سرور verify می‌شود)
 $router->get('/api/payments/callback', [$payments, 'gatewayCallback']);
 

@@ -660,12 +660,13 @@ final class AdminController
     {
         $ctx = AdminGuard::requireAdmin();
         AdminGuard::requirePermission($ctx, 'announcements.manage');
+        AnnouncementsSchema::ensure();
         [$page, $perPage] = self::pageParams();
         $pdo = Database::pdo();
 
         $total = (int) $pdo->query('SELECT COUNT(*) FROM announcements')->fetchColumn();
         $offset = ($page - 1) * $perPage;
-        $stmt = $pdo->prepare("SELECT id, uuid, title, body, type, is_active, starts_at, ends_at, created_at, updated_at
+        $stmt = $pdo->prepare("SELECT id, uuid, title, body, type, link_url, image_url, is_active, starts_at, ends_at, created_at, updated_at
                                FROM announcements ORDER BY created_at DESC, id DESC LIMIT {$perPage} OFFSET {$offset}");
         $stmt->execute();
         $items = [];
@@ -676,6 +677,8 @@ final class AdminController
                 'title' => (string) $r['title'],
                 'body' => (string) $r['body'],
                 'type' => (string) $r['type'],
+                'linkUrl' => $r['link_url'] !== null ? (string) $r['link_url'] : null,
+                'imageUrl' => $r['image_url'] !== null ? (string) $r['image_url'] : null,
                 'isActive' => (bool) $r['is_active'],
                 'startsAt' => $r['starts_at'],
                 'endsAt' => $r['ends_at'],
@@ -697,20 +700,24 @@ final class AdminController
         $title = Validator::str($body, 'title', 3, 150);
         $text = Validator::str($body, 'body', 3, 2000);
         $type = Validator::enum($body, 'type', ['info', 'warning', 'premium'], 'info');
+        $linkUrl = Validator::str($body, 'linkUrl', 0, 500, false);
+        $imageUrl = Validator::str($body, 'imageUrl', 0, 500, false);
         $isActive = Validator::bool($body, 'isActive', true) === true;
         $startsAt = Validator::isoDateTime($body, 'startsAt', false);
         $endsAt = Validator::isoDateTime($body, 'endsAt', false);
 
         $pdo = Database::pdo();
         $ins = $pdo->prepare(
-            'INSERT INTO announcements (uuid, title, body, type, is_active, starts_at, ends_at, created_at, updated_at)
-             VALUES (:uuid, :title, :body, :type, :act, :starts, :ends, :created, :updated)'
+            'INSERT INTO announcements (uuid, title, body, type, link_url, image_url, is_active, starts_at, ends_at, created_at, updated_at)
+             VALUES (:uuid, :title, :body, :type, :link, :img, :act, :starts, :ends, :created, :updated)'
         );
         $ins->execute([
             ':uuid' => Uuid::v4(),
             ':title' => $title,
             ':body' => $text,
             ':type' => $type,
+            ':link' => $linkUrl,
+            ':img' => $imageUrl,
             ':act' => $isActive ? 1 : 0,
             ':starts' => $startsAt,
             ':ends' => $endsAt,
@@ -758,6 +765,16 @@ final class AdminController
             $sets[] = 'type = :ty';
             $args[':ty'] = Validator::enum($body, 'type', ['info', 'warning', 'premium']);
             $changed['type'] = $args[':ty'];
+        }
+        if (array_key_exists('linkUrl', $body)) {
+            $sets[] = 'link_url = :lk';
+            $args[':lk'] = Validator::str($body, 'linkUrl', 0, 500, false);
+            $changed['linkUrl'] = $args[':lk'];
+        }
+        if (array_key_exists('imageUrl', $body)) {
+            $sets[] = 'image_url = :im';
+            $args[':im'] = Validator::str($body, 'imageUrl', 0, 500, false);
+            $changed['imageUrl'] = $args[':im'];
         }
         if (array_key_exists('isActive', $body)) {
             $sets[] = 'is_active = :a';

@@ -5,6 +5,8 @@ import { useAppStore } from '@/store/useAppStore';
 import { detectSmartDateTime } from '@/lib/smartDate';
 import { faShort } from '@/lib/format';
 import { parseIsoDate } from '@/lib/format';
+import { PRIORITY_BADGE } from '@/lib/selectors';
+import type { TaskEntity } from '@/types';
 
 /** مودال ۴: افزودن سریع کار (بات‌شیت پایین) */
 export function QuickAddSheet() {
@@ -18,6 +20,7 @@ export function QuickAddSheet() {
 
   const [title, setTitle] = useState('');
   const [listId, setListId] = useState<string | null>(null);
+  const [priority, setPriority] = useState<TaskEntity['priority']>('normal');
 
   const effectiveList = useMemo(() => {
     const target = listId ?? activeListId ?? lists[0]?.id ?? null;
@@ -28,9 +31,10 @@ export function QuickAddSheet() {
 
   const save = () => {
     if (!title.trim() || !effectiveList) return;
-    addQuickTask({ title, listId: effectiveList.id, dueDate: pendingDate });
+    addQuickTask({ title, listId: effectiveList.id, dueDate: pendingDate, priority });
     setTitle('');
     setListId(null);
+    setPriority('normal');
   };
 
   return (
@@ -55,6 +59,32 @@ export function QuickAddSheet() {
           تشخیص هوشمند تاریخ:{' '}
           {pendingDate ? `انتخاب‌شده: ${faShort(parseIsoDate(pendingDate))}` : smart}
         </span>
+      </div>
+
+      {/* اولویت و فوریت (v15) — همان برچسب‌ها و رنگ‌های کارت کارها */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-outline font-semibold">اولویت و فوریت:</span>
+        <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="اولویت و فوریت کار">
+          {(['urgent', 'high', 'normal', 'low'] as const).map((p) => {
+            const meta = PRIORITY_BADGE[p];
+            const active = priority === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setPriority(p)}
+                className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                  active ? `${meta.cls} ring-2 ring-current/40` : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
+                }`}
+              >
+                {p === 'urgent' ? <Icon name="priority_high" size={14} /> : null}
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* انتخاب لیست */}

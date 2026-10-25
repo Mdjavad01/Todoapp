@@ -72,6 +72,8 @@ export default function Announcements({
                       {TYPE_LABELS[a.type]}
                     </Badge>
                     {a.isActive ? <Badge tone="green">فعال</Badge> : <Badge tone="gray">غیرفعال</Badge>}
+                    {a.imageUrl ? <Badge tone="gray">تصویر</Badge> : null}
+                    {a.linkUrl ? <Badge tone="gray">لینک</Badge> : null}
                   </div>
                   <p className="line-clamp-2 text-xs leading-5 text-slate-500">{a.body}</p>
                   <p className="mt-1 text-[10px] text-slate-300">ساخته‌شده: {faDateTime(a.createdAt)}</p>
@@ -124,6 +126,8 @@ function AnnouncementForm({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
   const [type, setType] = useState<AdminAnnouncement['type']>(initial?.type ?? 'info');
+  const [linkUrl, setLinkUrl] = useState(initial?.linkUrl ?? '');
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +136,14 @@ function AnnouncementForm({
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const payload = { title, body, type, isActive };
+    const payload = {
+      title,
+      body,
+      type,
+      isActive,
+      linkUrl: linkUrl.trim(),
+      imageUrl: imageUrl.trim(),
+    };
     try {
       if (initial) {
         await api.updateAnnouncement(initial.id, payload);
@@ -184,6 +195,33 @@ function AnnouncementForm({
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label" htmlFor="a-link">لینک دکمه (اختیاری)</label>
+            <input
+              id="a-link"
+              dir="ltr"
+              className="field text-left"
+              placeholder="https://…"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              maxLength={500}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="a-image">تصویر / GIF (اختیاری)</label>
+            <input
+              id="a-image"
+              dir="ltr"
+              className="field text-left"
+              placeholder="https://app.hojre24shop.ir/…"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              maxLength={500}
+            />
+          </div>
+        </div>
+
         {error && (
           <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700" role="alert">
             {error}
@@ -200,7 +238,8 @@ function AnnouncementForm({
         </div>
         <p className="flex items-start gap-1.5 text-[10px] leading-5 text-slate-400">
           <IconWarning size={13} />
-          اطلاعیه‌های فعال از سرور به اپ کاربران می‌رسد (نمایش در فاز ۶ — سرویس اطلاع‌رسانی اپ).
+          اطلاعیه‌های فعال در بنر صفحه‌ی خانه‌ی اپ نمایش داده می‌شود؛ کاربر می‌تواند تا پایان روز ببندد. تصویر/GIF فقط از همین دامنه
+          (آپلود از فایل‌منیجر هاست) نمایش داده می‌شود — قانون امنیتی CSP.
         </p>
       </form>
     </Modal>

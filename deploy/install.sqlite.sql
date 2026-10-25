@@ -257,6 +257,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   title      TEXT(150) NOT NULL,
   body       TEXT NOT NULL,
   type       TEXT(8) NOT NULL DEFAULT 'info',
+  link_url   TEXT(500),
+  image_url  TEXT(500),
   is_active  INTEGER NOT NULL DEFAULT 1,
   starts_at  TEXT(19),
   ends_at    TEXT(19),

@@ -94,3 +94,13 @@ const WEEKDAYS = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارش
 export function weekdayName(d: Date): string {
   return WEEKDAYS[d.getDay()];
 }
+
+/** ریال → «هزار تومان» با ارقام فارسی — قیمت‌های سمت سرور ریال هستند (۱۰٫۰۰۰ ریال = ۱ هزار تومان) */
+export function hezarToman(priceRials: number): string {
+  return toFa(String(Math.round(priceRials / 10000)));
+}
+
+/** گروه‌بندی شماره کارت چهاررقمی: «6037991122334455» → «6037 9911 2233 4455» */
+export function groupCardNumber(n: string): string {
+  return n.replace(/(\d{4})(?=\d)/g, '$1 ');
+}

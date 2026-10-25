@@ -21,15 +21,18 @@ export function Sheet({ open, onClose, children, maxHeight = '88%' }: SheetProps
 
   if (!open) return null;
   return (
+    // مکانیزم جهانی کیبورد (v15): padding-bottom = ارتفاع کیبورد → شیت همیشه
+    // بالای کیبورد می‌نشیند و فرم زیر کیبورد گم نمی‌شود (متغیر در lib/keyboard.ts)
     <div
       className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col justify-end fade-in"
+      style={{ paddingBottom: 'var(--kb-height, 0px)' }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
         className="bg-surface dark:bg-slate-900 w-full rounded-t-[32px] p-5 flex flex-col gap-4 shadow-2xl sheet-in overflow-y-auto no-scrollbar"
-        style={{ maxHeight }}
+        style={{ maxHeight: `calc(${maxHeight} - var(--kb-height, 0px))` }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-12 h-1 bg-outline-variant rounded-full mx-auto mb-1" />

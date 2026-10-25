@@ -38,6 +38,52 @@ final class PaymentController
         Response::ok(['plans' => $plans]);
     }
 
+    /**
+     * GET /api/v1/payments/methods — فهرست روش‌های پرداخت و وضعیت فعال بودن هرکدام (Bearer)
+     *
+     * فاز ۹: صفحه‌ی پرو دیگر مستقیم به درگاه نمی‌رود؛ کاربر اول «روش پرداخت» را انتخاب می‌کند.
+     * فعال‌بودن هر روش از تنظیمات پنل ادمین خوانده می‌شود؛ روش‌های آینده با enabled=false
+     * و soon=true نشان داده می‌شوند تا کاربر بداند به‌زودی اضافه می‌شوند.
+     */
+    public function methods(): void
+    {
+        $user = Guard::requireUser();
+        DepositSchema::ensure();
+
+        // ۱) درگاه آنلاین زیبال — فعال فقط اگر هم کلید روشن باشد هم مرچنت ست شده باشد
+        $zibalEnabled = ZibalProvider::enabled() && trim(ZibalProvider::merchant()) !== '';
+
+        // ۲) کارت به کارت — فعال فقط اگر کلید روشن باشد و شماره کارت ثبت شده باشد
+        $cardNumber = trim((string) (Settings::get('deposit_card_number', '') ?? ''));
+        $cardEnabled = Settings::bool('deposit_card_enabled') && $cardNumber !== '';
+
+        $methods = [
+            [
+                'code' => 'online',
+                'title' => 'درگاه پرداخت آنلاین',
+                'description' => 'پرداخت آنی با کارت بانکی — فعال‌سازی خودکار اشتراک',
+                'enabled' => $zibalEnabled,
+                'soon' => !$zibalEnabled,
+            ],
+            [
+                'code' => 'card',
+                'title' => 'کارت به کارت',
+                'description' => 'واریز دستی به کارت پشتیبانی — تأیید توسط ادمین',
+                'enabled' => $cardEnabled,
+                'soon' => !$cardEnabled,
+            ],
+            [
+                'code' => 'agpay',
+                'title' => 'درگاه آقای پرداخت',
+                'description' => 'به‌زودی فعال می‌شود',
+                'enabled' => false,
+                'soon' => true,
+            ],
+        ];
+
+        Response::ok(['methods' => $methods]);
+    }
+
     /** POST /api/v1/payments/orders — {planCode} */
     public function createOrder(): void
     {
