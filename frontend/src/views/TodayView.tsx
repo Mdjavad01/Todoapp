@@ -5,12 +5,12 @@ import { toFa, faShort, weekdayName } from '@/lib/format';
 import { InlineEmpty } from './ListView';
 
 const TEXT_COLORS: Record<string, string> = {
-  teal: 'text-teal-600',
-  amber: 'text-amber-500',
-  indigo: 'text-indigo-600',
-  emerald: 'text-emerald-600',
-  rose: 'text-rose-500',
-  purple: 'text-purple-600',
+  teal: 'text-teal-600 dark:text-teal-300',
+  amber: 'text-amber-500 dark:text-amber-300',
+  indigo: 'text-indigo-600 dark:text-indigo-300',
+  emerald: 'text-emerald-600 dark:text-emerald-300',
+  rose: 'text-rose-500 dark:text-rose-300',
+  purple: 'text-purple-600 dark:text-purple-300',
 };
 
 const LIST_TITLES: Record<string, string> = {
@@ -76,7 +76,7 @@ export function TodayView() {
           <span className="text-label-md font-bold text-on-surface-variant">زمان‌بندی امروز</span>
           {timed.map((t) => {
             const list = lists.find((l) => l.id === t.listId);
-            const color = list ? TEXT_COLORS[list.color] : 'text-teal-600';
+            const color = list ? TEXT_COLORS[list.color] : 'text-teal-600 dark:text-teal-300';
             const shortTitle = list ? LIST_TITLES[list.color] : 'کار';
             const isUrgent = t.priority === 'urgent';
             return (

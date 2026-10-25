@@ -10,15 +10,18 @@ export function TopBar() {
   const setDark = useAppStore((s) => s.setDark);
   const openCalendar = useAppStore((s) => s.openCalendar);
   const userName = useAppStore((s) => s.userName);
+  const session = useAppStore((s) => s.session);
+  // نام نمایشی: اول نام پروفایل کاربر وارد‌شده، بعد تنظیم محلی — بدون اسم پیش‌فرض جعلی
+  const displayName = session?.displayName?.trim() || userName.trim();
 
   return (
     <header className="bg-surface dark:bg-inverse-surface px-margin h-16 flex justify-between items-center w-full z-40 transition-colors shrink-0">
       <div className="flex items-center gap-2">
         <div
           className="w-9 h-9 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-bold text-headline-sm shadow-sm"
-          title={`تصویر پروفایل کاربر ${userName} کارام`}
+          title={displayName ? `تصویر پروفایل ${displayName} — کارام` : 'تصویر پروفایل کارام'}
         >
-          {userName.trim().charAt(0) || 'ع'}
+          {displayName.charAt(0) || 'ک'}
         </div>
         <div className="flex flex-col">
           <span className="text-headline-md font-headline-md font-bold text-primary dark:text-inverse-primary leading-tight">
@@ -60,15 +63,14 @@ export function TopBar() {
 }
 
 const CHIPS: { view: ViewName; label: string }[] = [
-  { view: 'home', label: '۱. خانه' },
-  { view: 'listView', label: '۳. لیست خانه' },
-  { view: 'todayView', label: '۷. امروز' },
-  { view: 'analytics', label: '۸. آمار' },
-  { view: 'templates', label: '۹. قالب‌ها' },
-  { view: 'jobkits', label: '۱۰. بسته‌های شغلی' },
-  { view: 'paywall', label: '۱۱. اشتراک پرو' },
-  { view: 'emptyState', label: '۱۴. وضعیت خالی' },
-  { view: 'settings', label: '۱۳. تنظیمات' },
+  { view: 'home', label: 'خانه' },
+  { view: 'listView', label: 'لیست‌ها' },
+  { view: 'todayView', label: 'امروز' },
+  { view: 'analytics', label: 'آمار' },
+  { view: 'templates', label: 'قالب‌ها' },
+  { view: 'jobkits', label: 'بسته‌های شغلی' },
+  { view: 'paywall', label: 'اشتراک پرو' },
+  { view: 'settings', label: 'تنظیمات' },
 ];
 
 /** نوار انتخاب بخش‌ها (بالای محتوا) */
@@ -85,13 +87,13 @@ export function SectionChips() {
       {CHIPS.map((c) => {
         const active = activeChip === c.view;
         const label = c.view === 'listView' && activeListId
-          ? `۳. ${lists.find((l) => l.id === activeListId)?.name ?? 'لیست خانه'}`
+          ? lists.find((l) => l.id === activeListId)?.name ?? 'لیست‌ها'
           : c.label;
         return (
           <button
             key={c.view}
             className={`px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
-              active ? 'bg-primary text-on-primary' : 'bg-surface-container dark:bg-slate-700 text-on-surface-variant dark:text-outline'
+              active ? 'bg-primary text-on-primary' : 'bg-surface-container dark:bg-slate-700 text-on-surface-variant dark:text-slate-200'
             }`}
             onClick={() => setView(c.view)}
           >

@@ -14,6 +14,16 @@
 html,
 body {
   height: 100%;
+  /* اپ موبایل: کشیدن لاستیکی مرورگر نباید پس‌زمینه را نشان دهد */
+  overscroll-behavior-y: none;
+}
+
+/* پس‌زمینه‌ی ریشه هم‌رنگ اپ — در هر دو تم؛ فضای خالیِ بالا/پایین اسکرول حذف می‌شود */
+html {
+  background: #faf8ff; /* = توکن background در تم روز */
+}
+html.dark {
+  background: #283044; /* = توکن inverse-surface در تم شب */
 }
 
 /* ---------- متغیرهای رنگ برند (قابل تغییر از تنظیمات) — پیش‌فرض فیروزه‌ای طرح ---------- */
@@ -29,7 +39,8 @@ body {
   font-family: 'Vazirmatn', sans-serif;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  min-height: max(884px, 100dvh);
+  /* فقط به اندازه‌ی صفحه — کف ۸۸۴px قبلی در گوشی‌های کوتاه‌تر نوار سیاه بالا/پایین می‌ساخت */
+  min-height: 100dvh;
 }
 
 /* در تم شب، متن‌های بدون کلاس صریح روشن باشند (inverse-on-surface) */
@@ -59,9 +70,12 @@ body {
   scrollbar-width: none;
 }
 
-/* ---------- safe-area برای ناوبری پایین روی موبایل ---------- */
+/* ---------- safe-area برای ناوبری پایین و نوار وضعیت واقعی گوشی ---------- */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* ---------- انیمیشن ورود bottom sheet ---------- */

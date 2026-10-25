@@ -83,7 +83,7 @@ export function ListView() {
           <div className="flex items-center gap-1 text-on-surface-variant">
             <button
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                filterOpen ? 'bg-primary/20 text-primary' : 'hover:bg-white/50'
+                filterOpen ? 'bg-primary/20 text-primary' : 'hover:bg-white/50 dark:hover:bg-white/10'
               }`}
               onClick={() => setFilterOpen(!filterOpen)}
               title="فیلتر"
@@ -92,7 +92,7 @@ export function ListView() {
               <Icon name="filter_list" size={20} />
             </button>
             <button
-              className="w-8 h-8 rounded-full hover:bg-white/50 flex items-center justify-center"
+              className="w-8 h-8 rounded-full hover:bg-white/50 dark:hover:bg-white/10 flex items-center justify-center"
               onClick={() => setView('search')}
               title="جستجو"
               aria-label="جستجو"

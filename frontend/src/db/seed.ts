@@ -211,7 +211,7 @@ export async function ensureSeeded(): Promise<void> {
     { key: 'accent', value: 'teal' },
     { key: 'biometricLock', value: true },
     { key: 'alerts', value: true },
-    { key: 'userName', value: 'علی' },
+    { key: 'userName', value: '' }, // بدون اسم پیش‌فرض — نام کاربر از پروفایل/تنظیمات می‌آید
   ];
 
   await seedTransaction(async (stores) => {

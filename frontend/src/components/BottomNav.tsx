@@ -28,7 +28,7 @@ export function BottomNav() {
           className={`flex flex-col items-center justify-center active:scale-95 transition-transform duration-150 ${
             isActive(tab.view)
               ? 'text-primary dark:text-inverse-primary font-bold'
-              : 'text-on-surface-variant dark:text-outline'
+              : 'text-on-surface-variant dark:text-slate-300'
           }`}
           onClick={() => setView(tab.view)}
           aria-current={isActive(tab.view) ? 'page' : undefined}

@@ -136,7 +136,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   accent: 'teal',
   biometricLock: true,
   alerts: true,
-  userName: 'علی',
+  userName: '',
   modal: null,
   detailTaskId: null,
   calendarTarget: null,
@@ -163,13 +163,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     await ensureSeeded();
     await get().refresh();
-    const [dark, accent, biometric, alerts, userName] = await Promise.all([
+    const [dark, accent, biometric, alerts, savedName] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
       repo.prefsGet<boolean>('biometricLock', true),
       repo.prefsGet<boolean>('alerts', true),
-      repo.prefsGet<string>('userName', 'علی'),
+      repo.prefsGet<string>('userName', ''),
     ]);
+    // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
+    const userName = savedName === 'علی' ? '' : savedName;
+    if (savedName === 'علی') {
+      void repo.prefsSet('userName', '');
+    }
     set({ dark, accent, biometricLock: biometric, alerts, userName });
     applyDark(dark);
     applyAccent(accent);

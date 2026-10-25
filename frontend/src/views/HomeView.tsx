@@ -9,6 +9,9 @@ export function HomeView() {
   const tasks = useAppStore((s) => s.tasks);
   const lists = useAppStore((s) => s.lists);
   const userName = useAppStore((s) => s.userName);
+  const session = useAppStore((s) => s.session);
+  // اولویت نام: پروفایل کاربر وارد‌شده ← تنظیم محلی ← بدون نام (سلام خنثی)
+  const displayName = session?.displayName?.trim() || userName.trim();
   const setView = useAppStore((s) => s.setView);
   const openList = useAppStore((s) => s.openList);
   const openCalendar = useAppStore((s) => s.openCalendar);
@@ -23,7 +26,7 @@ export function HomeView() {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-headline-lg font-headline-lg text-on-surface dark:text-inverse-on-surface">
-            {GREETING_TEXT(hour)}، {userName} عزیز
+            {displayName ? `${GREETING_TEXT(hour)}، ${displayName} عزیز` : `${GREETING_TEXT(hour)}!`}
           </h1>
           <p className="text-body-sm font-body-sm text-on-surface-variant dark:text-outline mt-0.5">
             {faFullDate(today)} • <span className="text-primary font-bold">روز پرباری پیش روست</span>

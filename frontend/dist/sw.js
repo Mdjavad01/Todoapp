@@ -1,10 +1,10 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.24.11.49.21) */
-const CACHE_NAME = 'karam-cache-2026.10.24.11.49.21';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.25.09.33.17) */
+const CACHE_NAME = 'karam-cache-2026.10.25.09.33.17';
 const PRECACHE_URLS = [
-  "./assets/index-BsNweZpD.js",
-  "./assets/index-CybbhnAh.css",
-  "./assets/web-CIQeJQH2.js",
-  "./assets/web-DSEEh6_s.js",
+  "./assets/index-C9JTloPS.css",
+  "./assets/index-CrlVUsON.js",
+  "./assets/web-BU7J2n0X.js",
+  "./assets/web-CwMrbG9x.js",
   "./fonts/Vazirmatn-Variable.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.svg",
@@ -38,6 +38,12 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // فقط دامین خودمان
+
+  // API هرگز کش نمی‌شود — همیشه شبکه (حتی آفلاین پاسخ کهنه برنمی‌گردد؛ اپ خودش خطا را مدیریت می‌کند)
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // ناوبری‌ها: اول شبکه، در خطا کش و سپس index.html
   if (req.mode === 'navigate') {

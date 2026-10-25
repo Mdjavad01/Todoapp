@@ -75,12 +75,15 @@ final class TelegramBot
 
     /* ---------------- API ---------------- */
 
-    public static function sendMessage(int|string $chatId, string $text): bool
+    public static function sendMessage(int|string $chatId, string $text, ?string $parseMode = null): bool
     {
         // مسیر رسمی Bot API: /bot{TOKEN}/sendMessage — بدون اسلش بعد از bot
         $url = self::apiBase() . '/bot' . self::token() . '/sendMessage';
-        $body = json_encode(['chat_id' => $chatId, 'text' => $text], JSON_UNESCAPED_UNICODE);
-        [$status] = self::httpPostJson($url, (string) $body);
+        $body = ['chat_id' => $chatId, 'text' => $text];
+        if ($parseMode !== null) {
+            $body['parse_mode'] = $parseMode; // «HTML» → بلوک <code> مونو و لمس‌پذیر برای کپی
+        }
+        [$status] = self::httpPostJson($url, (string) json_encode($body, JSON_UNESCAPED_UNICODE));
         return $status === 200;
     }
 
@@ -348,6 +351,14 @@ final class TelegramBot
             throw $e;
         }
 
-        self::sendMessage($chatId, "کارام 🌿\nکد ورود شما: " . $code['code'] . "\nاین کد " . Otp::ttlMinutes() . " دقیقه اعتبار دارد.\nاگر شما درخواست نداده بودید، این پیام را نادیده بگیرید.");
+        // کد داخل بلوک <code> تلگرام: فونت مونو + لمس → کپی (به درخواست مالک)
+        self::sendMessage(
+            $chatId,
+            "کارام 🌿\n"
+            . "کد ورود شما: <code>" . htmlspecialchars($code['code'], ENT_QUOTES, 'UTF-8') . "</code>\n"
+            . "این کد " . Otp::ttlMinutes() . " دقیقه اعتبار دارد.\n"
+            . "اگر شما درخواست نداده بودید، این پیام را نادیده بگیرید.",
+            'HTML'
+        );
     }
 }
