@@ -149,6 +149,112 @@ body {
   background-color: #33415f;
 }
 
+/* ============================================================
+   اندازه‌ی فونت اپ (v9 — تنظیمات ← اندازه‌ی فونت)
+   «متوسط» همان مقیاس پیش‌فرض است (بدون کلاس). کلاس‌های font-small
+   و font-large که از store روی html می‌آیند، توکن‌های تایپوگرافی
+   برند و اندازه‌های دلخواه کوچک را بازمقیاس می‌کنند.
+   ============================================================ */
+html.font-small .text-display {
+  font-size: 27px;
+  line-height: 38px;
+}
+html.font-small .text-headline-lg {
+  font-size: 20px;
+  line-height: 29px;
+}
+html.font-small .text-headline-md {
+  font-size: 16px;
+  line-height: 25px;
+}
+html.font-small .text-headline-sm {
+  font-size: 14.5px;
+  line-height: 22px;
+}
+html.font-small .text-body-lg {
+  font-size: 14.5px;
+  line-height: 23px;
+}
+html.font-small .text-body-md {
+  font-size: 13px;
+  line-height: 21px;
+}
+html.font-small .text-body-sm {
+  font-size: 11px;
+  line-height: 18px;
+}
+html.font-small .text-label-lg {
+  font-size: 13px;
+  line-height: 18px;
+}
+html.font-small .text-label-md {
+  font-size: 11px;
+  line-height: 16px;
+}
+html.font-small .text-label-sm {
+  font-size: 10px;
+  line-height: 14px;
+}
+html.font-small .text-\[9px\] {
+  font-size: 8px;
+}
+html.font-small .text-\[10px\] {
+  font-size: 9px;
+}
+html.font-small .text-\[11px\] {
+  font-size: 10px;
+}
+
+html.font-large .text-display {
+  font-size: 34px;
+  line-height: 48px;
+}
+html.font-large .text-headline-lg {
+  font-size: 25px;
+  line-height: 36px;
+}
+html.font-large .text-headline-md {
+  font-size: 21px;
+  line-height: 32px;
+}
+html.font-large .text-headline-sm {
+  font-size: 18px;
+  line-height: 27px;
+}
+html.font-large .text-body-lg {
+  font-size: 18px;
+  line-height: 30px;
+}
+html.font-large .text-body-md {
+  font-size: 16px;
+  line-height: 27px;
+}
+html.font-large .text-body-sm {
+  font-size: 14px;
+  line-height: 22px;
+}
+html.font-large .text-label-lg {
+  font-size: 16px;
+  line-height: 23px;
+}
+html.font-large .text-label-md {
+  font-size: 14px;
+  line-height: 21px;
+}
+html.font-large .text-label-sm {
+  font-size: 13px;
+  line-height: 18px;
+}
+html.font-large .text-\[9px\] {
+  font-size: 10px;
+}
+html.font-large .text-\[10px\] {
+  font-size: 12px;
+}
+html.font-large .text-\[11px\] {
+  font-size: 13px;
+}
+
 /* ---------- انیمیشن ورود bottom sheet ---------- */
 @keyframes sheet-up {
   from {

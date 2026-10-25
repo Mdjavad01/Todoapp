@@ -10,6 +10,7 @@ import * as auth from '@/sync/auth';
 import * as payments from '@/sync/payments';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
+export type FontScale = 'small' | 'medium' | 'large';
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
 export type CalendarTarget = 'quickAdd' | 'hub' | null;
 
@@ -51,6 +52,7 @@ interface AppState {
   activeListId: string | null;
   dark: boolean;
   accent: AccentColor;
+  fontScale: FontScale;
   biometricLock: boolean;
   alerts: boolean;
   userName: string;
@@ -89,6 +91,7 @@ interface AppState {
 
   setDark(d: boolean): void;
   setAccent(a: AccentColor): void;
+  setFontScale(f: FontScale): void;
   setPref(key: 'biometricLock' | 'alerts', value: boolean): void;
 
   openModal(m: ModalName, taskId?: string | null): void;
@@ -125,6 +128,13 @@ function applyDark(dark: boolean): void {
   document.documentElement.classList.toggle('dark', dark);
 }
 
+/** اندازه‌ی فونت اپ — کلاس روی html اعمال می‌شود (CSS مقیاس توکن‌های تایپوگرافی را عوض می‌کند) */
+function applyFontScale(f: FontScale): void {
+  const root = document.documentElement;
+  root.classList.toggle('font-small', f === 'small');
+  root.classList.toggle('font-large', f === 'large');
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   lists: [],
@@ -134,6 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeListId: null,
   dark: false,
   accent: 'teal',
+  fontScale: 'medium',
   biometricLock: true,
   alerts: true,
   userName: '',
@@ -163,21 +174,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     await ensureSeeded();
     await get().refresh();
-    const [dark, accent, biometric, alerts, savedName] = await Promise.all([
+    const [dark, accent, biometric, alerts, savedName, fontScale] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
       repo.prefsGet<boolean>('biometricLock', true),
       repo.prefsGet<boolean>('alerts', true),
       repo.prefsGet<string>('userName', ''),
+      repo.prefsGet<FontScale>('fontScale', 'medium'),
     ]);
     // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
     const userName = savedName === 'علی' ? '' : savedName;
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, biometricLock: biometric, alerts, userName });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName });
     applyDark(dark);
     applyAccent(accent);
+    applyFontScale(fontScale);
 
     // اتصال موتور سینک به store (فاز ۲)
     setSyncListeners({
@@ -310,6 +323,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ accent });
     applyAccent(accent);
     void repo.prefsSet('accent', accent);
+  },
+
+  setFontScale(fontScale) {
+    set({ fontScale });
+    applyFontScale(fontScale);
+    void repo.prefsSet('fontScale', fontScale);
   },
 
   async setPref(key, value) {

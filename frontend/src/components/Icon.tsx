@@ -58,7 +58,9 @@ export type IconName =
   | 'verified'
   | 'warning'
   | 'wifi'
-  | 'workspace_premium';
+  | 'workspace_premium'
+  | 'format_size'
+  | 'help';
 
 interface IconProps {
   name: IconName;
