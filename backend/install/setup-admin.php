@@ -24,8 +24,9 @@ require __DIR__ . '/../src/Database.php';
 
 Config::load();
 
-header('Content-Type: application/json; charset=utf-8');
-header('X-Content-Type-Options: nosniff');
+// ⚠️ هدرها بر اساس نوع پاسخ داخل jsonOut() و شاخه‌ی فرم تنظیم می‌شوند؛
+// هدر سراسری اینجا باعث می‌شد فرم HTML با Content-Type: application/json
+// به‌عنوان متن خام در مرورگر نمایش داده شود.
 
 const LOCK_FILE = __DIR__ . '/.installed';
 const SELF_NAME = 'setup-admin.php';
@@ -33,6 +34,8 @@ const DISABLED_NAME = 'setup-admin.disabled.php';
 
 function jsonOut(array $data, int $status = 200): never
 {
+    header('Content-Type: application/json; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -60,8 +63,10 @@ if ($isCli) {
 
     if ($method !== 'POST') {
         // صفحه‌ی ساده‌ی فرم برای ورود دستی یک‌بارمصرف (توکن از آدرس پیش‌پر می‌شود)
+        header('Content-Type: text/html; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
         $prefillToken = htmlspecialchars((string) ($_GET['token'] ?? ''), ENT_QUOTES, 'UTF-8');
-        echo '<!doctype html><html dir="rtl" lang="fa"><meta charset="utf-8"><title>نصب کارام</title>';
+        echo '<!doctype html><html dir="rtl" lang="fa"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>نصب کارام</title>';
         echo '<body style="font-family:sans-serif;max-width:28rem;margin:4rem auto;direction:rtl">';
         echo '<h2>نصب کارام — ساخت ادمین اصلی</h2>';
         echo '<p style="color:#888">این فرم فقط یک‌بار کار می‌کند و پس از نصب خودش غیرفعال می‌شود.</p>';
