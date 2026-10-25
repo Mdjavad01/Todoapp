@@ -68,6 +68,8 @@ interface AppState {
   genderSheet: boolean;
   /** راهنمای کارام (v11) — پاپ‌آپ مرکزی با پرسش‌های پرتکرار */
   guideSheet: boolean;
+  /** تور تعاملی مرحله‌به‌مرحله (v12) — توولتیپ روی المان‌های واقعی اپ */
+  tourOpen: boolean;
   /** آنبوردینگ کامل (v10) — خوش‌آمد + نام + ظاهر؛ بعد از اولین ورود */
   welcomeSheet: boolean;
   /** حباب راهنمای «اولین کار» (v10) — بالای دکمه‌ی + تا اولین افزودن یا بستن */
@@ -89,6 +91,8 @@ interface AppState {
   openGenderSheet(): void;
   /** باز کردن پاپ‌آپ راهنمای کارام (v11) */
   openGuideSheet(): void;
+  /** شروع تور تعاملی (v12) — شیت راهنما و حباب آموزشی بسته می‌شوند */
+  openTour(): void;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
   saveDisplayName(name: string): Promise<void>;
   /** بستن حباب راهنمای اولین کار — دیگر نمایش داده نمی‌شود */
@@ -171,6 +175,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   accountSheet: false,
   genderSheet: false,
   guideSheet: false,
+  tourOpen: false,
   welcomeSheet: false,
   coachAdd: false,
   appSettings: {
@@ -289,6 +294,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openGuideSheet() {
     set({ guideSheet: true });
+  },
+
+  openTour() {
+    if (get().coachAdd) get().dismissCoachAdd();
+    set({ tourOpen: true, guideSheet: false });
   },
 
   async saveDisplayName(name) {

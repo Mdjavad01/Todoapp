@@ -5,7 +5,7 @@ import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۳.۳.۰';
+const APP_VERSION = '۳.۴.۰';
 
 /** گزینه‌های اندازه‌ی فونت — preview فقط برای پیش‌نمایش دکمه‌هاست */
 const FONT_SIZES: { value: FontScale; label: string; hint: string; preview: number }[] = [

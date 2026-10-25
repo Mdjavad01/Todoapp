@@ -71,6 +71,7 @@ const GUIDE_ITEMS: GuideItem[] = [
 /** پاپ‌آپ راهنمای کارام (v11) — پنجره‌ی مرکزی با ورود فِید + پاپ جذاب، هدر گرادیانی و آکاردئون رنگی */
 export function GuideSheet() {
   const open = useAppStore((s) => s.guideSheet);
+  const openTour = useAppStore((s) => s.openTour);
   const onClose = () => useAppStore.setState({ guideSheet: false });
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export function GuideSheet() {
             <div className="flex-1 min-w-0">
               <h3 className="text-headline-md font-black text-white">راهنمای کارام</h3>
               <p className="text-body-sm text-white/85 mt-0.5">
-                هر آنچه باید بدانید — {toFa(GUIDE_ITEMS.length)} پرسش و پاسخ
+                تور تعاملی + {toFa(GUIDE_ITEMS.length)} پرسش و پاسخ
               </p>
             </div>
             <button
@@ -119,6 +120,29 @@ export function GuideSheet() {
               <Icon name="close" size={22} />
             </button>
           </div>
+        </div>
+
+        {/* تور تعاملی مرحله‌به‌مرحله (v12) */}
+        <div className="m-3.5 mb-0 rounded-2xl border border-primary/30 bg-primary/5 dark:bg-primary/10 p-4 relative overflow-hidden">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+              <Icon name="auto_awesome" size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">تور تعاملی کارام</p>
+              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">۵ گام کوتاه؛ هر گام یک بخش واقعی از اپ را با نورافکن نشانتان می‌دهد</p>
+            </div>
+          </div>
+          <button
+            className="mt-3 w-full py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+            onClick={() => {
+              onClose();
+              openTour();
+            }}
+          >
+            <Icon name="flag" size={17} />
+            شروع تور مرحله‌به‌مرحله
+          </button>
         </div>
 
         {/* آکاردئون پرسش‌ها — لیست بلند با اسکرول */}
@@ -148,7 +172,7 @@ export function GuideSheet() {
             onClick={onClose}
           >
             <Icon name="check" size={19} />
-            فهمیدم، شروع می‌کنم!
+            متوجه شدم!
           </button>
         </div>
       </div>
