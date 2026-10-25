@@ -10,33 +10,39 @@ declare(strict_types=1);
  * همه‌ی تاریخ‌ها UTC ذخیره و برگردانده می‌شوند.
  */
 
-require __DIR__ . '/../src/Config.php';
-require __DIR__ . '/../src/Database.php';
-require __DIR__ . '/../src/Http/Request.php';
-require __DIR__ . '/../src/Http/Response.php';
-require __DIR__ . '/../src/Http/Router.php';
-require __DIR__ . '/../src/Support/Uuid.php';
-require __DIR__ . '/../src/Support/Settings.php';
-require __DIR__ . '/../src/Security/Validator.php';
-require __DIR__ . '/../src/Auth/AccessToken.php';
-require __DIR__ . '/../src/Auth/Guard.php';
-require __DIR__ . '/../src/Auth/AdminGuard.php';
-require __DIR__ . '/../src/Auth/Otp.php';
-require __DIR__ . '/../src/Auth/RefreshToken.php';
-require __DIR__ . '/../src/Services/Mailer.php';
-require __DIR__ . '/../src/Services/Sms.php';
-require __DIR__ . '/../src/Services/TelegramBot.php';
-require __DIR__ . '/../src/Services/Audit.php';
-require __DIR__ . '/../src/Services/Entities.php';
-require __DIR__ . '/../src/Services/SyncService.php';
-require __DIR__ . '/../src/Payments/Subscription.php';
-require __DIR__ . '/../src/Payments/ZibalProvider.php';
-require __DIR__ . '/../src/Controllers/HealthController.php';
-require __DIR__ . '/../src/Controllers/AuthController.php';
-require __DIR__ . '/../src/Controllers/RestEntityController.php';
-require __DIR__ . '/../src/Controllers/SyncController.php';
-require __DIR__ . '/../src/Controllers/PaymentController.php';
-require __DIR__ . '/../src/Controllers/AdminController.php';
+// چیدمان مخزن: index.php در backend/public است و src کنار آن (backend/src)
+// چیدمان هاست اشتراکی: index.php داخل api/ است و src داخل همان پوشه (api/src)
+// ⚠️ باگ قبلی: «../src/» در چیدمان هاست به public_html/src می‌رسید که وجود نداشت
+//    و باعث Fatal Error و خطای HTTP 500 خالی در همه‌ی مسیرهای API می‌شد.
+$srcDir = is_dir(__DIR__ . '/src') ? __DIR__ : dirname(__DIR__);
+
+require $srcDir . '/src/Config.php';
+require $srcDir . '/src/Database.php';
+require $srcDir . '/src/Http/Request.php';
+require $srcDir . '/src/Http/Response.php';
+require $srcDir . '/src/Http/Router.php';
+require $srcDir . '/src/Support/Uuid.php';
+require $srcDir . '/src/Support/Settings.php';
+require $srcDir . '/src/Security/Validator.php';
+require $srcDir . '/src/Auth/AccessToken.php';
+require $srcDir . '/src/Auth/Guard.php';
+require $srcDir . '/src/Auth/AdminGuard.php';
+require $srcDir . '/src/Auth/Otp.php';
+require $srcDir . '/src/Auth/RefreshToken.php';
+require $srcDir . '/src/Services/Mailer.php';
+require $srcDir . '/src/Services/Sms.php';
+require $srcDir . '/src/Services/TelegramBot.php';
+require $srcDir . '/src/Services/Audit.php';
+require $srcDir . '/src/Services/Entities.php';
+require $srcDir . '/src/Services/SyncService.php';
+require $srcDir . '/src/Payments/Subscription.php';
+require $srcDir . '/src/Payments/ZibalProvider.php';
+require $srcDir . '/src/Controllers/HealthController.php';
+require $srcDir . '/src/Controllers/AuthController.php';
+require $srcDir . '/src/Controllers/RestEntityController.php';
+require $srcDir . '/src/Controllers/SyncController.php';
+require $srcDir . '/src/Controllers/PaymentController.php';
+require $srcDir . '/src/Controllers/AdminController.php';
 
 // همه‌ی تاریخ‌ها UTC — هم در PHP هم در MySQL
 date_default_timezone_set('UTC');
