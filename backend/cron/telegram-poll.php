@@ -229,6 +229,14 @@ function karamTelegramCheckPage(): void
     if (!TelegramBot::configured()) {
         $rows[] = ['توکن ربات', 'err', 'ذخیره نشده است. اول از پنل ← تنظیمات ← پروایدر تلگرام، توکن @BotFather را ذخیره کنید.'];
     } else {
+        // شکل توکن — خطای رایج: نویسه‌ی اضافه/ناقص هنگام کپی با موبایل (الان خودکار پاک می‌شود)
+        $token = TelegramBot::token();
+        $masked = strlen($token) > 10
+            ? substr($token, 0, 4) . '••••' . substr($token, -3) . ' (طول ' . strlen($token) . ' کاراکتر)'
+            : 'مقدار کوتاه/عجیب';
+        $shapeOk = preg_match('/^\d+:[A-Za-z0-9_\-]{20,}$/', $token) === 1;
+        $rows[] = ['شکل توکن', $shapeOk ? 'ok' : 'warn', 'توکن ذخیره‌شده: ' . htmlspecialchars($masked, ENT_QUOTES, 'UTF-8') . ' — ' . ($shapeOk ? 'شکل استاندارد است (مثل 123456789:AAExxx…)' : 'شکل استاندارد توکن ربات نیست! توکن باید مثل 123456789:AAExxx… باشد — از پیام @BotFather دوباره کپی و در پنل ← تنظیمات ذخیره کنید.')];
+
         try {
             $me = TelegramBot::getMe();
             if ($me['ok']) {
@@ -258,12 +266,16 @@ function karamTelegramCheckPage(): void
                     $rows[] = ['نام کاربری ربات', 'warn', 'هم‌گام‌سازی خودکار ناموفق بود: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')];
                 }
             } else {
-                $rows[] = ['توکن ربات', 'err', 'ربات API این توکن را نمی‌پذیرد: ' . htmlspecialchars((string) $me['error'], ENT_QUOTES, 'UTF-8')];
+                $rows[] = ['اتصال به تلگرام', 'err', htmlspecialchars((string) $me['error'], ENT_QUOTES, 'UTF-8')];
             }
         } catch (Throwable $e) {
             $rows[] = ['توکن ربات', 'err', 'خطا در بررسی توکن: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')];
         }
     }
+
+    /* --- مبنای API (تشخیص باقی‌ماندن تنظیم mock تست) --- */
+    $apiBase = rtrim((string) (Config::get('TELEGRAM_API_BASE', 'https://api.telegram.org') ?? 'https://api.telegram.org'), '/');
+    $rows[] = ['مبنای API تلگرام', $apiBase === 'https://api.telegram.org' ? 'ok' : 'warn', htmlspecialchars($apiBase, ENT_QUOTES, 'UTF-8') . ($apiBase === 'https://api.telegram.org' ? ' (پیش‌فرض — درست)' : ' — غیر از آدرس رسمی است؛ اگر از تست قبلی مانده، در .env کلید TELEGRAM_API_BASE را حذف کنید.')];
 
     /* --- وضعیت webhook --- */
     if ($tokenOk) {

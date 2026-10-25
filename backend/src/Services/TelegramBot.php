@@ -27,7 +27,10 @@ final class TelegramBot
 
     public static function token(): string
     {
-        return (string) (Settings::get('telegram_bot_token', (string) (Config::get('TELEGRAM_BOT_TOKEN', '') ?? '')) ?? '');
+        $raw = (string) (Settings::get('telegram_bot_token', (string) (Config::get('TELEGRAM_BOT_TOKEN', '') ?? '')) ?? '');
+        // خطای رایج کپی‌پیست موبایل: فاصله/خط جدید/نقل‌قول/نویسه‌ی نامرئی در توکن
+        // → cURL «HTTP 0» می‌دهد. فقط نویسه‌های مجاز توکن (رقم، حرف، :، -، _) می‌مانند.
+        return (string) preg_replace('/[^0-9A-Za-z:_\-]/', '', $raw);
     }
 
     public static function botUsername(): string
@@ -54,7 +57,7 @@ final class TelegramBot
     public static function sendMessage(int|string $chatId, string $text): bool
     {
         // مسیر رسمی Bot API: /bot{TOKEN}/sendMessage — بدون اسلش بعد از bot
-        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/sendMessage';
+        $url = self::apiBase() . '/bot' . self::token() . '/sendMessage';
         $body = json_encode(['chat_id' => $chatId, 'text' => $text], JSON_UNESCAPED_UNICODE);
         [$status] = self::httpPostJson($url, (string) $body);
         return $status === 200;
@@ -63,12 +66,22 @@ final class TelegramBot
     /** بررسی اعتبار توکن ربات (پنل ادمین هنگام ذخیره‌ی توکن صدایش می‌زند) */
     public static function getMe(): array
     {
-        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/getMe';
-        [$status, $body] = self::httpPostJson($url, '');
+        $url = self::apiBase() . '/bot' . self::token() . '/getMe';
+        [$status, $body, $err] = self::httpPostJson($url, '');
+        if ($status === 0) {
+            // HTTP 0 = اصلاً پاسخی از تلگرام نرسیده (اتصال/شبکه) — نه رد شدن توکن
+            return ['ok' => false, 'error' => 'ارتباط با سرور تلگرام برقرار نشد' . ($err !== '' ? ' — cURL: ' . $err : ''), 'network' => true];
+        }
         $json = is_string($body) ? json_decode($body, true) : null;
         if ($status === 200 && is_array($json) && ($json['ok'] ?? false) === true) {
             $u = $json['result']['username'] ?? '';
             return ['ok' => true, 'username' => is_string($u) ? $u : ''];
+        }
+        if ($status === 401) {
+            return ['ok' => false, 'error' => 'توکن ربات نامعتبر است (Unauthorized) — توکن را دوباره از @BotFather کپی و در پنل ذخیره کنید'];
+        }
+        if ($status === 404) {
+            return ['ok' => false, 'error' => 'توکن پیدا نشد (Not Found) — شکل توکن درست نیست؛ دوباره از @BotFather کپی کنید'];
         }
         $desc = is_array($json) ? (string) ($json['description'] ?? '') : '';
         return ['ok' => false, 'error' => $desc !== '' ? $desc : 'HTTP ' . $status];
@@ -77,7 +90,7 @@ final class TelegramBot
     /** حذف webhook ثبت‌شده‌ی قبلی — کارام با getUpdates کار می‌کند و webhook باید خالی باشد */
     public static function clearWebhook(): bool
     {
-        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/deleteWebhook';
+        $url = self::apiBase() . '/bot' . self::token() . '/deleteWebhook';
         [$status] = self::httpPostJson($url, '');
         error_log("[karam][telegram] deleteWebhook status={$status} (رفع تداخل webhook قبلی)");
         return $status === 200;
@@ -89,8 +102,11 @@ final class TelegramBot
      */
     public static function getWebhookInfo(): array
     {
-        $url = self::apiBase() . '/bot' . rawurlencode(self::token()) . '/getWebhookInfo';
+        $url = self::apiBase() . '/bot' . self::token() . '/getWebhookInfo';
         [$status, $body] = self::httpPostJson($url, '');
+        if ($status === 0) {
+            return ['ok' => false, 'error' => 'ارتباط با سرور تلگرام برقرار نشد'];
+        }
         $json = is_string($body) ? json_decode($body, true) : null;
         if ($status === 200 && is_array($json) && ($json['ok'] ?? false) === true && is_array($json['result'] ?? null)) {
             $r = $json['result'];
@@ -108,7 +124,7 @@ final class TelegramBot
     /** @return array<int,array>|null null = خطای اتصال */
     private static function getUpdates(?int $offset): ?array
     {
-        $url = self::apiBase() . '/bot' . rawurlencode(self::token())
+        $url = self::apiBase() . '/bot' . self::token()
             . '/getUpdates?timeout=0&allowed_updates=%5B%22message%22%5D';
         if ($offset !== null && $offset > 0) {
             $url .= '&offset=' . $offset;
@@ -131,7 +147,7 @@ final class TelegramBot
         return $json['result'];
     }
 
-    /** @return array{0:int,1:?string} */
+    /** @return array{0:int,1:?string,2:string} [وضعیت HTTP، بدنه، متن خطای cURL] */
     private static function httpPostJson(string $url, string $body): array
     {
         if (!function_exists('curl_init')) {
@@ -153,14 +169,14 @@ final class TelegramBot
                     $status = (int) $m[1];
                 }
             }
-            return [$status, $resp === false ? null : $resp];
+            return [$status, $resp === false ? null : $resp, ''];
         }
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 12,
-            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         ]);
         if ($body !== '') {
@@ -173,9 +189,9 @@ final class TelegramBot
         curl_close($ch);
         if ($resp === false) {
             error_log('[karam][telegram] خطای ارتباط با API تلگرام: ' . $err);
-            return [0, null];
+            return [0, null, $err];
         }
-        return [$status, (string) $resp];
+        return [$status, (string) $resp, ''];
     }
 
     /* ---------------- پیام‌های جدید + تطبیق بلیت ---------------- */
