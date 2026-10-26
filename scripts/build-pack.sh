@@ -17,10 +17,11 @@ cp "$ROOT/frontend/public/.htaccess" "$STAGE/.htaccess"
 mkdir -p "$STAGE/panel"
 cp -r "$ROOT/frontend/admin/dist/." "$STAGE/panel/"
 
-# ۳) API کامل
+# ۳) API کامل + کرون (v19: کرون تلگرام + کرون بکاپ روزانه)
 cp "$ROOT/backend/public/index.php" "$STAGE/api/index.php"
 cp "$ROOT/backend/public/.htaccess" "$STAGE/api/.htaccess"
 cp -r "$ROOT/backend/src" "$STAGE/api/src"
+cp -r "$ROOT/backend/cron" "$STAGE/api/cron"
 cp "$ROOT/backend/storage/.htaccess" "$STAGE/api/storage/.htaccess"
 cp "$ROOT/backend/storage/.htaccess" "$STAGE/api/storage/cache/.htaccess"
 cp "$ROOT/backend/storage/logs/.gitkeep" "$STAGE/api/storage/logs/.gitkeep" 2>/dev/null || touch "$STAGE/api/storage/logs/.gitkeep"

@@ -323,6 +323,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('support_telegram', ''),
   ('trial_enabled', '1'),
   ('trial_days', '7'),
+  ('backup_telegram_chat', ''),
   ('provider_email_enabled', '0'),
   ('telegram_bot_token', ''),
   ('telegram_bot_username', ''),

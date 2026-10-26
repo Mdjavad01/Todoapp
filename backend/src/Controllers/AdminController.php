@@ -160,6 +160,39 @@ final class AdminController
             return $v === false ? 0 : (int) $v;
         };
 
+        // v19 (گام ۱۹) — داده‌های فروش: درآمد ماه (درگاه + کارت‌به‌کارت)، نرخ تبدیل، سری ۶ماهه
+        $monthStart = gmdate('Y-m-01 00:00:00');
+        $sixMonthsStart = gmdate('Y-m-01 00:00:00', strtotime('-5 months', strtotime($monthStart)));
+        $totalUsers = $one('SELECT COUNT(*) FROM users');
+        $monthOrderRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]);
+        $monthDepositRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :ms", [':ms' => $monthStart]);
+        $lifeOrderRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved')");
+        $lifeDepositRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM deposit_requests WHERE status = 'approved'");
+        // نرخ تبدیل ثبت‌نام ← پرداخت واقعی: هر کاربری که حداقل یک اشتراک غیرآزمایشی دارد
+        $paidUsers = $one("SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE source <> 'trial'");
+
+        // سری ۶ ماه درآمد — ترکیب سفارش‌های درگاه (created_at) و واریزی‌های تأییدشده (reviewed_at)
+        $revMap = [];
+        $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, SUM(amount_rials) AS s
+                             FROM orders WHERE status IN ('paid','approved') AND created_at >= :f
+                             GROUP BY DATE_FORMAT(created_at, '%Y-%m')");
+        $st->execute([':f' => $sixMonthsStart]);
+        foreach ($st->fetchAll() as $r) {
+            $revMap[(string) $r['m']] = (int) $r['s'];
+        }
+        $st = $pdo->prepare("SELECT DATE_FORMAT(reviewed_at, '%Y-%m') AS m, SUM(amount_rials) AS s
+                             FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :f
+                             GROUP BY DATE_FORMAT(reviewed_at, '%Y-%m')");
+        $st->execute([':f' => $sixMonthsStart]);
+        foreach ($st->fetchAll() as $r) {
+            $revMap[(string) $r['m']] = ($revMap[(string) $r['m']] ?? 0) + (int) $r['s'];
+        }
+        $salesSeries = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $m = gmdate('Y-m', strtotime("-{$i} months", strtotime(gmdate('Y-m-01'))));
+            $salesSeries[] = ['month' => $m, 'revenueRials' => $revMap[$m] ?? 0];
+        }
+
         // سری ثبت‌نام ۷ روز اخیر (روزهای بی‌داده = صفر)
         $series = [];
         for ($i = 6; $i >= 0; $i--) {
@@ -201,8 +234,22 @@ final class AdminController
                     'paidCount' => $one("SELECT COUNT(*) FROM orders WHERE status IN ('paid','approved')"),
                     'paidAmountRials' => $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved')"),
                     'pendingReview' => $one("SELECT COUNT(*) FROM orders WHERE status = 'pending_review'"),
+                    'monthPaidCount' => $one("SELECT COUNT(*) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]),
+                    'monthPaidRials' => $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]),
+                ],
+                // v19 (گام ۱۹) — فروش واقعی: درگاه + کارت‌به‌کارت + نرخ تبدیل
+                'sales' => [
+                    'monthOrderRials' => $monthOrderRials,
+                    'monthDepositRials' => $monthDepositRials,
+                    'monthTotalRials' => $monthOrderRials + $monthDepositRials,
+                    'monthDeposits' => $one("SELECT COUNT(*) FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :ms", [':ms' => $monthStart]),
+                    'lifetimeTotalRials' => $lifeOrderRials + $lifeDepositRials,
+                    'paidUsers' => $paidUsers,
+                    'activePremium' => $one('SELECT COUNT(*) FROM users WHERE premium_until IS NOT NULL AND premium_until > :n', [':n' => $now]),
+                    'conversionPercent' => $totalUsers > 0 ? round($paidUsers / $totalUsers * 100, 1) : 0.0,
                 ],
                 'signupsSeries' => $series,
+                'salesSeries' => $salesSeries,
             ],
         ]);
     }
@@ -1067,6 +1114,8 @@ final class AdminController
             'app_update_notes' => ['type' => 'str', 'min' => 0, 'max' => 1000],
             'support_email' => ['type' => 'str', 'min' => 0, 'max' => 190],
             'support_telegram' => ['type' => 'str', 'min' => 0, 'max' => 100],
+            // --- بکاپ خودکار (v19 — کرون روزانه cron/backup-db.php + گزارش تلگرامی) ---
+            'backup_telegram_chat' => ['type' => 'str', 'min' => 0, 'max' => 60],
         ];
     }
 

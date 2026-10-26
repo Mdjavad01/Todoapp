@@ -148,8 +148,19 @@ export const api = {
         users: { total: number; today: number; last7d: number; blocked: number; premium: number };
         content: { lists: number; tasks: number; subtasks: number; tasksCompleted: number };
         sessions: number;
-        orders: { paidCount: number; paidAmountRials: number; pendingReview: number };
+        orders: { paidCount: number; paidAmountRials: number; pendingReview: number; monthPaidCount: number; monthPaidRials: number };
+        sales: {
+          monthOrderRials: number;
+          monthDepositRials: number;
+          monthTotalRials: number;
+          monthDeposits: number;
+          lifetimeTotalRials: number;
+          paidUsers: number;
+          activePremium: number;
+          conversionPercent: number;
+        };
         signupsSeries: { date: string; count: number }[];
+        salesSeries: { month: string; revenueRials: number }[];
       };
     }>('/stats'),
 

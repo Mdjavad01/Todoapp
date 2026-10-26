@@ -465,6 +465,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('support_telegram', ''),
   ('trial_enabled', '0'),
   ('trial_days', '7'),
+  ('backup_telegram_chat', ''),
   ('provider_email_enabled', '0'),
   ('mail_transport', ''),
   ('smtp_host', ''),

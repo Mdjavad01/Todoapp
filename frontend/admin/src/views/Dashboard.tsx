@@ -3,9 +3,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { faNum, faMoney, faDayShort } from '../format';
+import { faNum, faMoney, faDayShort, faMonthShort } from '../format';
 import { Spinner, Bar } from '../ui';
-import { IconUsers, IconVerified, IconBlock, IconRefresh } from '../icons';
+import { IconUsers, IconVerified, IconBlock, IconRefresh, IconCard, IconCrown, IconChart } from '../icons';
 
 type Stats = Awaited<ReturnType<typeof api.stats>>['stats'];
 
@@ -84,6 +84,62 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
           </div>
         </section>
       </div>
+
+      {/* فروش و درآمد (گام ۱۹) */}
+      <section aria-label="فروش و درآمد" className="card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-700">فروش و درآمد — ماه جاری</h2>
+          <button type="button" className="btn-ghost !px-2 !py-1 text-xs" onClick={() => void load()} disabled={busy}>
+            <IconRefresh size={16} /> به‌روزرسانی
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard
+            icon={<IconCard size={20} />}
+            label="درآمد این ماه (تومان)"
+            value={faMoney(Math.round(stats.sales.monthTotalRials / 10))}
+            tone="brand"
+          />
+          <StatCard
+            icon={<IconVerified size={20} />}
+            label="پرداخت موفق این ماه"
+            value={faNum(stats.orders.monthPaidCount + stats.sales.monthDeposits)}
+          />
+          <StatCard
+            icon={<IconCrown size={20} />}
+            label="اشتراک فعال (پرو)"
+            value={faNum(stats.sales.activePremium)}
+            tone="amber"
+          />
+          <StatCard
+            icon={<IconChart size={20} />}
+            label="نرخ تبدیل ثبت‌نام ← پرداخت"
+            value={`${faNum(stats.sales.conversionPercent)}٪`}
+          />
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-slate-400">
+          درآمد = درگاه بانکی ({faMoney(Math.round(stats.sales.monthOrderRials / 10))} تومان) + کارت‌به‌کارت تأییدشده ({faMoney(Math.round(stats.sales.monthDepositRials / 10))} تومان) · درآمد کل تا امروز: {faMoney(Math.round(stats.sales.lifetimeTotalRials / 10))} تومان
+        </p>
+
+        {/* نمودار ۶ماهه درآمد */}
+        <div className="mt-4">
+          <h3 className="mb-3 text-xs font-bold text-slate-500">روند درآمد ۶ ماه اخیر (تومان)</h3>
+          <div className="flex h-36 items-end justify-between gap-2" dir="ltr">
+            {[...stats.salesSeries].reverse().map((s) => {
+              const maxRev = Math.max(1, ...stats.salesSeries.map((x) => x.revenueRials));
+              return (
+                <div key={s.month} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5" dir="rtl">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {s.revenueRials > 0 ? faNum(new Intl.NumberFormat('en-US').format(Math.round(s.revenueRials / 10))) : ''}
+                  </span>
+                  <SignupBar pct={(s.revenueRials / maxRev) * 100} />
+                  <span className="max-w-full truncate text-[10px] text-slate-400">{faMonthShort(s.month)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       {/* سفارش‌ها */}
       <section aria-label="سفارش‌ها" className="card p-5">

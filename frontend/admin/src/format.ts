@@ -72,6 +72,12 @@ export function faDayShort(dateIso: string): string {
   return `${faNum(real[2])} ${JMONTHS[real[1] - 1]}`;
 }
 
+/** ماه برای نمودار فروش: «2026-10» → «آبان ۱۴۰۵» */
+export function faMonthShort(ym: string): string {
+  const real = toJalali(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 1);
+  return `${JMONTHS[real[1] - 1]} ${faNum(real[0])}`;
+}
+
 /* ---------------- متن‌های ثابت ---------------- */
 
 export const STATUS_LABELS: Record<string, string> = {

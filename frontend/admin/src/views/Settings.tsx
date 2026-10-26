@@ -143,6 +143,13 @@ const GROUPS: GroupDef[] = [
       { key: 'support_telegram', label: 'آیدی تلگرام پشتیبانی', kind: 'text', dir: 'ltr', help: 'بدون @ یا با @ — مثل: karam_support' },
     ],
   },
+  {
+    title: 'بکاپ و پشتیبان (v19)',
+    description: 'بکاپ روزانه خودکار با کرون هاست انجام می‌شود (api/cron/backup-db.php — راهنما در INSTALL بخش ۱۵). فایل‌ها در storage/backups بیرون از webroot نگه‌داری می‌شوند (۷ نسخه‌ی آخر).',
+    fields: [
+      { key: 'backup_telegram_chat', label: 'شناسه چت تلگرام ادمین (اختیاری)', kind: 'text', dir: 'ltr', help: 'عددِ chat_id حساب/گروه تلگرام شما — اگر پر باشد، ربات همان فایل بکاپ را هر روز می‌فرستد (تا ۴۵MB؛ بزرگ‌تر = فقط پیام گزارش). برای پیدا کردن chat_id: به ربات @userinfobot پیام بدهید' },
+    ],
+  },
 ];
 
 const SECRET_MASK = '••••••••';
