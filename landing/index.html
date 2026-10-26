@@ -1,0 +1,339 @@
+<!doctype html>
+<!--
+  کارام — صفحه فروش (لندینگ) — گام ۱۸ توزیع
+  یک فایل مستقل، فارسی RTL، صفر درخواست خارجی (بدون CDN و فونت خارجی) — هر جا آپلود شد کار می‌کند.
+
+  ⬇⬇ قبل از انتشار فقط بخش «پیکربندی» در انتهای همین فایل را ویرایش کنید ⬇⬇
+  (شناسه تلگرام و ایمیل پشتیبانی — همان مقادیری که در پنل ← تنظیمات ← پشتیبانی گذاشته‌اید)
+  قیمت‌ها از سید پلن‌های پنل آمده؛ اگر پلن‌ها را در پنل عوض کردید همین‌جا هم به‌روز کنید.
+-->
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>کارام — دستیار هوشمند مدیریت وظایف</title>
+<meta name="description" content="کارام: مدیریت آفلاین کارهای روزانه با سینک ابری، یادآور، تقویم شمسی و ورود آسان با تلگرام. ۷ روز کارام پرو رایگان.">
+<meta name="theme-color" content="#0f766e">
+<style>
+  :root{
+    --primary:#0f766e; --primary-deep:#115e59; --primary-soft:#14b8a6;
+    --bg:#f8fafc; --card:#ffffff; --line:#e2e8f0; --ink:#0f172a; --muted:#64748b;
+    --amber-bg:#fffbeb; --amber-line:#fcd34d; --amber-ink:#92400e;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f172a; --card:#1e293b; --line:#334155; --ink:#e2e8f0; --muted:#94a3b8;
+      --amber-bg:#451a03; --amber-line:#b45309; --amber-ink:#fde68a;
+    }
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Segoe UI",Tahoma,"Iranian Sans",Vazirmatn,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.9; font-size:16px;
+  }
+  a{color:inherit; text-decoration:none}
+  .wrap{max-width:960px; margin:0 auto; padding:0 20px}
+  /* ── هدر ── */
+  header{position:sticky; top:0; z-index:9; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(8px); border-bottom:1px solid var(--line)}
+  .nav{display:flex; align-items:center; gap:12px; padding:12px 0}
+  .logo{display:flex; align-items:center; gap:10px; font-weight:900; font-size:20px}
+  .logo .badge-logo{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--primary),var(--primary-deep)); display:grid; place-items:center; color:#fff; flex-shrink:0}
+  .nav nav{margin-inline-start:auto; display:flex; gap:18px; font-size:14px; color:var(--muted)}
+  .nav nav a:hover{color:var(--primary)}
+  @media(max-width:560px){.nav nav{display:none}}
+  /* ── هیرو ── */
+  .hero{text-align:center; padding:64px 0 40px}
+  .hero h1{font-size:clamp(28px,5vw,44px); font-weight:900; line-height:1.5}
+  .hero h1 em{font-style:normal; color:var(--primary)}
+  .hero p.sub{color:var(--muted); font-size:clamp(15px,2.4vw,18px); max-width:560px; margin:16px auto 0}
+  .cta-row{display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:28px}
+  .btn{display:inline-flex; align-items:center; gap:8px; font-weight:800; font-size:16px; padding:14px 28px; border-radius:16px; transition:transform .15s, box-shadow .15s}
+  .btn:active{transform:scale(.98)}
+  .btn-pri{background:linear-gradient(135deg,var(--primary),var(--primary-deep)); color:#fff; box-shadow:0 8px 24px -8px color-mix(in srgb, var(--primary) 55%, transparent)}
+  .btn-ghost{border:1.5px solid var(--line); background:var(--card); color:var(--ink)}
+  .chips{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:26px}
+  .chip{font-size:13px; font-weight:700; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--muted)}
+  /* ── بنر آزمایشی ── */
+  .trial{margin:34px 0 0; border:1.5px dashed var(--amber-line); background:var(--amber-bg); color:var(--amber-ink); border-radius:18px; padding:16px 20px; text-align:center; font-weight:800}
+  /* ── بخش‌ها ── */
+  section{padding:44px 0}
+  h2.sec{font-size:clamp(20px,3.4vw,26px); font-weight:900; text-align:center; margin-bottom:8px}
+  p.sec-sub{text-align:center; color:var(--muted); font-size:14px; margin-bottom:28px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px}
+  .feat{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px}
+  .feat .ic{width:42px; height:42px; border-radius:13px; display:grid; place-items:center; background:color-mix(in srgb, var(--primary) 12%, transparent); color:var(--primary); margin-bottom:10px}
+  .feat h3{font-size:15px; font-weight:900; margin-bottom:4px}
+  .feat p{font-size:13.5px; color:var(--muted)}
+  /* ── قیمت ── */
+  .plans{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; align-items:stretch}
+  .plan{position:relative; background:var(--card); border:1.5px solid var(--line); border-radius:20px; padding:24px 20px; text-align:center; display:flex; flex-direction:column}
+  .plan.best{border-color:var(--primary); box-shadow:0 12px 32px -14px color-mix(in srgb, var(--primary) 45%, transparent)}
+  .plan .tag{position:absolute; top:-13px; right:50%; transform:translateX(50%); background:var(--primary); color:#fff; font-size:12px; font-weight:800; padding:4px 14px; border-radius:999px; white-space:nowrap}
+  .plan h3{font-size:16px; font-weight:900}
+  .plan .price{font-size:30px; font-weight:900; color:var(--primary); margin:10px 0 2px}
+  .plan .per{font-size:12.5px; color:var(--muted)}
+  .plan ul{list-style:none; margin:16px 0 18px; text-align:right; flex:1}
+  .plan li{font-size:13.5px; padding:5px 0; display:flex; gap:8px; align-items:flex-start}
+  .plan li svg{flex-shrink:0; margin-top:6px; color:var(--primary)}
+  .plan .btn{justify-content:center; font-size:14.5px; padding:11px 18px}
+  .pay-note{text-align:center; font-size:12.5px; color:var(--muted); margin-top:18px}
+  /* ── دانلود ── */
+  .dl{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px}
+  .dl-card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:22px; text-align:center}
+  .dl-card h3{font-size:15px; font-weight:900; margin:10px 0 4px}
+  .dl-card p{font-size:13px; color:var(--muted); margin-bottom:14px}
+  .dl-card .btn{font-size:14px; padding:10px 20px}
+  .soon{opacity:.55}
+  .hint{font-size:12px; color:var(--muted); margin-top:12px; text-align:center}
+  /* ── پرسش‌ها ── */
+  details{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:10px}
+  summary{font-weight:800; font-size:14.5px; cursor:pointer}
+  details p{font-size:13.5px; color:var(--muted); margin-top:8px}
+  /* ── قوانین ── */
+  .legal h4{font-size:15px; font-weight:900; margin:20px 0 10px; color:var(--primary)}
+  .legal li{font-size:13.5px; color:var(--muted); padding:6px 0; list-style:none; display:flex; gap:8px}
+  .legal li::before{content:"•"; color:var(--primary); font-weight:900}
+  .support-box{margin-top:22px; border:1px solid var(--line); background:var(--card); border-radius:18px; padding:20px}
+  .support-box a{display:inline-flex; align-items:center; gap:8px; font-weight:800; font-size:14px; margin-inline-end:18px; color:var(--primary)}
+  /* ── فوتر ── */
+  footer{border-top:1px solid var(--line); padding:22px 0 28px; text-align:center; font-size:12.5px; color:var(--muted)}
+  svg{vertical-align:middle}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#top" id="top">
+      <span class="badge-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      کارام
+    </a>
+    <nav>
+      <a href="#features">مزایا</a>
+      <a href="#pricing">قیمت</a>
+      <a href="#download">دانلود</a>
+      <a href="#faq">پرسش‌ها</a>
+      <a href="#privacy">قوانین و حریم خصوصی</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- هیرو -->
+  <div class="hero">
+    <h1>کارهایت را بسپار به <em>کارام</em><br>و خیالت راحت باشد</h1>
+    <p class="sub">دستیار هوشمند مدیریت وظایف — بدون اینترنت هم کامل کار می‌کند، داده‌هایت روی دستگاه خودت می‌ماند و هر جا که وارد شوی، سینک می‌شود.</p>
+    <div class="cta-row">
+      <a class="btn btn-pri" href="https://app.hojre24shop.ir" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="5"/></svg>
+        شروع رایگان — نصب وب
+      </a>
+      <a class="btn btn-ghost" href="https://app.hojre24shop.ir/karam-latest.apk" id="apkLink">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        دانلود اپ اندروید (APK)
+      </a>
+    </div>
+    <div class="chips">
+      <span class="chip">✓ کاملاً آفلاین</span>
+      <span class="chip">✓ ورود بدون رمز با تلگرام</span>
+      <span class="chip">✓ تقویم شمسی</span>
+      <span class="chip">✓ داده‌ی شما، مال شما</span>
+    </div>
+    <div class="trial">🎁 ثبت‌نام جدید = ۷ روز کارام پرو رایگان — بدون نیاز به کارت بانکی</div>
+  </div>
+
+  <!-- مزایا -->
+  <section id="features">
+    <h2 class="sec">چرا کارام؟</h2>
+    <p class="sec-sub">ساده، سریع و حرفه‌ای — برای کار روزمره و برای حرفه‌ای‌ها</p>
+    <div class="grid">
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></div>
+        <h3>آفلاین کامل</h3>
+        <p>قطعی اینترنت یعنی هیچ. کارها ذخیره می‌شوند و با اولین اتصال خودشان سینک می‌شوند.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></div>
+        <h3>ورود با تلگرام</h3>
+        <p>بدون رمز عبور و شماره‌ی گیرا؛ کد یک‌بارمصرف مستقیم در تلگرام شما می‌آید.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+        <h3>ثبت کار هوشمند</h3>
+        <p>بنویسید «جلسه فردا ساعت ۱۰» یا «۵ روز بعد» — کارام تاریخ و ساعت شمسی را خودش می‌فهمد.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg></div>
+        <h3>تحلیل عمقی پرو</h3>
+        <p>ساعات اوج تمرکز، بهترین روز هفته و روند نرخ تکمیل — بهره‌وری‌ات را ببین و بالا ببر.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.2 2.2M16.2 16.2l2.2 2.2M5.6 18.4l2.2-2.2M16.2 7.8l2.2-2.2"/><circle cx="12" cy="12" r="4"/></svg></div>
+        <h3>بسته‌های شغلی آماده</h3>
+        <p>روتین آماده برای تریدر، دانش‌آموز، فریلنسر و… — یک ضربه شروع کن.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/></svg></div>
+        <h3>حریم خصوصی واقعی</h3>
+        <p>از محتوای کارهایتان نه برای تبلیغ استفاده می‌کنیم نه فروش؛ حذف حساب = حذف کامل داده.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- قیمت -->
+  <section id="pricing">
+    <h2 class="sec">اشتراک کارام پرو</h2>
+    <p class="sec-sub">نسخه‌ی رایگان همیشه کار می‌کند؛ پرو برای حرفه‌ای‌هاست</p>
+    <div class="plans">
+      <div class="plan">
+        <h3>ماهانه</h3>
+        <div class="price">۴۹٬۰۰۰</div>
+        <div class="per">تومان در ماه</div>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>همه‌ی امکانات پرو، یک ماه</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>بدون تعهد — هر وقت خواستی قطع کن</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://app.hojre24shop.ir" rel="noopener">از داخل اپ فعال کن</a>
+      </div>
+      <div class="plan best">
+        <span class="tag">۶۰٪ تخفیف — پرطرفدار</span>
+        <h3>سالانه</h3>
+        <div class="price">۱۹۰٬۰۰۰</div>
+        <div class="per">تومان در سال (معادل ۱۵٬۸۰۰ در ماه)</div>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>دوازده ماه دسترسی کامل</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>بهترین انتخاب برای استفاده‌ی روزانه</li>
+        </ul>
+        <a class="btn btn-pri" href="https://app.hojre24shop.ir" rel="noopener">از داخل اپ فعال کن</a>
+      </div>
+      <div class="plan">
+        <h3>دائمی</h3>
+        <div class="price">۴۹۰٬۰۰۰</div>
+        <div class="per">تومان — یکبار پرداخت، همیشه پرو</div>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>بدون تمدید، بدون یادآوری پرداخت</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>همه‌ی به‌روزرسانی‌های آینده</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://app.hojre24shop.ir" rel="noopener">از داخل اپ فعال کن</a>
+      </div>
+    </div>
+    <p class="pay-note">پرداخت از داخل اپ — درگاه بانکی امن یا کارت‌به‌کارت با تأیید سریع ادمین · پایان دوره به نسخه‌ی رایگان برمی‌گردید و هیچ داده‌ای حذف نمی‌شود</p>
+  </section>
+
+  <!-- دانلود -->
+  <section id="download">
+    <h2 class="sec">نصب کارام</h2>
+    <p class="sec-sub">سه راه — همان که راحت‌تری</p>
+    <div class="dl">
+      <div class="dl-card">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <h3>وب — بدون نصب</h3>
+        <p>همین حالا در مرورگر باز کن و شروع کن.</p>
+        <a class="btn btn-pri" href="https://app.hojre24shop.ir" rel="noopener">باز کردن کارام</a>
+      </div>
+      <div class="dl-card">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+        <h3>اندروید — APK مستقیم</h3>
+        <p>نصب مستقیم از سایت، بدون واسطه.</p>
+        <a class="btn btn-ghost" href="https://app.hojre24shop.ir/karam-latest.apk" data-apk>دانلود APK</a>
+      </div>
+      <div class="dl-card soon">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7l9 5 9-5-9-5ZM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>
+        <h3>کافه بازار — به‌زودی</h3>
+        <p>در حال آماده‌سازی برای انتشار رسمی.</p>
+        <span class="btn btn-ghost">به‌زودی</span>
+      </div>
+    </div>
+    <p class="hint">نصب PWA روی گوشی: مرورگر ← منو ← «افزودن به صفحه اصلی» · روی دسکتاپ: آیکن نصب در نوار آدرس</p>
+  </section>
+
+  <!-- پرسش‌ها -->
+  <section id="faq">
+    <h2 class="sec">پرسش‌های پرتکرار</h2>
+    <p class="sec-sub">کوتاه و شفاف</p>
+    <details>
+      <summary>داده‌هایم کجا ذخیره می‌شود؟</summary>
+      <p>همیشه اول روی دستگاه خودت. اپ بدون اینترنت هم کامل کار می‌کند؛ فقط اگر وارد حسابت شوی داده‌ها برای سینک روی سرور کارام ذخیره می‌شود. در حالت مهمان هیچ داده‌ای از دستگاه خارج نمی‌شود.</p>
+    </details>
+    <details>
+      <summary>دوره‌ی آزمایشی چطور کار می‌کند؟</summary>
+      <p>هر حساب جدید به‌طور خودکار ۷ روز کارام پرو می‌گیرد — بدون نیاز به کارت بانکی. پایان دوره اگر تمدید نکنی به نسخه‌ی رایگان برمی‌گردی و هیچ داده‌ای حذف نمی‌شود.</p>
+    </details>
+    <details>
+      <summary>پرداخت چگونه است؟</summary>
+      <p>از داخل اپ: درگاه بانکی امن، یا کارت‌به‌کارت با تأیید سریع ادمین. وضعیت هر پرداخت در صفحه‌ی پرو قابل پیگیری است.</p>
+    </details>
+    <details>
+      <summary>اگر اکانتم را بخواهم حذف کنم؟</summary>
+      <p>کافی است به پشتیبانی پیام بدهی — حذف حساب یعنی حذف کامل داده‌های سمت سرور، بدون قید و شرط.</p>
+    </details>
+  </section>
+
+  <!-- قوانین و حریم خصوصی -->
+  <section id="privacy" class="legal">
+    <h2 class="sec">قوانین استفاده و حریم خصوصی</h2>
+    <p class="sec-sub">نسخه‌ی خلاصه‌ی همان قواعدی که داخل اپ می‌بینی — استفاده از کارام یعنی پذیرش همین‌ها</p>
+    <h4>قوانین استفاده</h4>
+    <ul>
+      <li>کارام ابزار شخصی مدیریت وظایف است؛ مسئولیت محتوای کارها و لیست‌ها با خودتان است.</li>
+      <li>ورود با کد یک‌بارمصرف انجام می‌شود؛ نگهداری از دسترسی دستگاه و حساب بر عهده‌ی شماست.</li>
+      <li>اشتراک پرو دوره‌ای است؛ در پایان دوره اگر تمدید نکنید، اپ به نسخه‌ی رایگان برمی‌گردد ولی هیچ داده‌ای حذف نمی‌شود.</li>
+      <li>پرداخت از درگاه بانکی یا کارت‌به‌کارت (با تأیید ادمین) است؛ وضعیت هر پرداخت در صفحه‌ی پرو قابل پیگیری است.</li>
+      <li>سوءاستفاده از سرویس — تلاش برای نفوذ، بار مصنوعی یا ربات — موجب مسدودسازی حساب می‌شود.</li>
+      <li>قطع موقت سرویس برای نگهداری با «حالت تعمیر» اعلام می‌شود؛ در این بازه داده‌ها محفوظ است.</li>
+      <li>این قواعد با به‌روزرسانی اپ ممکن است تغییر کند؛ نسخه‌ی جدید در اپ (تنظیمات ← قوانین) اعلام می‌شود.</li>
+    </ul>
+    <h4>حریم خصوصی</h4>
+    <ul>
+      <li>داده‌های کارها همیشه روی دستگاه شما ذخیره می‌شوند و اپ بدون اینترنت هم کامل کار می‌کند.</li>
+      <li>فقط اگر وارد حساب شوید داده‌ها برای سینک روی سرور کارام ذخیره می‌شود؛ در حالت مهمان هیچ داده‌ای از دستگاه خارج نمی‌شود.</li>
+      <li>از محتوای کارهای شما برای تبلیغات یا فروش استفاده نمی‌کنیم؛ داده‌ی شما داده‌ی شماست.</li>
+      <li>برای ورود فقط ایمیل یا موبایل یا شناسه‌ی تلگرام شما نگهداری می‌شود؛ رمز عبوری وجود ندارد.</li>
+      <li>درخواست حذف حساب = حذف کامل داده‌های سمت سرور؛ کافی است به پشتیبانی پیام بدهید.</li>
+    </ul>
+    <div class="support-box">
+      <strong>پشتیبانی کارام:</strong>
+      <a href="#" id="supTg" style="display:none" target="_blank" rel="noopener">تلگرام</a>
+      <a href="#" id="supMail" style="display:none">ایمیل</a>
+      <span id="supEmpty" style="font-size:13.5px;color:var(--muted)">راه‌های ارتباطی از داخل اپ (تنظیمات ← قوانین و پشتیبانی) در دسترس است.</span>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  کارام — دستیار هوشمند مدیریت وظایف · همه‌ی داده‌ها آفلاین روی دستگاه شما · <span dir="ltr">app.hojre24shop.ir</span>
+</footer>
+
+<script>
+/* ═══════════ پیکربندی — فقط همین بخش را ویرایش کنید ═══════════ */
+var KARAM_CONFIG = {
+  // شناسه تلگرام پشتیبانی (مثل: karam_support) — خالی بماند نمایش داده نمی‌شود
+  telegram: '',
+  // ایمیل پشتیبانی — خالی بماند نمایش داده نمی‌شود
+  email: ''
+};
+/* ═══════════ پایان پیکربندی ═══════════ */
+(function(){
+  if (KARAM_CONFIG.telegram){
+    var t=document.getElementById('supTg');
+    t.href='https://t.me/'+KARAM_CONFIG.telegram.replace(/^@/,'');
+    t.textContent='تلگرام: @'+KARAM_CONFIG.telegram.replace(/^@/,'');
+    t.style.display='inline-flex';
+    document.getElementById('supEmpty').style.display='none';
+  }
+  if (KARAM_CONFIG.email){
+    var m=document.getElementById('supMail');
+    m.href='mailto:'+KARAM_CONFIG.email;
+    m.textContent='ایمیل: '+KARAM_CONFIG.email;
+    m.style.display='inline-flex';
+    document.getElementById('supEmpty').style.display='none';
+  }
+})();
+</script>
+</body>
+</html>
