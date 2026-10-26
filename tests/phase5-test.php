@@ -406,6 +406,62 @@ setSetting('payments_master_enabled', '1');
 [$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
 check('بازگردانی: config دوباره effective=true', ($j['payments']['effective'] ?? null) === true);
 
+/* ================= ۹.۶) کلید مستقل کد هدیه (gift_codes_enabled) ================= */
+echo "\n۹.۶) کلید کد هدیه (گیت استعلام + گیت ثبت — مستقل از پرداخت)\n";
+
+// کد هدیه تستی را مستقیم در دیتابیس می‌سازیم (ساخت/مدیریت کدها کار تب «کدهای هدیه» پنل است)
+$dbPath = envKey('SQLITE_PATH', ROOT . '/backend/storage/karam-dev.sqlite3');
+$pdoGift = new PDO('sqlite:' . $dbPath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$redemptionCount = static function () use ($pdoGift): int {
+    return (int) $pdoGift->query('SELECT COUNT(*) FROM coupon_redemptions')->fetchColumn();
+};
+$pdoGift->prepare(
+    "INSERT INTO coupons (uuid, code, type, value, expires_at, max_uses, used_count, is_active, created_at, updated_at)
+     VALUES (lower(hex(randomblob(16))), 'KARAMTEST', 'amount', 100000, NULL, NULL, 0, 1,
+             strftime('%Y-%m-%d %H:%M:%S','now'), strftime('%Y-%m-%d %H:%M:%S','now'))"
+)->execute();
+
+// --- G1: کلید کد هدیه خاموش (پرداخت روشن) → استعلام ۲۰۰ ولی valid=false؛ config هر دو وضعیت را درست می‌گوید
+setSetting('gift_codes_enabled', '0');
+[$st, $j] = http('GET', '/api/v1/payments/gift/quote?code=KARAMTEST&plan=monthly', null, $tok);
+check('G1: کلید کد هدیه خاموش → استعلام ۲۰۰ valid=false + پیام «غیرفعال»', $st === 200
+    && ($j['valid'] ?? true) === false
+    && str_contains((string) ($j['error'] ?? ''), 'غیرفعال'), (string) json_encode($j, JSON_UNESCAPED_UNICODE));
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
+check('G1: config → giftCodesEnabled=false ولی effective=true (استقلال دوطرفه)', ($j['payments']['giftCodesEnabled'] ?? null) === false
+    && ($j['payments']['effective'] ?? null) === true);
+
+// --- G2: گیت «ثبت» — سفارش با کد وقتی کلید روشن است ساخته می‌شود؛ خاموشی قبل از callback →
+//        پرداخت سالم succeeded ولی ژورنال استفاده ثبت نمی‌شود
+setSetting('gift_codes_enabled', '1');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly', 'giftCode' => 'KARAMTEST'], $tok);
+$orderG = (string) ($j['orderUuid'] ?? '');
+$trackG = (string) ($j['trackId'] ?? '');
+check('G2: سفارش با کد هدیه → تخفیف ۱۰۰٬۰۰۰ ریال (۴۹۰ هزار → ۳۹۰ هزار)', $st === 200 && $orderG !== ''
+    && (int) ($j['amountRials'] ?? 0) === 390000
+    && (int) ($j['discountRials'] ?? 0) === 100000
+    && ($j['couponCode'] ?? '') === 'KARAMTEST', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
+
+setSetting('gift_codes_enabled', '0');
+[$st, , $h] = httpRaw('GET', '/api/payments/callback?trackId=' . $trackG . '&success=1&status=1&orderId=' . $orderG);
+check('G2: callback با کلید کد هدیه خاموش → باز هم state=succeeded (پرداخت سالم می‌ماند)', $st === 302 && str_contains($h['location'] ?? '', 'state=succeeded'), (string) ($h['location'] ?? ''));
+check('G2: ژورنال استفاده ثبت نشد (گیت مسیر ثبت)', $redemptionCount() === 0, (string) $redemptionCount());
+[$st, $j] = http('GET', '/api/v1/payments/orders/' . $orderG, null, $tok);
+check('G2: خود سفارش عادی paid شد', ($j['order']['status'] ?? '') === 'paid');
+
+// --- G3: روشن‌کردن دوباره کلید → چون ثبت قبلی انجام نشده بود، همان کد برای همان کاربر دوباره کار می‌کند
+setSetting('gift_codes_enabled', '1');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly', 'giftCode' => 'KARAMTEST'], $tok);
+$orderG2 = (string) ($j['orderUuid'] ?? '');
+$trackG2 = (string) ($j['trackId'] ?? '');
+check('G3: با کلید روشن، همان کد دوباره به سفارش می‌خورد (ثبت قبلی انجام نشده بود)', $st === 200 && $orderG2 !== '', (string) $st);
+[$st, , $h] = httpRaw('GET', '/api/payments/callback?trackId=' . $trackG2 . '&success=1&status=1&orderId=' . $orderG2);
+check('G3: callback دوم → succeeded', $st === 302 && str_contains($h['location'] ?? '', 'state=succeeded'), (string) ($h['location'] ?? ''));
+$usedCount = (int) $pdoGift->query("SELECT used_count FROM coupons WHERE code = 'KARAMTEST'")->fetchColumn();
+check('G3: ژورنال این‌بار ثبت شد + used_count=1', $redemptionCount() === 1 && $usedCount === 1, "redemptions={$redemptionCount()} used={$usedCount}");
+[$st, $j] = http('GET', '/api/v1/payments/gift/quote?code=KARAMTEST&plan=monthly', null, $tok);
+check('G3: استعلام دوباره همان کد → valid=false (هر کاربر هر کد فقط یک‌بار)', ($j['valid'] ?? true) === false);
+
 /* ================= ۱۰) لاگ پروایدر ================= */
 echo "\n۱۰) provider_logs\n";
 $dbPath = envKey('SQLITE_PATH', ROOT . '/backend/storage/karam-dev.sqlite3');

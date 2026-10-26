@@ -11,7 +11,8 @@ declare(strict_types=1);
  *   ۲) جدول coupon_redemptions (ژورنال استفاده — هر کاربر هر کد فقط یک‌بار)
  *   ۳) deposit_requests: ستون coupon_id + discount_rials (تخفیف کارت‌به‌کارت؛
  *      سفارش درگاه از قبل ستون coupon_id دارد)
- *   ۴) کلید تنظیمات gift_enabled (پیش‌فرض: روشن — تا ساخت کد از پنل بلافاصله کار کند)
+ *   ۴) کلید تنظیمات gift_codes_enabled (پیش‌فرض: روشن — تا ساخت کد از بلافاصله کار کند)
+ *      + مهاجرت خودکار مقدار کلید قدیمی gift_enabled (v20) به نام جدید — مقدار ادمین حفظ می‌شود.
  *
  * همیشه try/catch — اگر دیتابیس آماده نبود هیچ مسیری نباید بخوابد.
  */
@@ -133,6 +134,9 @@ final class GiftSchema
             }
 
             // ۴) کلید تنظیمات (پیش‌فرض روشن — کد فقط وقتی اثر دارد که ادمین ساخته باشد)
+            //    مهاجرت خودکار نام کلید: gift_enabled (v20) → gift_codes_enabled (بعد از آن)
+            //    — مقدار قبلی (روشن/خاموش ادمین) حفظ می‌شود؛ تکرارش بی‌اثر است.
+            $pdo->exec("UPDATE settings SET `key` = 'gift_codes_enabled' WHERE `key` = 'gift_enabled'");
             if ($mysql) {
                 $stmt = $pdo->prepare(
                     'INSERT IGNORE INTO `settings` (`key`, `value`, `updated_at`) VALUES (:k, :v, :now)'
@@ -142,7 +146,7 @@ final class GiftSchema
                     'INSERT OR IGNORE INTO settings (`key`, `value`, `updated_at`) VALUES (:k, :v, :now)'
                 );
             }
-            $stmt->execute([':k' => 'gift_enabled', ':v' => '1', ':now' => $now]);
+            $stmt->execute([':k' => 'gift_codes_enabled', ':v' => '1', ':now' => $now]);
         } catch (Throwable $e) {
             error_log('[karam][gift] مهاجرت اسکیمای کد هدیه ناموفق: ' . $e->getMessage());
         }

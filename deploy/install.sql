@@ -473,7 +473,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('backup_telegram_chat', ''),
   ('referral_enabled', '0'),
   ('referral_days', '7'),
-  ('gift_enabled', '1'),
+  ('gift_codes_enabled', '1'),
   ('reminder_enabled', '0'),
   ('reminder_lookback_days', '30'),
   ('provider_email_enabled', '0'),

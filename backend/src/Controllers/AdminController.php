@@ -1177,8 +1177,8 @@ final class AdminController
             // --- دعوت دوستان / رفرال (v20) ---
             'referral_enabled' => ['type' => 'bool'],
             'referral_days' => ['type' => 'int', 'min' => 1, 'max' => 30],
-            // --- کد هدیه (v20 — مدیریت کدها در تب «کدهای هدیه») ---
-            'gift_enabled' => ['type' => 'bool'],
+            // --- کد هدیه (v20 — مدیریت کدها در تب «کدهای هدیه») — کلید مستقل از پرداخت ---
+            'gift_codes_enabled' => ['type' => 'bool'],
             // --- یادآور تلگرامی (v20 — کرون روزانه cron/reminder-cron.php) ---
             'reminder_enabled' => ['type' => 'bool'],
             'reminder_lookback_days' => ['type' => 'int', 'min' => 1, 'max' => 365],

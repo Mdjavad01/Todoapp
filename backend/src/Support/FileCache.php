@@ -16,29 +16,27 @@ declare(strict_types=1);
  */
 final class FileCache
 {
-    /** مسیر پوشه‌ی کش — گام ۱: همیشه داخل storage محافظت‌شده (با .htaccess)، نه داخل پوشه‌ی کد!
-     *  قبلاً چیدمان اول «src/storage/cache» بود که در مخزن یعنی backend/src/storage/cache و
-     *  روی هاست یعنی api/src/storage/cache — بیرون از .htaccess محافظت‌شده‌ی storage و
-     *  عملاً از وب خواندنی (فایل کش شامل همه‌ی تنظیمات از جمله رمزهاست). */
+    /** مسیر پوشه‌ی کش — همیشه داخل storage محافظت‌شده (با .htaccess)، نه داخل پوشه‌ی کد!
+     *  فقط یک مسیر مجاز است: مخزن = backend/storage/cache — هاست = api/storage/cache
+     *  (هر دو .htaccess «deny all» دارند). مسیر جایگزین قدیمی «src/storage/cache»
+     *  که از وب خواندنی بود، به‌کلی حذف شد — دیگر هیچ مسیر دوم وجود ندارد.
+     *  اگر ساخت/نوشتن ممکن نبود، کش غیرفعال می‌شود (null/false) ولی سرویس سالم می‌ماند:
+     *  همه‌ی گیرنده‌ها مسیر عادی کوئری دیتابیس را می‌روند و هیچ Exceptionی بیرون نمی‌دهد. */
     private static function dir(): ?string
     {
         static $dir = null;
         if ($dir !== null) {
             return $dir === '' ? null : $dir;
         }
-        // مخزن: backend/storage/cache — هاست: api/storage/cache (هر دو .htaccess «deny all» دارند)
-        foreach ([dirname(__DIR__, 2) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
-            if (is_dir($candidate) && is_writable($candidate)) {
-                $dir = $candidate;
-                return $dir;
-            }
+        $candidate = dirname(__DIR__, 2) . '/storage/cache';
+        if (is_dir($candidate) && is_writable($candidate)) {
+            $dir = $candidate;
+            return $dir;
         }
         // تلاش برای ساخت (بار اول) — اگر نشد، کش غیرفعال ولی سرویس سالم
-        foreach ([dirname(__DIR__, 2) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
-            if (@mkdir($candidate, 0775, true) && is_writable($candidate)) {
-                $dir = $candidate;
-                return $dir;
-            }
+        if (@mkdir($candidate, 0775, true) && is_writable($candidate)) {
+            $dir = $candidate;
+            return $dir;
         }
         $dir = '';
         return null;

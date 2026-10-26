@@ -423,7 +423,7 @@ export function PaywallView() {
 
       {paymentsClosed ? (
         /* گام ۲ — کلید پرداخت بسته است: UI پرداخت کامل مخفی؛ فقط پیام + فیلد کد هدیه
-           (کد هدیه کلید مستقل دارد — gift_enabled — و وضعیت اشتراک فعلی دست‌نخورده می‌ماند) */
+           (کد هدیه کلید مستقل دارد — gift_codes_enabled — و وضعیت اشتراک فعلی دست‌نخورده می‌ماند) */
         <div className="rounded-2xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
           <div className="flex items-start gap-3">
             <span className="inline-flex p-2 rounded-xl bg-amber-400/20 text-amber-600 shrink-0">

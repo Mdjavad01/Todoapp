@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * کارام — کد هدیه / تخفیف (v20 — گام ۲۰ رشد)
  *
- * قاعده‌ی سادگی: کلید gift_enabled در پنل + منطق کوچک؛ ساخت/مدیریت کدها از تب
+ * قاعده‌ی سادگی: کلید gift_codes_enabled در پنل + منطق کوچک؛ ساخت/مدیریت کدها از تب
  * «کدهای هدیه» پنل ادمین. جدول `coupons` از فاز ۵ در اسکیما بوده و حالا به کار
  * گرفته می‌شود (type='percent' یا 'amount'). کد هم به سفارش درگاه می‌خورد
  * (orders.coupon_id) هم به واریز کارت‌به‌کارت (deposit_requests.coupon_id).
@@ -36,7 +36,7 @@ final class GiftCode
     {
         GiftSchema::ensure();
 
-        if (!Settings::bool('gift_enabled', true)) {
+        if (!Settings::bool('gift_codes_enabled', true)) {
             return ['ok' => false, 'error' => 'کد هدیه فعلاً غیرفعال است'];
         }
         $code = self::normalize($rawCode);
@@ -92,8 +92,9 @@ final class GiftCode
 
     /**
      * ثبت استفاده از کد — فقط بعد از تأیید قطعی (پرداخت موفق درگاه / تأیید ادمین).
-     * بی‌صدا: اگر ثبت قبلاً انجام شده بود (UNIQUE) هیچ اثر مضاعفی ندارد و هیچ
-     * مسیر پرداختی به‌خاطر آن نمی‌شکند.
+     * گیت: اگر کلید gift_codes_enabled خاموش باشد، استفاده‌ی جدید ثبت نمی‌شود (ثبت بی‌صدا
+     * رد می‌شود) — ولی هیچ‌وقت Exception نمی‌دهد: پرداخت/واریز هرگز به‌خاطر ژورنال هدیه نمی‌شکند.
+     * بی‌صدا: اگر ثبت قبلاً انجام شده بود (UNIQUE) هیچ اثر مضاعفی ندارد.
      */
     public static function registerRedemption(PDO $pdo, ?int $couponId, int $userId, string $kind, ?int $referenceId, int $discountRials): void
     {
@@ -102,6 +103,9 @@ final class GiftCode
         }
         if (!in_array($kind, ['order', 'deposit'], true)) {
             return;
+        }
+        if (!Settings::bool('gift_codes_enabled', true)) {
+            return; // گیت کلید کد هدیه — ثبت جدید بی‌صدا رد می‌شود (پرداخت سالم می‌ماند)
         }
         try {
             $ins = $pdo->prepare(

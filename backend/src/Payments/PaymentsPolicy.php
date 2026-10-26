@@ -20,7 +20,7 @@ declare(strict_types=1);
  * استثناها — این‌ها هرگز گیت نمی‌شوند تا سفارش‌های در جریان و پروِ فعلی‌ها سالم بمانند:
  *   - callback درگاه (/api/payments/callback) — سفارش‌های قبلی نتیجه‌شان می‌آید
  *   - وضعیت سفارش‌های موجود و اشتراک کاربر (orderStatus / mySubscription)
- *   - استعلام کد هدیه (کلید مستقل gift_enabled — خاموشی پرداخت روی کد هدیه اثر ندارد)
+ *   - استعلام و مصرف کد هدیه (کلید مستقل gift_codes_enabled — خاموشی پرداخت روی کد هدیه اثر ندارد)
  *   - تأیید/رد واریز از پنل ادمین (مسیرهای /api/admin/deposits)
  *
  * نکته‌ی fail-safe اپ: اندروید با خطای شبکه «بسته» فرض می‌کند (fail-closed) و وب
@@ -89,7 +89,7 @@ final class PaymentsPolicy
             'anyMethodEnabled' => self::anyMethodEnabled(),
             'effective' => $effective,
             // کلید کد هدیه مستقل است — خاموشی پرداخت روی کدهای هدیه اثر ندارد
-            'giftCodesEnabled' => Settings::bool('gift_enabled', true),
+            'giftCodesEnabled' => Settings::bool('gift_codes_enabled', true),
             'message' => self::disabledMessage(),
         ];
     }
