@@ -40,9 +40,13 @@ export function TemplatesView() {
   );
 }
 
-/** بخش ۱۰: بسته‌های شغلی تخصصی */
+/** بخش ۱۰: بسته‌های شغلی تخصصی — برای کاربر پرو واقعاً فعال می‌شود (v16) */
 export function JobKitsView() {
   const setView = useAppStore((s) => s.setView);
+  const applyJobKit = useAppStore((s) => s.applyJobKit);
+  const premium = useAppStore((s) => s.premium);
+  const isPro = premium.loaded && premium.isPremium;
+
   return (
     <section className="p-margin flex flex-col gap-4" id="view-jobkits">
       <div>
@@ -60,8 +64,13 @@ export function JobKitsView() {
             }`}
           >
             {kit.id === 'kit-trader' ? (
-              <span className="absolute top-3 left-3 bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Icon name="star" size={12} /> پرو
+              <span
+                className={`absolute top-3 left-3 font-black text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  isPro ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-slate-950'
+                }`}
+              >
+                <Icon name={isPro ? 'check_circle' : 'star'} size={12} />
+                {isPro ? 'پرو فعال' : 'پرو'}
               </span>
             ) : null}
             <div className="flex items-center gap-2.5">
@@ -85,12 +94,16 @@ export function JobKitsView() {
             <button
               className={`w-full py-2 font-bold rounded-xl text-xs transition-colors ${
                 kit.id === 'kit-trader'
-                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                  : 'bg-primary/10 text-primary'
+                  ? isPro
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                  : isPro
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-primary/10 text-primary'
               }`}
-              onClick={() => setView('paywall')}
+              onClick={() => (isPro ? void applyJobKit(kit) : setView('paywall'))}
             >
-              {kit.cta}
+              {isPro ? 'فعال‌سازی بسته' : `${kit.cta} (نیاز به پرو)`}
             </button>
           </div>
         ) : null,

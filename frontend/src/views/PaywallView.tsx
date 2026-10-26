@@ -66,6 +66,8 @@ export function PaywallView() {
   const [selected, setSelected] = useState<string>('annual');
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+  // کاربر پرو صفحه‌ی خرید نمی‌بیند مگر خودش تمدید/ارتقا را بخواهد (v16)
+  const [showRenew, setShowRenew] = useState(false);
 
   // کارت‌به‌کارت با تأیید ادمین (فاز ۸) + روش‌های پرداخت (فاز ۹)
   const [depositCfg, setDepositCfg] = useState<DepositConfig | null>(null);
@@ -210,6 +212,7 @@ export function PaywallView() {
 
   const list = plans ?? FALLBACK_PLANS;
   const selectedPlan = list.find((p) => p.code === selected);
+  const isPro = Boolean(session) && premium.loaded && premium.isPremium;
 
   /* ---------- کارت‌به‌کارت (فاز ۸) ---------- */
 
@@ -359,63 +362,85 @@ export function PaywallView() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {list.map((p) => {
-          const featured = p.code === 'annual';
-          const active = selected === p.code;
-          return (
-            <div
-              key={p.code}
-              className={`p-3 rounded-2xl text-center flex flex-col justify-between relative cursor-pointer ${
-                featured
-                  ? 'border-2 border-primary bg-primary/10 shadow-md'
-                  : 'border border-outline-variant/40 bg-surface-container dark:bg-slate-800'
-              } ${active ? 'ring-2 ring-primary/40' : ''}`}
-              onClick={() => setSelected(p.code)}
-              role="radio"
-              aria-checked={active}
-            >
-              {featured ? (
-                <span className="absolute -top-2.5 right-1/2 translate-x-1/2 bg-primary text-on-primary text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
-                  ۶۰٪ تخفیف ویژه
-                </span>
-              ) : null}
-              <span className={`text-xs font-bold ${featured ? 'text-primary' : 'text-outline'}`}>
-                {PLAN_LABELS[p.code] ?? p.title}
-              </span>
-              <div className="my-2">
-                <span className={`font-black ${featured ? 'text-lg text-primary' : 'text-base'}`}>{hezarToman(p.priceRials)}</span>
-                <span className={`text-[10px] block ${featured ? 'font-bold text-primary' : ''}`}>هزار تومان</span>
-              </div>
-              <span className={`text-[9px] ${featured ? 'text-emerald-600 font-bold' : 'text-outline'}`}>
-                {PLAN_NOTES[p.code] ?? p.description ?? ''}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {buyError ? (
-        <p className="text-body-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-3">{buyError}</p>
-      ) : null}
-
-      <button
-        className="w-full py-3.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-        onClick={openPayFlow}
-        disabled={plans === null}
-      >
-        <Icon name="verified" size={22} />
-        <span>{session ? 'پرداخت و ارتقا به کارام پریمیوم' : 'ورود به حساب و ارتقا'}</span>
-      </button>
-
-      {session ? (
-        <p className="text-[11px] text-on-surface-variant text-center leading-5">
-          در گام بعد روش پرداخت را انتخاب می‌کنید؛ درگاه آنلاین یا کارت به کارت · فعال‌سازی خودکار روی همه‌ی دستگاه‌ها
-        </p>
+      {isPro && !showRenew ? (
+        <button
+          type="button"
+          className="w-full py-3 rounded-2xl border border-outline-variant/40 bg-surface-container dark:bg-slate-800 text-on-surface dark:text-inverse-on-surface font-bold text-body-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+          onClick={() => setShowRenew(true)}
+        >
+          <Icon name="replay" size={20} />
+          تمدید یا ارتقای اشتراک
+        </button>
       ) : (
-        <p className="text-[11px] text-on-surface-variant text-center leading-5">
-          خرید اشتراک نیاز به حساب کاربری دارد؛ داده‌های آفلاین شما بعد از ورود حفظ و سینک می‌شود
-        </p>
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            {list.map((p) => {
+              const featured = p.code === 'annual';
+              const active = selected === p.code;
+              return (
+                <div
+                  key={p.code}
+                  className={`p-3 rounded-2xl text-center flex flex-col justify-between relative cursor-pointer ${
+                    featured
+                      ? 'border-2 border-primary bg-primary/10 shadow-md'
+                      : 'border border-outline-variant/40 bg-surface-container dark:bg-slate-800'
+                  } ${active ? 'ring-2 ring-primary/40' : ''}`}
+                  onClick={() => setSelected(p.code)}
+                  role="radio"
+                  aria-checked={active}
+                >
+                  {featured ? (
+                    <span className="absolute -top-2.5 right-1/2 translate-x-1/2 bg-primary text-on-primary text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                      ۶۰٪ تخفیف ویژه
+                    </span>
+                  ) : null}
+                  <span className={`text-xs font-bold ${featured ? 'text-primary' : 'text-outline'}`}>
+                    {PLAN_LABELS[p.code] ?? p.title}
+                  </span>
+                  <div className="my-2">
+                    <span className={`font-black ${featured ? 'text-lg text-primary' : 'text-base'}`}>{hezarToman(p.priceRials)}</span>
+                    <span className={`text-[10px] block ${featured ? 'font-bold text-primary' : ''}`}>هزار تومان</span>
+                  </div>
+                  <span className={`text-[9px] ${featured ? 'text-emerald-600 font-bold' : 'text-outline'}`}>
+                    {PLAN_NOTES[p.code] ?? p.description ?? ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {buyError ? (
+            <p className="text-body-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-3">{buyError}</p>
+          ) : null}
+
+          <button
+            className="w-full py-3.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            onClick={openPayFlow}
+            disabled={plans === null}
+          >
+            <Icon name="verified" size={22} />
+            <span>{isPro ? 'تمدید اشتراک کارام پرو' : session ? 'پرداخت و ارتقا به کارام پریمیوم' : 'ورود به حساب و ارتقا'}</span>
+          </button>
+
+          {session ? (
+            <p className="text-[11px] text-on-surface-variant text-center leading-5">
+              در گام بعد روش پرداخت را انتخاب می‌کنید؛ درگاه آنلاین یا کارت به کارت · فعال‌سازی خودکار روی همه‌ی دستگاه‌ها
+            </p>
+          ) : (
+            <p className="text-[11px] text-on-surface-variant text-center leading-5">
+              خرید اشتراک نیاز به حساب کاربری دارد؛ داده‌های آفلاین شما بعد از ورود حفظ و سینک می‌شود
+            </p>
+          )}
+          {isPro ? (
+            <button
+              type="button"
+              className="text-[11px] font-bold text-on-surface-variant underline underline-offset-4 self-center"
+              onClick={() => setShowRenew(false)}
+            >
+              بستن بخش تمدید
+            </button>
+          ) : null}
+        </>
       )}
 
       {/* وضعیت درخواست‌های واریز من (کارت‌به‌کارت — فاز ۸) — خلاصه در صفحه، جریان کامل داخل شیت */}

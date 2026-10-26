@@ -19,16 +19,18 @@ final class AnnouncementController
         AnnouncementsSchema::ensure();
 
         $now = gmdate('Y-m-d H:i:s');
+        // ⚠️ با EMULATE_PREPARES=false هر placeholder باید نام یکتا داشته باشد؛
+        // استفاده‌ی دوباره از :now خطای HY093 و پاسخ ۵۰۰ می‌داد (باگ v15).
         $stmt = Database::pdo()->prepare(
             "SELECT uuid, title, body, type, link_url, image_url, created_at
              FROM announcements
              WHERE is_active = 1
-               AND (starts_at IS NULL OR starts_at <= :now)
-               AND (ends_at IS NULL OR ends_at >= :now)
+               AND (starts_at IS NULL OR starts_at <= :now_from)
+               AND (ends_at IS NULL OR ends_at >= :now_to)
              ORDER BY created_at DESC, id DESC
              LIMIT 3"
         );
-        $stmt->execute([':now' => $now]);
+        $stmt->execute([':now_from' => $now, ':now_to' => $now]);
 
         $items = [];
         foreach ($stmt->fetchAll() as $r) {

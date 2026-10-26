@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ListEntity, TaskEntity, SubtaskEntity, ViewName, ListColor, TemplateDef } from '@/types';
+import type { ListEntity, TaskEntity, SubtaskEntity, ViewName, ListColor, TemplateDef, JobKitDef } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureSeeded } from '@/db/seed';
 import { toIsoDate } from '@/lib/format';
@@ -119,7 +119,7 @@ interface AppState {
   setSearch(q: string, filter?: string): void;
 
   toggleTask(id: string): Promise<void>;
-  addQuickTask(input: { title: string; listId: string; dueDate: string | null; priority?: TaskEntity['priority'] }): Promise<void>;
+  addQuickTask(input: { title: string; listId: string; dueDate: string | null; dueTime?: string | null; titleText?: string; priority?: TaskEntity['priority'] }): Promise<void>;
   addInlineTask(listId: string, title: string): Promise<void>;
   updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat'>>): Promise<void>;
   deleteTask(id: string): Promise<void>;
@@ -128,6 +128,7 @@ interface AppState {
   addSubtask(taskId: string, title: string): Promise<void>;
   createList(name: string, emoji: string): Promise<void>;
   applyTemplate(tpl: TemplateDef): Promise<void>;
+  applyJobKit(kit: JobKitDef): Promise<void>;
 }
 
 function applyAccent(a: AccentColor): void {
@@ -463,23 +464,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async addQuickTask(input) {
-    const { title, listId, dueDate } = input;
+    const { title, listId, dueDate, priority } = input;
     if (!title.trim()) return;
-    // تشخیص ساده‌ی ساعت از متن
-    const timeMatch = title.match(/(?:ساعت\s*)([۰-۹0-9]{1,2})\s*[:：]\s*([۰-۹0-9]{2})/);
-    let dueTime: string | null = null;
-    let cleanTitle = title;
+    // پایه‌ی عنوان: اگر تشخیص هوشمند عبارت تاریخ را پاک کرده باشد همان استفاده می‌شود (v16)
+    const base = (input.titleText ?? '').trim() || title;
+    // تشخیص ساده‌ی ساعت از متن (وقتی تشخیص هوشمند قبلاً ساعت نداده باشد)
+    const lat = (s: string) => s.replace(/[۰-۹]/g, (c) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)));
+    const timeMatch = base.match(/(?:ساعت\s*)([۰-۹0-9]{1,2})\s*[:：]\s*([۰-۹0-9]{2})/);
+    let dueTime: string | null = input.dueTime ?? null;
+    let cleanTitle = base;
     if (timeMatch) {
-      const lat = (s: string) => s.replace(/[۰-۹]/g, (c) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)));
-      dueTime = `${lat(timeMatch[1]).padStart(2, '0')}:${lat(timeMatch[2])}`;
-      cleanTitle = title.replace(timeMatch[0], '').trim();
+      dueTime = dueTime ?? `${lat(timeMatch[1]).padStart(2, '0')}:${lat(timeMatch[2])}`;
+      cleanTitle = base.replace(timeMatch[0], '').trim();
     }
     await repo.tasksCreate({
       listId,
       title: cleanTitle || title,
       dueDate,
       dueTime,
-      priority: input.priority ?? 'normal',
+      priority: priority ?? 'normal',
     });
     await get().refresh();
     queueSync();
@@ -548,5 +551,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     queueSync();
     set({ activeListId: list.id, view: 'listView' });
     get().showToast(`قالب «${tpl.title}» به لیست‌های شما افزوده شد!`);
+  },
+
+  /** فعال‌سازی بسته‌ی شغلی (مخصوص کاربر پرو — v16) — ساخت لیست‌ها و آیتم‌های روتین بسته */
+  async applyJobKit(kit) {
+    for (const l of kit.lists) {
+      const existing = get().lists.find((x) => x.name === l.name);
+      const list = existing ?? (await repo.listsCreate({ name: l.name, emoji: l.emoji, color: l.color }));
+      for (const item of l.items) {
+        // جلوگیری از تکرار: آیتم هم‌عنوانِ ناتمام در همان لیست دوباره ساخته نمی‌شود
+        const dup = get().tasks.find((t) => t.listId === list.id && t.title === item && !t.completedAt);
+        if (dup) continue;
+        await repo.tasksCreate({ listId: list.id, title: item, priority: 'normal' });
+      }
+    }
+    await get().refresh();
+    queueSync();
+    get().showToast(`بسته‌ی «${kit.title}» فعال شد و روتین‌هایش به لیست‌ها اضافه شد!`);
   },
 }));

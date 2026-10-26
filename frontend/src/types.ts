@@ -77,6 +77,13 @@ export interface TemplateDef {
 }
 
 /** بسته‌ی شغلی */
+export interface JobKitList {
+  name: string;
+  emoji: string;
+  color: ListColor;
+  items: string[];
+}
+
 export interface JobKitDef {
   id: string;
   emoji: string;
@@ -85,4 +92,6 @@ export interface JobKitDef {
   features: string[];
   pro: boolean;
   cta: string;
+  /** روتین‌های واقعی بسته — با فعال‌سازی، به لیست‌های کاربر اضافه می‌شود (v16) */
+  lists: JobKitList[];
 }

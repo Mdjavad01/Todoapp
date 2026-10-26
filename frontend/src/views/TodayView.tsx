@@ -2,6 +2,7 @@ import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { homeStats, weekBars as weekBarsOf, weekCompletionRate, currentStreak } from '@/lib/selectors';
 import { toFa, faShort, weekdayName } from '@/lib/format';
+import type { TaskEntity } from '@/types';
 import { InlineEmpty } from './ListView';
 
 const TEXT_COLORS: Record<string, string> = {
@@ -126,14 +127,101 @@ export function TodayView() {
   );
 }
 
+/** تحلیل عمقی بهره‌وری (v16 — ویژگی کاربران پرو) — کاملاً آفلاین از داده‌ی خود کاربر */
+export interface DeepAnalysis {
+  enough: boolean;
+  peakHourLabel: string;
+  peakHourCount: number;
+  bestDayLabel: string;
+  bestDayCount: number;
+  trendPct: number | null; // اختلاف نرخ تکمیل این هفته نسبت به هفته قبل
+  dailyAvg: number;
+}
+
+const HOUR_BUCKETS: Array<{ label: string; from: number; to: number }> = [
+  { label: 'بامداد (۰ تا ۶)', from: 0, to: 5 },
+  { label: 'صبح (۶ تا ۱۲)', from: 6, to: 11 },
+  { label: 'بعدازظهر (۱۲ تا ۱۸)', from: 12, to: 17 },
+  { label: 'عصر (۱۸ تا ۲۱)', from: 18, to: 20 },
+  { label: 'شب (۲۱ تا ۲۴)', from: 21, to: 23 },
+];
+
+export function deepAnalysis(tasks: TaskEntity[], today: Date): DeepAnalysis {
+  const done = tasks.filter((t) => t.completedAt);
+  const nowMs = today.getTime();
+  const inLast = (iso: string, days: number): boolean => {
+    const d = new Date(iso).getTime();
+    return !isNaN(d) && d <= nowMs && d >= nowMs - days * 86400000;
+  };
+
+  // ساعات اوج تمرکز — سطل‌های ۳۰ روز اخیر
+  const buckets = HOUR_BUCKETS.map(() => 0);
+  for (const t of done) {
+    if (!inLast(t.completedAt as string, 30)) continue;
+    const h = new Date(t.completedAt as string).getHours();
+    const idx = HOUR_BUCKETS.findIndex((b) => h >= b.from && h <= b.to);
+    if (idx >= 0) buckets[idx] += 1;
+  }
+  const peakIdx = buckets.indexOf(Math.max(...buckets));
+  const peakCount = buckets[peakIdx] ?? 0;
+
+  // بهترین روز هفته — ۳۰ روز اخیر
+  const dayCounts = new Array(7).fill(0) as number[]; // ۰=شنبه (شمسی)
+  for (const t of done) {
+    if (!inLast(t.completedAt as string, 30)) continue;
+    dayCounts[(new Date(t.completedAt as string).getDay() + 1) % 7] += 1;
+  }
+  const dayNames = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'];
+  const bestDay = dayCounts.indexOf(Math.max(...dayCounts));
+
+  // روند هفتگی — نرخ تکمیل ۷ روز اخیر نسبت به ۷ روز قبلش
+  const rateOf = (fromDays: number, toDays: number): { done: number; total: number } => {
+    let d = 0;
+    let tot = 0;
+    for (const t of tasks) {
+      const created = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
+      if (isNaN(created)) continue;
+      if (created > nowMs - fromDays * 86400000 || created <= nowMs - toDays * 86400000) continue;
+      tot += 1;
+      if (t.completedAt) d += 1;
+    }
+    return { done: d, total: tot };
+  };
+  const cur = rateOf(7, 0);
+  const prev = rateOf(14, 7);
+  const trendPct =
+    cur.total >= 3 && prev.total >= 3
+      ? Math.round(((cur.done / cur.total - prev.done / prev.total) * 100) / 1)
+      : null;
+
+  // میانگین روزانه — ۱۴ روز اخیر
+  let avgDays = 0;
+  for (const t of done) {
+    if (inLast(t.completedAt as string, 14)) avgDays += 1;
+  }
+
+  return {
+    enough: done.length >= 5,
+    peakHourLabel: HOUR_BUCKETS[peakIdx]?.label ?? '—',
+    peakHourCount: peakCount,
+    bestDayLabel: dayNames[bestDay] ?? '—',
+    bestDayCount: dayCounts[bestDay] ?? 0,
+    trendPct,
+    dailyAvg: Math.round((avgDays / 14) * 10) / 10,
+  };
+}
+
 /** بخش ۸: آمار و عملکرد */
 export function AnalyticsView() {
   const tasks = useAppStore((s) => s.tasks);
+  const premium = useAppStore((s) => s.premium);
   const setView = useAppStore((s) => s.setView);
   const today = new Date();
   const bars = weekBarsOf(tasks, today);
   const rate = weekCompletionRate(tasks, today);
   const streak = currentStreak(tasks, today);
+  const isPro = premium.loaded && premium.isPremium;
+  const deep = deepAnalysis(tasks, today);
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-analytics">
@@ -185,20 +273,66 @@ export function AnalyticsView() {
         </p>
       </div>
 
-      {/* کارت قفل‌شده‌ی پرو */}
-      <div
-        className="relative overflow-hidden bg-surface-container-high/60 dark:bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-secondary/30 flex items-center justify-between cursor-pointer"
-        onClick={() => setView('paywall')}
-      >
-        <div className="flex items-center gap-3">
-          <Icon name="lock" size={28} className="text-secondary" />
-          <div>
-            <h4 className="text-label-lg font-bold text-secondary">تحلیل عمقی بهره‌وری و ساعات اوج تمرکز</h4>
-            <p className="text-[11px] text-on-surface-variant">مخصوص کاربران نسخه پرو کارام</p>
+      {/* تحلیل عمقی بهره‌وری — برای کاربر پرو پنل واقعی است (v16) */}
+      {isPro ? (
+        <div className="bg-gradient-to-br from-secondary/10 to-secondary/5 dark:from-secondary/15 dark:to-secondary/5 border border-secondary/30 p-4 rounded-2xl shadow-sm flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon name="bar_chart" size={22} className="text-secondary" />
+              <h4 className="text-label-lg font-bold text-secondary">تحلیل عمقی بهره‌وری</h4>
+            </div>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-secondary text-white">پرو فعال</span>
           </div>
+          {deep.enough ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant">ساعات اوج تمرکز شما</span>
+                <span className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface">{deep.peakHourLabel}</span>
+                <span className="text-[10px] text-on-surface-variant">{toFa(deep.peakHourCount)} تکمیل در ۳۰ روز اخیر</span>
+              </div>
+              <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant">مولدترین روز هفته</span>
+                <span className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface">{deep.bestDayLabel}</span>
+                <span className="text-[10px] text-on-surface-variant">{toFa(deep.bestDayCount)} تکمیل در ۳۰ روز اخیر</span>
+              </div>
+              <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant">روند هفتگی</span>
+                {deep.trendPct === null ? (
+                  <span className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface">در حال جمع‌آوری</span>
+                ) : (
+                  <span className={`text-label-lg font-black ${deep.trendPct >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'}`}>
+                    {deep.trendPct >= 0 ? '▲' : '▼'} {toFa(Math.abs(deep.trendPct))}٪
+                  </span>
+                )}
+                <span className="text-[10px] text-on-surface-variant">نسبت به هفته قبل</span>
+              </div>
+              <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant">میانگین روزانه</span>
+                <span className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface">{toFa(deep.dailyAvg)} کار</span>
+                <span className="text-[10px] text-on-surface-variant">میانگین ۱۴ روز اخیر</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-body-sm text-on-surface-variant leading-6">
+              برای تحلیل دقیق‌تر، چند کار دیگر را کامل کنید — ساعات اوج تمرکز، بهترین روز هفته و روند شما اینجا خودکار ساخته می‌شود.
+            </p>
+          )}
         </div>
-        <span className="px-2.5 py-1 bg-secondary text-white text-xs font-bold rounded-lg shadow">مشاهده</span>
-      </div>
+      ) : (
+        <div
+          className="relative overflow-hidden bg-surface-container-high/60 dark:bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-secondary/30 flex items-center justify-between cursor-pointer"
+          onClick={() => setView('paywall')}
+        >
+          <div className="flex items-center gap-3">
+            <Icon name="lock" size={28} className="text-secondary" />
+            <div>
+              <h4 className="text-label-lg font-bold text-secondary">تحلیل عمقی بهره‌وری و ساعات اوج تمرکز</h4>
+              <p className="text-[11px] text-on-surface-variant">مخصوص کاربران نسخه پرو کارام</p>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 bg-secondary text-white text-xs font-bold rounded-lg shadow">مشاهده</span>
+        </div>
+      )}
     </section>
   );
 }

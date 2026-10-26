@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Sheet, SheetHeader, MicButton } from '@/components/Sheet';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
-import { detectSmartDateTime } from '@/lib/smartDate';
+import { detectSmartDate } from '@/lib/smartDate';
 import { faShort } from '@/lib/format';
 import { parseIsoDate } from '@/lib/format';
 import { PRIORITY_BADGE } from '@/lib/selectors';
@@ -27,11 +27,19 @@ export function QuickAddSheet() {
     return lists.find((l) => l.id === target) ?? lists[0] ?? null;
   }, [listId, activeListId, lists]);
 
-  const smart = useMemo(() => detectSmartDateTime(title, new Date()), [title]);
+  const smart = useMemo(() => detectSmartDate(title, new Date()), [title]);
 
   const save = () => {
     if (!title.trim() || !effectiveList) return;
-    addQuickTask({ title, listId: effectiveList.id, dueDate: pendingDate, priority });
+    // تشخیص هوشمند (v16): تاریخ/ساعت واقعی از متن — تقویم شمسی در صورت انتخاب، اولویت دارد
+    addQuickTask({
+      title,
+      listId: effectiveList.id,
+      dueDate: pendingDate ?? smart?.dueDate ?? null,
+      dueTime: pendingDate ? null : (smart?.dueTime ?? null),
+      titleText: smart?.cleanTitle,
+      priority,
+    });
     setTitle('');
     setListId(null);
     setPriority('normal');
@@ -43,7 +51,7 @@ export function QuickAddSheet() {
 
       <input
         className="w-full bg-surface-container dark:bg-slate-800 border-0 rounded-2xl px-4 py-3 text-body-md text-on-surface dark:text-inverse-on-surface focus:ring-2 focus:ring-primary outline-none"
-        placeholder="مثال: فردا ساعت ۱۷ خرید نان سنگک..."
+        placeholder="مثال: ۲ هفته بعد خرید رم لپ‌تاپ یا فردا ساعت ۱۷…"
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -52,12 +60,16 @@ export function QuickAddSheet() {
         autoFocus
       />
 
-      {/* پیش‌نمایش تشخیص هوشمند تاریخ */}
+      {/* پیش‌نمایش تشخیص هوشمند تاریخ — واقعی و قابل‌ذخیره (v16) */}
       <div className="bg-primary/10 border border-primary/20 p-2.5 rounded-xl flex items-center gap-2 text-xs text-primary font-bold">
         <Icon name="psychology" size={16} />
         <span>
           تشخیص هوشمند تاریخ:{' '}
-          {pendingDate ? `انتخاب‌شده: ${faShort(parseIsoDate(pendingDate))}` : smart}
+          {pendingDate
+            ? `انتخاب‌شده از تقویم: ${faShort(parseIsoDate(pendingDate))}`
+            : smart
+              ? smart.label
+              : 'امروز • کل روز (مثال: ۳ روز دیگر، جمعه، ۲۵ مهر، ساعت ۱۷)'}
         </span>
       </div>
 
