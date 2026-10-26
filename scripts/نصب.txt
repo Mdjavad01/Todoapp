@@ -41,6 +41,11 @@ phpMyAdmin ← دیتابیس کارام ← SQL ← محتوای deploy/upgrade
 منطق سمت سرور است (PaymentsPolicy) — حتی اگر اپ قدیمی باشد، پرداختِ بسته با
 ۴۰۳ code=payments_disabled رد می‌شود.
 
+APK همگام (نسخه ۱.۰.۲ — کد ۳):
+  باندل داخل APK با همین پک به‌روز شده (وضعیت کلید + مخفی‌شدن UI پرداخت).
+  از داشبورد (karam-latest.apk) دانلود و جایگزین فایل قبلی در public_html کنید؛
+  سپس پنل ← تنظیمات ← app_latest_version = 1.0.2
+
 بیلد بدون پرداخت برای بازار (اختیاری):
   cd mobile && bun run build:www:bazaar
   (ثابت VITE_PAYMENTS_BUILD=off — کل UI پرداخت از APK حذف می‌شود)
