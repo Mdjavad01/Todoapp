@@ -252,6 +252,16 @@ final class AdminController
                     'activePremium' => $one('SELECT COUNT(*) FROM users WHERE premium_until IS NOT NULL AND premium_until > :n', [':n' => $now]),
                     'conversionPercent' => $totalUsers > 0 ? round($paidUsers / $totalUsers * 100, 1) : 0.0,
                 ],
+                // گام ۲ — وضعیت کلید خاموش‌کردن پرداخت‌ها (بنر داشبورد)
+                'payments' => [
+                    'masterEnabled' => PaymentsPolicy::masterEnabled(),
+                    'webEnabled' => PaymentsPolicy::platformEnabled('web'),
+                    'androidEnabled' => PaymentsPolicy::platformEnabled('android'),
+                    'anyMethodEnabled' => PaymentsPolicy::anyMethodEnabled(),
+                    'effectiveWeb' => PaymentsPolicy::effective('web'),
+                    'effectiveAndroid' => PaymentsPolicy::effective('android'),
+                    'message' => PaymentsPolicy::disabledMessage(),
+                ],
                 'signupsSeries' => $series,
                 'salesSeries' => $salesSeries,
             ],
@@ -1143,6 +1153,11 @@ final class AdminController
             // --- پرداخت آنلاین (درگاه زیبال) ---
             'gateway_zibal_enabled' => ['type' => 'bool'],
             'zibal_merchant' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            // --- کلید خاموش‌کردن پرداخت‌ها (گام ۲) — PaymentsPolicy ---
+            'payments_master_enabled' => ['type' => 'bool'],
+            'payments_enabled_web' => ['type' => 'bool'],
+            'payments_enabled_android' => ['type' => 'bool'],
+            'payments_disabled_message' => ['type' => 'str', 'min' => 0, 'max' => 400],
             // --- کارت‌به‌کارت با تأیید ادمین (فاز ۸) ---
             'deposit_card_enabled' => ['type' => 'bool'],
             'deposit_card_number' => ['type' => 'str', 'min' => 0, 'max' => 40],

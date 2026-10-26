@@ -61,6 +61,22 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
         </div>
       ))}
 
+      {/* گام ۲ — وضعیت کلید پرداخت‌ها: وقتی هر پلتفرم بسته است بنر زرد می‌ماند */}
+      {stats.payments && (!stats.payments.effectiveWeb || !stats.payments.effectiveAndroid) ? (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-6 text-amber-800"
+        >
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <span>
+            <b>کلید پرداخت‌ها بسته است:</b> وب {stats.payments.effectiveWeb ? 'باز ✓' : 'بسته ✕'} · اندروید{' '}
+            {stats.payments.effectiveAndroid ? 'باز ✓' : 'بسته ✕'}
+            {!stats.payments.anyMethodEnabled ? ' · هیچ روش پرداختی فعال نیست' : ''}
+            {' — '}برای تغییر: <b>تنظیمات ← کلید اصلی پرداخت</b>
+          </span>
+        </div>
+      ) : null}
+
       {/* کارت‌های آمار */}
       <section aria-label="آمار کلی" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard icon={<IconUsers size={20} />} label="کل کاربران" value={faNum(stats.users.total)} />

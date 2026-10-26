@@ -43,6 +43,7 @@ require $srcDir . '/src/Services/Entities.php';
 require $srcDir . '/src/Services/SyncService.php';
 require $srcDir . '/src/Payments/Subscription.php';
 require $srcDir . '/src/Payments/ZibalProvider.php';
+require $srcDir . '/src/Payments/PaymentsPolicy.php'; // گام ۲ — کلید خاموش‌کردن پرداخت‌ها
 require $srcDir . '/src/Services/Referral.php'; // v20 — دعوت دوستان
 require $srcDir . '/src/Services/GiftCode.php'; // v20 — کد هدیه
 require $srcDir . '/src/Controllers/HealthController.php';
@@ -150,6 +151,8 @@ $router->get('/api/v1/payments/orders/{uuid}', [$payments, 'orderStatus']);
 $router->get('/api/v1/me/subscription', [$payments, 'mySubscription']);
 // فهرست روش‌های پرداخت و وضعیت فعال بودن هرکدام (فاز ۹ — انتخاب روش قبل از پرداخت)
 $router->get('/api/v1/payments/methods', [$payments, 'methods']);
+// گام ۲ — وضعیت کلید پرداخت‌ها برای پلتفرم درخواست‌کننده (هدر X-App-Platform)
+$router->get('/api/v1/payments/config', [$payments, 'config']);
 // بازگشت از درگاه (بدون احراز — با امضای سمت سرور verify می‌شود)
 $router->get('/api/payments/callback', [$payments, 'gatewayCallback']);
 

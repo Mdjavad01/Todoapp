@@ -51,12 +51,15 @@ final class PaymentController
         $user = Guard::requireUser();
         DepositSchema::ensure();
 
+        // گام ۲ — وقتی کلید پرداخت‌ها بسته است، هیچ روشی فعال نیست (سرور منبع حقیقت است)
+        $policyOn = PaymentsPolicy::effective();
+
         // ۱) درگاه آنلاین زیبال — فعال فقط اگر هم کلید روشن باشد هم مرچنت ست شده باشد
-        $zibalEnabled = ZibalProvider::enabled() && trim(ZibalProvider::merchant()) !== '';
+        $zibalEnabled = $policyOn && ZibalProvider::enabled() && trim(ZibalProvider::merchant()) !== '';
 
         // ۲) کارت به کارت — فعال فقط اگر کلید روشن باشد و شماره کارت ثبت شده باشد
         $cardNumber = trim((string) (Settings::get('deposit_card_number', '') ?? ''));
-        $cardEnabled = Settings::bool('deposit_card_enabled') && $cardNumber !== '';
+        $cardEnabled = $policyOn && Settings::bool('deposit_card_enabled') && $cardNumber !== '';
 
         $methods = [
             [
@@ -85,10 +88,24 @@ final class PaymentController
         Response::ok(['methods' => $methods]);
     }
 
+    /**
+     * GET /api/v1/payments/config — وضعیت کلید پرداخت‌ها (گام ۲ — Bearer)
+     *
+     * اپ با این پاسخ UI پرداخت را مخفی/نمایش می‌کند (پلتفرم از هدر X-App-Platform).
+     * مسیرهای شروع پرداخت علاوه بر این، سمت سرور هم گیت می‌شوند (assertEnabled).
+     */
+    public function config(): void
+    {
+        $user = Guard::requireUser();
+        Response::ok(['payments' => PaymentsPolicy::statusFor()]);
+    }
+
     /** POST /api/v1/payments/orders — {planCode, giftCode?} */
     public function createOrder(): void
     {
         $user = Guard::requireUser();
+        // گام ۲ — کلید خاموش‌کردن پرداخت‌ها (master/پلتفرم/روش‌ها) — ۴۰۳ با code=payments_disabled
+        PaymentsPolicy::assertEnabled();
         if (!ZibalProvider::enabled()) {
             Response::error('پرداخت آنلاین فعلاً فعال نیست؛ بعداً تلاش کنید', 503, ['code' => 'payments_disabled']);
             return;

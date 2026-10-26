@@ -161,6 +161,16 @@ export const api = {
         };
         signupsSeries: { date: string; count: number }[];
         salesSeries: { month: string; revenueRials: number }[];
+        /** گام ۲ — وضعیت کلید خاموش‌کردن پرداخت‌ها (بنر داشبورد) */
+        payments: {
+          masterEnabled: boolean;
+          webEnabled: boolean;
+          androidEnabled: boolean;
+          anyMethodEnabled: boolean;
+          effectiveWeb: boolean;
+          effectiveAndroid: boolean;
+          message: string;
+        };
       };
     }>('/stats'),
 

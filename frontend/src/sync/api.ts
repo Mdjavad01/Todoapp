@@ -7,6 +7,7 @@
  */
 
 import { clearSession, getSession, setSession, type SyncSession } from './session';
+import { appPlatform } from '@/lib/native';
 
 const API_BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 // فقط برای پیش‌نمایش سندباکس (پارامتر گیت‌وی) — در بیلد production خالی است
@@ -39,6 +40,8 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // گام ۲ — پلتفرم اپ برای کلید خاموش‌کردن پرداخت‌ها (نبودن = وب سمت سرور)
+  headers['X-App-Platform'] = appPlatform();
 
   let res: Response;
   try {

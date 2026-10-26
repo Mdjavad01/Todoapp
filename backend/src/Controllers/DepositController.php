@@ -25,6 +25,12 @@ final class DepositController
         $user = Guard::requireUser();
         DepositSchema::ensure();
 
+        // گام ۲ — وقتی کلید پرداخت‌ها بسته است، شماره کارت به هیچ عنوان برنمی‌گردد
+        if (!PaymentsPolicy::effective()) {
+            Response::ok(['enabled' => false, 'message' => PaymentsPolicy::disabledMessage()]);
+            return;
+        }
+
         $number = trim((string) (Settings::get('deposit_card_number', '') ?? ''));
         if (!Settings::bool('deposit_card_enabled') || $number === '') {
             // بدون شماره‌ی کارت، عملاً غیرفعال است
@@ -47,6 +53,9 @@ final class DepositController
     {
         $user = Guard::requireUser();
         DepositSchema::ensure();
+
+        // گام ۲ — کلید خاموش‌کردن پرداخت‌ها: شروع واریز هم گیت می‌شود (۴۰۳ code=payments_disabled)
+        PaymentsPolicy::assertEnabled();
 
         if (!Settings::bool('deposit_card_enabled')) {
             Response::error('پرداخت کارت‌به‌کارت فعلاً فعال نیست', 503, ['code' => 'deposit_disabled']);

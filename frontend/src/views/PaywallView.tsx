@@ -11,10 +11,15 @@ import {
   fetchDepositConfig,
   fetchMyDepositRequests,
   fetchPaymentMethods,
+  fetchGiftQuote,
+  loadPaymentsConfig,
+  PAYMENTS_BUILD,
   type Plan,
   type DepositConfig,
   type DepositRequest,
   type PaymentMethod,
+  type PaymentsConfig,
+  type GiftQuote,
 } from '@/sync/payments';
 
 /**
@@ -77,9 +82,18 @@ export function PaywallView() {
   // v20 — کد هدیه (مالکیت با این ویو؛ شیت پرداخت آن را ویرایش می‌کند و هر دو مسیر از آن استفاده می‌کنند)
   const [giftCode, setGiftCode] = useState('');
 
+  // گام ۲ — وضعیت کلید پرداخت‌ها از سرور (null = در حال دریافت)
+  const [payCfg, setPayCfg] = useState<PaymentsConfig | null>(null);
+  // استعلام کد هدیه در حالت بسته‌بودن پرداخت (فیلد کد مستقل از کلید می‌ماند)
+  const [giftChecking, setGiftChecking] = useState(false);
+  const [giftQuote, setGiftQuote] = useState<GiftQuote | null>(null);
+  const [giftError, setGiftError] = useState<string | null>(null);
+
   // نتیجه‌ی پرداخت (بازگشت از درگاه)
   const [resultState, setResultState] = useState<'checking' | 'succeeded' | 'failed' | null>(null);
   const [resultPlan, setResultPlan] = useState<string | null>(null);
+  // گام ۲ — تصمیم نمایش: بیلد bazaar همیشه بسته؛ بقیه از پاسخ سرور (null = در حال دریافت)
+  const paymentsClosed = PAYMENTS_BUILD === 'off' || (payCfg !== null && !payCfg.effective);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef(0);
   // فاز ۶ — سفارش در جریان بومی (درگاه در تب مرورگر باز می‌شود)
@@ -148,10 +162,8 @@ export function PaywallView() {
   useEffect(() => {
     stopPoll();
     if (!paymentResult) {
-      // ریست نتیجه‌ی پرداخت هنگام پاک‌کردن paymentResult — هم‌زمانی عمدی با پروپس (خطای pre-existing eslint)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // ریست نتیجه‌ی پرداخت هنگام پاک‌کردن paymentResult
       setResultState(null);
-       
       setResultPlan(null);
       return;
     }
@@ -177,6 +189,20 @@ export function PaywallView() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [session, reloadPremium]);
 
+  // گام ۲ — وضعیت کلید پرداخت‌ها: سرور + کش IndexedDB (اندروید fail-closed / وب fail-open)
+  // مهمان هم رد می‌شود (۴۰۱ → پیش‌فرض پلتفرم) تا از همان اول UI درست نشان داده شود
+  useEffect(() => {
+    let alive = true;
+    loadPaymentsConfig()
+      .then((c) => {
+        if (alive) setPayCfg(c);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
   // فاز ۶ — اپ اندروید: با بسته‌شدن تب مرورگر (بازگشت از درگاه) poll نتیجه شروع می‌شود
   useEffect(() => {
     const off = onBrowserFinished(() => {
@@ -191,6 +217,7 @@ export function PaywallView() {
 
   const buy = async () => {
     if (buying) return;
+    if (paymentsClosed) return; // گام ۲ — کلید بسته است (دفاع دوم؛ گیت اصلی سمت سرور است)
     if (!session) {
       showToast('برای خرید اشتراک، ابتدا وارد حساب کاربری شوید');
       openAccountSheet();
@@ -222,6 +249,23 @@ export function PaywallView() {
   const list = plans ?? FALLBACK_PLANS;
   const selectedPlan = list.find((p) => p.code === selected);
   const isPro = Boolean(session) && premium.loaded && premium.isPremium;
+
+  /** گام ۲ — استعلام زنده‌ی کد هدیه وقتی پرداخت بسته است (کد هدیه کلید مستقل دارد) */
+  const checkGiftStandalone = async () => {
+    if (!selectedPlan || giftCode.trim().length < 3 || giftChecking) return;
+    setGiftChecking(true);
+    setGiftError(null);
+    try {
+      const q = await fetchGiftQuote(giftCode, selectedPlan.code);
+      setGiftQuote(q);
+      if (!q.valid) setGiftError(q.error ?? 'کد هدیه معتبر نیست');
+    } catch (e) {
+      setGiftQuote(null);
+      setGiftError(e instanceof Error ? e.message : 'استعلام کد ناموفق بود');
+    } finally {
+      setGiftChecking(false);
+    }
+  };
 
   /* ---------- کارت‌به‌کارت (فاز ۸) ---------- */
 
@@ -377,7 +421,68 @@ export function PaywallView() {
         ))}
       </div>
 
-      {isPro && !showRenew ? (
+      {paymentsClosed ? (
+        /* گام ۲ — کلید پرداخت بسته است: UI پرداخت کامل مخفی؛ فقط پیام + فیلد کد هدیه
+           (کد هدیه کلید مستقل دارد — gift_enabled — و وضعیت اشتراک فعلی دست‌نخورده می‌ماند) */
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex p-2 rounded-xl bg-amber-400/20 text-amber-600 shrink-0">
+              <Icon name="lock" size={22} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-body-md font-black text-amber-800 dark:text-amber-200">خرید اشتراک موقتاً بسته است</p>
+              <p className="text-body-sm text-amber-700/90 dark:text-amber-300/90 mt-1 leading-6">
+                {payCfg?.message ?? 'پرداخت‌ها موقتاً غیرفعال است؛ لطفاً بعداً تلاش کنید یا با پشتیبانی تماس بگیرید.'}
+              </p>
+              {isPro ? (
+                <p className="text-[11px] text-amber-700/70 dark:text-amber-300/70 mt-1">
+                  اشتراک فعال شما تحت‌تأثیر قرار نمی‌گیرد.
+                </p>
+              ) : null}
+            </div>
+          </div>
+          {payCfg?.giftCodesEnabled !== false ? (
+            <div className="rounded-xl border border-amber-300/50 bg-white/60 dark:bg-slate-900/30 p-3 space-y-2">
+              <label htmlFor="pw-gift-closed" className="text-xs font-bold text-amber-800 dark:text-amber-200 block">
+                کد هدیه دارید؟ کد شما باقی می‌ماند
+              </label>
+              <div className="flex gap-1.5">
+                <input
+                  id="pw-gift-closed"
+                  type="text"
+                  dir="ltr"
+                  autoComplete="off"
+                  className="flex-1 min-w-0 rounded-xl border border-outline-variant/40 bg-surface-container-lowest dark:bg-slate-700/60 px-3 py-2 text-body-sm text-left font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  placeholder="مثلاً NOWRUZ1404"
+                  value={giftCode}
+                  onChange={(e) => {
+                    setGiftCode(e.target.value.toUpperCase());
+                    setGiftQuote(null);
+                    setGiftError(null);
+                  }}
+                  maxLength={50}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 rounded-xl bg-primary/10 text-primary px-3 py-2 text-xs font-bold active:scale-95 transition-transform disabled:opacity-40"
+                  onClick={() => void checkGiftStandalone()}
+                  disabled={giftCode.trim().length < 3 || giftChecking}
+                >
+                  {giftChecking ? '…' : 'بررسی کد'}
+                </button>
+              </div>
+              {giftQuote?.valid ? (
+                <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
+                  کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {hezarToman(giftQuote.discountRials ?? 0)} هزار تومان تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
+                </p>
+              ) : null}
+              {giftError ? (
+                <p className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-2.5">{giftError}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : isPro && !showRenew ? (
         <button
           type="button"
           className="w-full py-3 rounded-2xl border border-outline-variant/40 bg-surface-container dark:bg-slate-800 text-on-surface dark:text-inverse-on-surface font-bold text-body-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"

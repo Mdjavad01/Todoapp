@@ -1,6 +1,6 @@
 /**
  * کارام — پنل مدیریت: تنظیمات سرور (فاز ۵ — گروه‌بندی کامل)
- * گروه‌ها: عمومی و API · ظاهر اپ و ویس · پروایدر ایمیل · پروایدر تلگرام ·
+ * گروه‌ها: کلید اصلی پرداخت (گام ۲) · عمومی و API · ظاهر اپ و ویس · پروایدر ایمیل · پروایدر تلگرام ·
  *          پروایدر پیامک · پرداخت آنلاین (زیبال) · دوره آزمایشی ·
  *          کارت‌به‌کارت · به‌روزرسانی و پشتیبانی · بکاپ (v19) ·
  *          رفرال / کد هدیه / یادآور تلگرامی (v20)
@@ -9,8 +9,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, hasPerm, type AdminSession } from '../api';
 import { faDateTime } from '../format';
-import { Spinner } from '../ui';
-import { IconCheck } from '../icons';
+import { Modal, Spinner } from '../ui';
+import { IconCheck, IconWarning } from '../icons';
 
 interface SettingRow {
   key: string;
@@ -21,7 +21,7 @@ interface SettingRow {
 interface FieldDef {
   key: string;
   label: string;
-  kind: 'text' | 'number' | 'bool' | 'select' | 'textarea' | 'shortcuts';
+  kind: 'text' | 'number' | 'bool' | 'select' | 'textarea' | 'shortcuts' | 'payments_master';
   options?: { value: string; label: string }[];
   help?: string;
   dir?: 'ltr' | 'rtl';
@@ -35,6 +35,16 @@ interface GroupDef {
 }
 
 const GROUPS: GroupDef[] = [
+  {
+    title: 'کلید اصلی پرداخت (توقف اضطراری فروش) — گام ۲',
+    description: 'با بستن کلید اصلی، شروع همه‌ی پرداخت‌های جدید در وب و اندروید همان لحظه سمت سرور بسته می‌شود (۴۰۳ با code=payments_disabled). سفارش‌های در جریان و پروِ فعلی‌ها دست‌نخورده می‌مانند؛ استعلام و مصرف کد هدیه کلید مستقل دارد (گروه «کد هدیه»).',
+    fields: [
+      { key: 'payments_master_enabled', label: 'کلید اصلی پرداخت', kind: 'payments_master', help: 'خاموش = هیچ کاربر جدیدی نمی‌تواند پرداخت را شروع کند؛ دکمه‌ی خرید در اپ با کارت پیام + فیلد کد هدیه جایگزین می‌شود' },
+      { key: 'payments_enabled_web', label: 'پرداخت در وب فعال', kind: 'bool', help: 'فقط نسخه‌ی وب (PWA) — اندروید سوییچ مستقل دارد. پلتفرم از هدر X-App-Platform تشخیص داده می‌شود' },
+      { key: 'payments_enabled_android', label: 'پرداخت در اندروید فعال', kind: 'bool', help: 'فقط اپ اندروید — مثلاً قبل از بازبینی بازار خاموش کنید تا فقط در وب فروش بماند' },
+      { key: 'payments_disabled_message', label: 'پیام نمایشی به کاربر (وقتی بسته است)', kind: 'textarea', help: 'خالی = پیام پیش‌فرض «پرداخت‌ها موقتاً غیرفعال است…» — در کارت کهربایی صفحه‌ی پرو اپ دیده می‌شود' },
+    ],
+  },
   {
     title: 'عمومی و API',
     description: 'هویت سرویس، حالت تعمیر و سقف‌های سمت سرور',
@@ -196,6 +206,8 @@ export default function Settings({
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [shownSecrets, setShownSecrets] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  // گام ۲ — دیالوگ تأیید بستن کلید اصلی پرداخت (عملیت حساس — لاگ Audit هم می‌شود)
+  const [confirmMasterOff, setConfirmMasterOff] = useState(false);
   const canManage = hasPerm(session, 'settings.manage');
 
   const load = async () => {
@@ -257,6 +269,46 @@ export default function Settings({
 
     if (f.kind === 'shortcuts') {
       return <ShortcutsEditor key={f.key} help={f.help} value={value} dirty={dirty} disabled={!canManage} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />;
+    }
+
+    // گام ۲ — کلید اصلی پرداخت: برجسته + خاموش‌کردن فقط با دیالوگ تأیید
+    if (f.kind === 'payments_master') {
+      const on = value === '1';
+      return (
+        <div
+          key={f.key}
+          role="group"
+          aria-label={f.label}
+          className={`rounded-xl border p-3.5 ${on ? 'border-emerald-200 bg-emerald-50/70' : 'border-rose-300 bg-rose-50'}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className={`text-sm font-black ${on ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {on ? 'پرداخت‌ها فعال است' : 'پرداخت‌ها بسته است (همه‌ی پلتفرم‌ها)'}
+              </p>
+              {f.help ? <p className="mt-0.5 text-[11px] leading-5 text-slate-500">{f.help}</p> : null}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={on}
+              aria-label={f.label}
+              disabled={!canManage}
+              onClick={() => {
+                if (on) {
+                  setConfirmMasterOff(true); // خاموش‌کردن → تأیید می‌خواهد
+                } else {
+                  setDraft({ ...draft, [f.key]: '1' }); // روشن‌کردن بی‌خطر است
+                }
+              }}
+              className={`relative flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 ${on ? 'bg-brand-600' : 'bg-rose-500'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          {dirty ? <DirtyNote updatedAt={rows?.find((r) => r.key === f.key)?.updatedAt} /> : null}
+        </div>
+      );
     }
 
     if (f.kind === 'bool') {
@@ -400,6 +452,37 @@ export default function Settings({
           )}
         </div>
       )}
+
+      {/* گام ۲ — دیالوگ تأیید بستن کلید اصلی پرداخت */}
+      <Modal open={confirmMasterOff} title="بستن کلید اصلی پرداخت؟" onClose={() => setConfirmMasterOff(false)} width="max-w-md">
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <ul className="list-inside list-disc space-y-1">
+            <li>شروع همه‌ی پرداخت‌های جدید در وب و اندروید بسته می‌شود (همان لحظه، سمت سرور).</li>
+            <li>دکمه‌ی خرید در اپ کاربران با پیام شما جایگزین می‌شود.</li>
+            <li>سفارش‌های در جریان و پروِ فعلی‌ها دست‌نخورده می‌مانند.</li>
+            <li>کدهای هدیه همچنان معتبرند (کلید مستقل).</li>
+          </ul>
+        </div>
+        <p className="mt-3 text-xs leading-6 text-slate-500">
+          تغییر پس از زدن «ذخیره» در پایین صفحه اعمال و در Audit ثبت می‌شود. مطمئنید؟
+        </p>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={() => setConfirmMasterOff(false)}>
+            انصراف
+          </button>
+          <button
+            type="button"
+            className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+            onClick={() => {
+              setDraft((d) => ({ ...d, payments_master_enabled: '0' }));
+              setConfirmMasterOff(false);
+            }}
+          >
+            بله، ببند
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

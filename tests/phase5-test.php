@@ -33,14 +33,14 @@ function check(string $name, bool $cond, string $detail = ''): void
 }
 
 /** @return array{0:int,1:array|null} */
-function http(string $method, string $path, ?array $body = null, ?string $token = null): array
+function http(string $method, string $path, ?array $body = null, ?string $token = null, array $extraHeaders = []): array
 {
-    [$st, $j] = httpRaw($method, $path, $body, $token);
+    [$st, $j] = httpRaw($method, $path, $body, $token, $extraHeaders);
     return [$st, $j];
 }
 
 /** @return array{0:int,1:array|null,2:array<string,string>} */
-function httpRaw(string $method, string $path, ?array $body = null, ?string $token = null): array
+function httpRaw(string $method, string $path, ?array $body = null, ?string $token = null, array $extraHeaders = []): array
 {
     $ch = curl_init(BASE . $path);
     $headers = ['Accept: application/json'];
@@ -49,6 +49,9 @@ function httpRaw(string $method, string $path, ?array $body = null, ?string $tok
     }
     if ($token !== null) {
         $headers[] = 'Authorization: Bearer ' . $token;
+    }
+    foreach ($extraHeaders as $h) {
+        $headers[] = $h; // مثل 'X-App-Platform: android' (گام ۲)
     }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -326,6 +329,82 @@ setSetting('gateway_zibal_enabled', '0');
 [$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
 check('درگاه خاموش → 503', $st === 503, (string) $st);
 setSetting('gateway_zibal_enabled', '1');
+
+/* ================= ۹.۵) کلید خاموش‌کردن پرداخت‌ها (گام ۲) ================= */
+echo "\n۹.۵) کلید پرداخت‌ها (۶ سناریو)\n";
+
+// بازگردانی به حالت پایه: همه‌ی کلیدها روشن + هر دو روش (زیبال از بخش ۹ روشن است؛ کارت هم روشن سید)
+setSetting('payments_master_enabled', '1');
+setSetting('payments_enabled_web', '1');
+setSetting('payments_enabled_android', '1');
+setSetting('payments_disabled_message', '');
+setSetting('deposit_card_enabled', '1');
+
+// --- S1: پیش‌فرض — همه روشن → config می‌گوید effective=true ---
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
+check('S1: config پیش‌فرض → effective=true + کد هدیه مستقل روشن', $st === 200
+    && ($j['payments']['effective'] ?? null) === true
+    && ($j['payments']['giftCodesEnabled'] ?? null) === true
+    && ($j['payments']['platform'] ?? '') === 'web');
+
+// --- S2: کلید اصلی خاموش → شروع سفارش و واریز ۴۰۳ payments_disabled + پیام سفارشی؛
+//        کارت‌به‌کارت config هم شماره کارت را لو نمی‌دهد ---
+setSetting('payments_disabled_message', 'فروش موقتاً بسته است');
+setSetting('payments_master_enabled', '0');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+check('S2: master خاموش → createOrder ۴۰۳ code=payments_disabled', $st === 403 && ($j['code'] ?? '') === 'payments_disabled', (string) $st);
+[$st, $j] = http('POST', '/api/v1/payments/deposit/requests', ['planCode' => 'monthly', 'reference' => '987654321'], $tok);
+check('S2: master خاموش → واریز هم ۴۰۳ payments_disabled', $st === 403 && ($j['code'] ?? '') === 'payments_disabled', (string) $st);
+[$st, $j] = http('GET', '/api/v1/payments/deposit/config', null, $tok);
+check('S2: master خاموش → کارت‌به‌کارت config enabled=false (بدون شماره کارت)', $st === 200 && ($j['enabled'] ?? true) === false && !isset($j['card']));
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
+check('S2: config → effective=false + پیام سفارشی', ($j['payments']['effective'] ?? null) === false
+    && ($j['payments']['message'] ?? '') === 'فروش موقتاً بسته است');
+setSetting('payments_master_enabled', '1');
+setSetting('payments_disabled_message', '');
+
+// --- S3: فقط وب خاموش (اندروید روشن) → بدون هدر ۴۰۳؛ با هدر اندروید سفارش ساخته می‌شود ---
+setSetting('payments_enabled_web', '0');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+check('S3: فقط وب خاموش (بدون هدر = وب) → ۴۰۳', $st === 403 && ($j['code'] ?? '') === 'payments_disabled', (string) $st);
+[$st] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok, ['X-App-Platform: android']);
+check('S3: همان درخواست با هدر اندروید → ۲۰۰ (سفارش ساخته شد)', $st === 200, (string) $st);
+setSetting('payments_enabled_web', '1');
+
+// --- S4: فقط اندروید خاموش → با هدر اندروید ۴۰۳؛ وب (بدون هدر) ۲۰۰ ---
+setSetting('payments_enabled_android', '0');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok, ['X-App-Platform: android']);
+check('S4: فقط اندروید خاموش + هدر اندروید → ۴۰۳', $st === 403 && ($j['code'] ?? '') === 'payments_disabled', (string) $st);
+[$st] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+check('S4: وب (بدون هدر) → ۲۰۰', $st === 200, (string) $st);
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok, ['X-App-Platform: android']);
+check('S4: config اندروید → platform=android + effective=false', $st === 200
+    && ($j['payments']['platform'] ?? '') === 'android'
+    && ($j['payments']['effective'] ?? null) === false);
+setSetting('payments_enabled_android', '1');
+
+// --- S5: هر دو روش پرداخت خاموش ولی کلیدها روشن → باز هم ۴۰۳ (effective=false) ---
+setSetting('gateway_zibal_enabled', '0');
+setSetting('deposit_card_enabled', '0');
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+check('S5: بدون روش فعال (کلیدها روشن) → ۴۰۳', $st === 403 && ($j['code'] ?? '') === 'payments_disabled', (string) $st);
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
+check('S5: config → anyMethodEnabled=false', ($j['payments']['anyMethodEnabled'] ?? null) === false);
+setSetting('gateway_zibal_enabled', '1');
+
+// --- S6: استثناها — سفارش موجود / callback / کد هدیه / اشتراک بعد از بستن پرداخت سالم می‌مانند ---
+setSetting('payments_master_enabled', '0');
+[$st] = http('GET', '/api/v1/payments/orders/' . $order5, null, $tok);
+check('S6: وضعیت سفارش موجود بعد از بستن پرداخت → ۲۰۰ (استثنا)', $st === 200, (string) $st);
+[$st] = http('GET', '/api/v1/payments/gift/quote?code=NOROOZ1404&plan=monthly', null, $tok);
+check('S6: استعلام کد هدیه بعد از بستن پرداخت → ۲۰۰ (کلید مستقل)', $st === 200, (string) $st);
+[$st, , $h] = httpRaw('GET', '/api/payments/callback?trackId=' . $track5 . '&success=0&status=3&orderId=' . $order5);
+check('S6: callback سفارشِ پرداخت‌شده بعد از بستن پرداخت → ۳۰۲ succeeded (استثنا)', $st === 302 && str_contains($h['location'] ?? '', 'state=succeeded'), (string) $st);
+[$st, $j] = http('GET', '/api/v1/me/subscription', null, $tok);
+check('S6: پروِ فعلی دست‌نخورده → isPremium=true', $st === 200 && ($j['subscription']['isPremium'] ?? false) === true);
+setSetting('payments_master_enabled', '1');
+[$st, $j] = http('GET', '/api/v1/payments/config', null, $tok);
+check('بازگردانی: config دوباره effective=true', ($j['payments']['effective'] ?? null) === true);
 
 /* ================= ۱۰) لاگ پروایدر ================= */
 echo "\n۱۰) provider_logs\n";

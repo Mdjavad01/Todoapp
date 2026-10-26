@@ -39,7 +39,8 @@ final class Response
         if ($origin !== '' && in_array($origin, $allowedList, true)) {
             header('Access-Control-Allow-Origin: ' . $origin);
             header('Vary: Origin');
-            header('Access-Control-Allow-Headers: Content-Type, Authorization');
+            // گام ۲ — X-App-Platform: هدر پلتفرم اپ برای کلید خاموش‌کردن پرداخت‌ها
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-App-Platform');
             header('Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE');
         }
     }

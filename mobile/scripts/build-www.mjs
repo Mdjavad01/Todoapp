@@ -21,12 +21,21 @@ const wwwDir = join(mobileRoot, 'www');
 /** آدرس API سرور — روی هاست واقعی همان دامین اپ است */
 const API_BASE = process.env.API_BASE ?? 'https://app.hojre24shop.ir/api';
 
-console.log(`⟳ بیلد وب برای اندروید — API_BASE=${API_BASE}`);
+/**
+ * گام ۲ — حالت بیلد:
+ *   default | (خالی)  → پرداخت روشن (VITE_PAYMENTS_BUILD=on)
+ *   bazaar            → پرداخت کامل حذف (VITE_PAYMENTS_BUILD=off) — نسخه‌ی بدون خرید برای بازاری
+ *                      که پرداخت درون‌برنامه‌ای خارجی را نمی‌پذیرد.
+ */
+const MODE = (process.env.BUILD_MODE ?? 'default').toLowerCase();
+const PAYMENTS_BUILD = MODE === 'bazaar' ? 'off' : (process.env.VITE_PAYMENTS_BUILD ?? 'on');
+
+console.log(`⟳ بیلد وب برای اندروید — API_BASE=${API_BASE} · حالت=${MODE === 'bazaar' ? 'bazaar (بدون پرداخت)' : 'default'}`);
 
 const res = spawnSync('bunx', ['vite', 'build', '--outDir', 'dist-mobile', '--emptyOutDir'], {
   cwd: frontendDir,
   stdio: 'inherit',
-  env: { ...process.env, VITE_API_BASE: API_BASE, VITE_API_EXTRA_QUERY: '' },
+  env: { ...process.env, VITE_API_BASE: API_BASE, VITE_API_EXTRA_QUERY: '', VITE_PAYMENTS_BUILD: PAYMENTS_BUILD },
 });
 if (res.status !== 0) {
   console.error('✗ بیلد وب ناموفق بود');

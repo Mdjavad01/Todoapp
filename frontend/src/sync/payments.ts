@@ -4,7 +4,9 @@
  * کاربر به درگاه زیبال هدایت می‌شود. بعد از بازگشت، وضعیت سفارش poll می‌شود.
  */
 
-import { apiFetch, authedFetch } from './api';
+import { apiFetch, ApiError, authedFetch } from './api';
+import { appPlatform } from '@/lib/native';
+import { idbGet, idbPut, STORES } from '@/db/idb';
 
 export interface Plan {
   code: string;
@@ -158,4 +160,87 @@ export interface PaymentMethod {
 export async function fetchPaymentMethods(): Promise<PaymentMethod[]> {
   const res = await authedFetch<{ methods: PaymentMethod[] }>('/v1/payments/methods');
   return res.methods;
+}
+
+/* ---------------- کلید خاموش‌کردن پرداخت‌ها (گام ۲) ---------------- */
+
+/** وضعیت پرداخت‌ها از سرور (GET /v1/payments/config) — برای پلتفرم خود اپ */
+export interface PaymentsConfig {
+  platform: 'web' | 'android';
+  masterEnabled: boolean;
+  platformEnabled: boolean;
+  anyMethodEnabled: boolean;
+  /** تصمیم نهایی سرور: master && platform && ≥۱ روش فعال */
+  effective: boolean;
+  /** کلید کد هدیه مستقل است — خاموشی پرداخت روی آن اثر ندارد */
+  giftCodesEnabled: boolean;
+  /** پیام نمایشی سرور وقتی پرداخت بسته است */
+  message: string;
+}
+
+/** ثابت بیلد: VITE_PAYMENTS_BUILD=off → کل UI پرداخت در این بیلد حذف است (حالت bazaar بازار) */
+export const PAYMENTS_BUILD: 'on' | 'off' =
+  (import.meta.env.VITE_PAYMENTS_BUILD as string | undefined)?.toLowerCase() === 'off' ? 'off' : 'on';
+
+/** پیش‌فرض محلی وقتی سرور در دسترس نیست — اندروید fail-closed، وب fail-open */
+function fallbackConfig(reason: 'offline' | 'guest'): PaymentsConfig {
+  const platform = appPlatform();
+  const effective = platform === 'web'; // اندروید بدون پاسخ سرور = بسته (محتاطانه)
+  return {
+    platform,
+    masterEnabled: true,
+    platformEnabled: true,
+    anyMethodEnabled: effective,
+    effective,
+    giftCodesEnabled: true,
+    message:
+      reason === 'guest'
+        ? 'برای اطلاع از وضعیت خرید اشتراک، وارد حساب کاربری شوید.'
+        : 'پرداخت‌ها موقتاً غیرفعال است؛ لطفاً بعداً با اتصال اینترنت بهتر تلاش کنید.',
+  };
+}
+
+interface CachedPaymentsConfig {
+  key: string;
+  value: PaymentsConfig;
+  fetchedAt: number;
+}
+
+const CFG_CACHE_KEY = 'payments-config-v1';
+
+/**
+ * وضعیت پرداخت‌ها — هر بار از سرور (پاسخ‌دهی کلید مهم است)، کش IndexedDB فقط
+ * پشتیبانِ حالت آفلاین است؛ کش کهنه بهتر از هیچ است. منبع حقیقت سرور است و
+ * مسیرهای شروع پرداخت سمت سرور هم مستقلاً گیت می‌شوند.
+ */
+export async function loadPaymentsConfig(): Promise<PaymentsConfig> {
+  // بیلد bazaar — پرداخت از قبل حذف شده؛ سرور هم بی‌معناست
+  if (PAYMENTS_BUILD === 'off') {
+    return { ...fallbackConfig('offline'), effective: false, message: 'خرید اشتراک در این نسخه فعال نیست.' };
+  }
+  let cached: PaymentsConfig | null = null;
+  try {
+    const row = await idbGet<CachedPaymentsConfig>(STORES.meta, CFG_CACHE_KEY);
+    if (row?.value) cached = row.value;
+  } catch {
+    /* IndexedDB در دسترس نیست — ادامه با سرور */
+  }
+  try {
+    const res = await authedFetch<{ payments: PaymentsConfig }>('/v1/payments/config');
+    const cfg = res.payments;
+    if (cfg && typeof cfg.effective === 'boolean') {
+      void idbPut<CachedPaymentsConfig>(STORES.meta, { key: CFG_CACHE_KEY, value: cfg, fetchedAt: Date.now() }).catch(
+        () => undefined,
+      );
+      return cfg;
+    }
+    throw new Error('bad payload');
+  } catch (e) {
+    // مهمان (بدون ورود) endpoint ندارند — پیش‌فرض پلتفرم
+    if (e instanceof ApiError && (e.status === 401 || e.code === 'unauthorized')) {
+      return fallbackConfig('guest');
+    }
+    // آفلاین: کش کهنه بهتر از هیچ — وب بدون کش باز می‌ماند، اندروید بسته
+    return cached ?? fallbackConfig('offline');
+  }
 }

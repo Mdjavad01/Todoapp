@@ -24,6 +24,15 @@ export function isNativeApp(): boolean {
 }
 
 /**
+ * گام ۲ — پلتفرم اپ برای هدر X-App-Platform (کلید خاموش‌کردن پرداخت‌ها).
+ * فقط 'android' معنا دارد؛ هر چیز دیگر (وب/ios) سمت سرور مثل وب رفتار می‌کند.
+ */
+export function appPlatform(): 'web' | 'android' {
+  const p = cap()?.getPlatform?.() ?? 'web';
+  return p === 'android' ? 'android' : 'web';
+}
+
+/**
  * بازکردن لینک خارجی (درگاه پرداخت زیبال):
  *  - اپ اندروید: تب مرورگر سیستم (Custom Tab) — کاربر پرداخت می‌کند و برمی‌گردد
  *  - وب: ناوبری در همان تب — بازگشت با ?payResult=
