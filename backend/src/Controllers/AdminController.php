@@ -172,17 +172,21 @@ final class AdminController
         $paidUsers = $one("SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE source <> 'trial'");
 
         // سری ۶ ماه درآمد — ترکیب سفارش‌های درگاه (created_at) و واریزی‌های تأییدشده (reviewed_at)
+        // گام ۱ — سازگاری هر دو درایور: MySQL=DATE_FORMAT / SQLite=strftime (باگ v19: روی SQLite 500 می‌داد)
+        $monthExpr = Database::driver() === 'mysql' ? "DATE_FORMAT(%s, '%%Y-%%m')" : "strftime('%%Y-%%m', %s)";
+        $orderMonth = sprintf($monthExpr, 'created_at');
+        $reviewMonth = sprintf($monthExpr, 'reviewed_at');
         $revMap = [];
-        $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, SUM(amount_rials) AS s
+        $st = $pdo->prepare("SELECT {$orderMonth} AS m, SUM(amount_rials) AS s
                              FROM orders WHERE status IN ('paid','approved') AND created_at >= :f
-                             GROUP BY DATE_FORMAT(created_at, '%Y-%m')");
+                             GROUP BY {$orderMonth}");
         $st->execute([':f' => $sixMonthsStart]);
         foreach ($st->fetchAll() as $r) {
             $revMap[(string) $r['m']] = (int) $r['s'];
         }
-        $st = $pdo->prepare("SELECT DATE_FORMAT(reviewed_at, '%Y-%m') AS m, SUM(amount_rials) AS s
+        $st = $pdo->prepare("SELECT {$reviewMonth} AS m, SUM(amount_rials) AS s
                              FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :f
-                             GROUP BY DATE_FORMAT(reviewed_at, '%Y-%m')");
+                             GROUP BY {$reviewMonth}");
         $st->execute([':f' => $sixMonthsStart]);
         foreach ($st->fetchAll() as $r) {
             $revMap[(string) $r['m']] = ($revMap[(string) $r['m']] ?? 0) + (int) $r['s'];
@@ -880,7 +884,44 @@ final class AdminController
      * تلگرام/پیامک: کد صادرشده مستقیماً در پاسخ ادمین برمی‌گردد (ژورنال سرور) و
      * می‌شود همان‌جا تأیید و نشست کاربر را گرفت. همه‌ی این اعمال در audit ثبت
      * می‌شوند و دسترسی لازم: users.manage.
+     *
+     * گام ۱ — شورتکدها دیگر در کد نیستند؛ از کلید تنظیمات admin_otp_shortcuts
+     * (JSON آرایه‌ی {label, channel, target}) خوانده می‌شوند و فقط به ادمین
+     * واردشده با users.manage برگردانده می‌شوند.
      */
+
+    /** GET /api/admin/otp/shortcuts — شورتکدهای ورود مالک از تنظیمات (دسترسی: users.manage) */
+    public function otpShortcuts(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'users.manage');
+        Response::ok(['items' => self::otpShortcutsFromSettings()]);
+    }
+
+    /** تجزیه‌ی امن کلید admin_otp_shortcuts — هر ردیف نامعتبر بی‌صدا حذف می‌شود */
+    private static function otpShortcutsFromSettings(): array
+    {
+        $decoded = json_decode((string) (Settings::get('admin_otp_shortcuts', '[]') ?? '[]'), true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $items = [];
+        foreach ($decoded as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $channel = (string) ($row['channel'] ?? '');
+            if (!in_array($channel, ['email', 'telegram', 'sms'], true)) {
+                continue;
+            }
+            $items[] = [
+                'label' => mb_substr(trim((string) ($row['label'] ?? '')), 0, 40),
+                'channel' => $channel,
+                'target' => mb_substr(trim((string) ($row['target'] ?? '')), 0, 190),
+            ];
+        }
+        return $items;
+    }
 
     /** POST /api/admin/otp/request  {channel:'email'|'telegram'|'sms', target?} */
     public function otpShortcutRequest(): void
@@ -1072,6 +1113,8 @@ final class AdminController
             'min_app_version' => ['type' => 'semver'],
             'api_allow_registration' => ['type' => 'bool'],
             'api_max_sync_items' => ['type' => 'int', 'min' => 100, 'max' => 5000],
+            // --- امنیت (گام ۱) — شورتکد ورود مالک به‌جای مقادیر هاردکد ---
+            'admin_otp_shortcuts' => ['type' => 'otp_shortcuts'],
             // --- ظاهر اپ و پرو ---
             'paywall_title' => ['type' => 'str', 'min' => 3, 'max' => 120],
             'voice_enabled' => ['type' => 'bool'],
@@ -1220,6 +1263,44 @@ final class AdminController
                 if (strlen((string) $stored) > 2000) {
                     throw new ValidationError("مقدار «{$key}» خیلی بزرگ است");
                 }
+            } elseif ($rule['type'] === 'otp_shortcuts') {
+                // گام ۱ — آرایه‌ی {label, channel, target} با اعتبارسنجی سخت (حداکثر ۱۰ شورتکد)
+                $decoded = is_string($value) ? json_decode($value, true) : $value;
+                if (!is_array($decoded)) {
+                    throw new ValidationError("مقدار «{$key}» باید آرایه‌ی JSON باشد");
+                }
+                if (count($decoded) > 10) {
+                    throw new ValidationError('حداکثر ۱۰ شورتکد مجاز است');
+                }
+                $clean = [];
+                foreach ($decoded as $row) {
+                    if (!is_array($row)) {
+                        throw new ValidationError('هر شورتکد باید شیء {label, channel, target} باشد');
+                    }
+                    $label = trim((string) ($row['label'] ?? ''));
+                    $channel = (string) ($row['channel'] ?? '');
+                    $target = trim((string) ($row['target'] ?? ''));
+                    if ($label === '' || mb_strlen($label) > 40) {
+                        throw new ValidationError('برچسب هر شورتکد الزامی و حداکثر ۴۰ کاراکتر است');
+                    }
+                    if (!in_array($channel, ['email', 'telegram', 'sms'], true)) {
+                        throw new ValidationError('کانال باید email، telegram یا sms باشد');
+                    }
+                    if ($channel === 'email' && !filter_var($target, FILTER_VALIDATE_EMAIL)) {
+                        throw new ValidationError('هدفِ شورتکد ایمیل باید یک ایمیل معتبر باشد');
+                    }
+                    if ($channel === 'sms') {
+                        $target = Otp::normalizeDigits($target);
+                        if (!AuthController::isMobile($target)) {
+                            throw new ValidationError('هدفِ شورتکد پیامک باید مثل 09123456789 باشد');
+                        }
+                    }
+                    if ($channel === 'telegram' && $target !== '') {
+                        throw new ValidationError('شورتکد تلگرام هدف نمی‌گیرد (اتصال با بلیت انجام می‌شود)');
+                    }
+                    $clean[] = ['label' => $label, 'channel' => $channel, 'target' => $target];
+                }
+                $stored = json_encode($clean, JSON_UNESCAPED_UNICODE);
             } else { // str
                 if (!is_string($value)) {
                     throw new ValidationError("مقدار «{$key}» باید متن باشد");

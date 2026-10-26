@@ -444,6 +444,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('app_name', 'کارام'),
   ('maintenance_mode', '0'),
   ('min_app_version', '1.0.0'),
+  ('admin_otp_shortcuts', '[]'),
   ('paywall_title', 'کارام پرو (Karam Pro)'),
   ('api_allow_registration', '1'),
   ('api_max_sync_items', '2000'),

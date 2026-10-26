@@ -93,7 +93,11 @@ final class Settings
     /** @return array<string,string> */
     private static function all(): array
     {
-        if (self::$loaded) {
+        // گام ۱ — شرط اعتبار حافظه‌ی static به «وجود فایل کش» هم وابسته شد؛
+        // در سرورهای بلندعمر (php-fpm چندورکری / php -S تست) وقتی پنل یا تستِ محلی
+        // فایل کش را باطل می‌کند، همه‌ی ورکرها در اولین درخواست مقدار تازه می‌خوانند —
+        // قبلاً static برای همیشه منجمد می‌شد و تغییر پنل به بعضی ورکرها نمی‌رسید.
+        if (self::$loaded && FileCache::exists(FileCache::K_SETTINGS)) {
             return self::$cache ?? [];
         }
         self::$loaded = true;

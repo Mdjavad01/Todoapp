@@ -2,11 +2,20 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # گام ۱ — فایل‌های عیب‌یابی و پوشه‌ی نصب: 403 (فایل موجود از rewrite عبور می‌کند، پس صریح می‌بندیم)
+    RewriteRule (^|/)install/ - [F,L]
+    RewriteRule (^|/)diag[^/]*\.php$ - [F,L]
+
     # فقط index.php به‌عنوان entrypoint
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^ index.php [QSA,L]
 </IfModule>
+
+# گام ۱ — بستن diag*.php حتی اگر جایی آپلود شده باشد
+<FilesMatch "^diag[^/]*\.php$">
+    Require all denied
+</FilesMatch>
 
 # جلوگیری از دسترسی مستقیم به فایل‌های حساس
 <FilesMatch "(\.(env|sql|log|md)|composer\.(json|lock))$">

@@ -186,6 +186,7 @@ $router->get('/api/admin/giftcodes', [$admin, 'giftCodesIndex']); // v20 — ک�
 $router->post('/api/admin/giftcodes', [$admin, 'giftCodeCreate']);
 $router->patch('/api/admin/giftcodes/{id}', [$admin, 'giftCodeUpdate']);
 $router->post('/api/admin/otp/request', [$admin, 'otpShortcutRequest']);
+$router->get('/api/admin/otp/shortcuts', [$admin, 'otpShortcuts']); // گام ۱ — شورتکدها از تنظیمات
 $router->post('/api/admin/otp/telegram/poll', [$admin, 'otpShortcutTelegramPoll']);
 $router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);
 $router->get('/api/admin/audit', [$admin, 'auditIndex']);

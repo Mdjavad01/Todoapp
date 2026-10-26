@@ -341,13 +341,14 @@ check('کلید ناشناس → 422', $st === 422);
 [$st] = http('PATCH', '/api/admin/settings', ['maintenance_mode' => '2'], $tok, $csrf);
 check('بولی نامعتبر → 422', $st === 422);
 
-[$st] = http('PATCH', '/api/admin/settings', ['card_numbers' => 'not-json'], $tok, $csrf);
-check('کارت غیر JSON → 422', $st === 422);
+// گام ۱ — به‌روزرسانی تست: کلید card_numbers در فاز ۱۴ حذف شد؛ اعتبارسنجی JSON الان روی هدر پیامک است
+[$st] = http('PATCH', '/api/admin/settings', ['provider_sms_headers' => 'not-json'], $tok, $csrf);
+check('هدر پیامک غیر JSON → 422', $st === 422);
 
-[$st] = http('PATCH', '/api/admin/settings', ['card_numbers' => [['number' => '6037-9999 9999 9999', 'holder' => 'نام دارنده', 'bank' => 'بانک ملی']]], $tok, $csrf);
-check('کارت معتبر → 200', $st === 200);
-$cards = json_decode((string) db()->query("SELECT value FROM settings WHERE `key` = 'card_numbers'")->fetchColumn(), true);
-check('شماره کارت نرمال‌سازی شد', is_array($cards) && ($cards[0]['number'] ?? '') === '6037999999999999');
+[$st] = http('PATCH', '/api/admin/settings', ['provider_sms_headers' => '{"Authorization":"Bearer TEST"}'], $tok, $csrf);
+check('هدر پیامک JSON معتبر → 200', $st === 200);
+$headers = db()->query("SELECT value FROM settings WHERE `key` = 'provider_sms_headers'")->fetchColumn();
+check('هدر پیامک در DB', (string) $headers === '{"Authorization":"Bearer TEST"}');
 
 /* ================= ۱۱) لاگ رخدادها ================= */
 echo "۱۱) لاگ رخدادها\n";

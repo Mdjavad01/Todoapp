@@ -312,12 +312,13 @@ final class PaymentController
         if ($verify['ok'] && $verify['paid']) {
             // تطبیق trackId ثبت‌شده هنگام ساخت تراکنش (ضد جعل بین سفارش‌ها)
             $refMatches = (string) $row['gateway_ref'] === $trackId;
-            // تطبیق مبلغ ثبت‌شده با مبلغ تراکنش درگاه (مقدار verify بر حسب ریال است)
-            $amountOk = true;
+            // گام ۱ — fail-closed: مبلغ فقط وقتی پذیرفته می‌شود که در پاسخ verify
+            // موجود، عددی و دقیقاً برابر مبلغ سفارش باشد (نبودن amount = رد تأیید)
             $payload = is_string($verify['raw']) ? json_decode($verify['raw'], true) : null;
-            if (is_array($payload) && isset($payload['amount'])) {
-                $amountOk = (int) $payload['amount'] === (int) $row['amount_rials'];
-            }
+            $amountOk = is_array($payload)
+                && array_key_exists('amount', $payload)
+                && is_numeric($payload['amount'])
+                && (int) $payload['amount'] === (int) $row['amount_rials'];
 
             if ($refMatches && $amountOk) {
                 $pdo->beginTransaction();

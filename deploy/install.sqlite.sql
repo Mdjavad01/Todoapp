@@ -288,6 +288,21 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs (actor_type, actor_id);
 
+-- گام ۱ — جدول provider_logs (لاگ رفت‌وبرگشت درگاه/ایمیل/پیامک) در سید SQLite جا مانده بود
+-- (فاز ۵) — نبودنش باعث می‌شد لاگ‌ها بی‌صدا ثبت نشوند و تست فاز ۵ بشکند
+CREATE TABLE IF NOT EXISTS provider_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider   TEXT(20) NOT NULL,
+  direction  TEXT(8)  NOT NULL DEFAULT 'out',
+  status     TEXT(12) NOT NULL,
+  identity   TEXT(190),
+  subject    TEXT(190),
+  message    TEXT(500),
+  context    TEXT,
+  created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_provider_logs ON provider_logs (provider, created_at);
+
 -- داده‌ی اولیه (فاز ۴)
 INSERT OR IGNORE INTO admin_roles (code, title, permissions) VALUES
   ('superadmin', 'مدیر کل', '{}'),
@@ -302,6 +317,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('app_name', 'کارام'),
   ('maintenance_mode', '0'),
   ('min_app_version', '1.0.0'),
+  ('admin_otp_shortcuts', '[]'),
   ('paywall_title', 'کارام پرو (Karam Pro)'),
   ('api_allow_registration', '1'),
   ('api_max_sync_items', '2000'),

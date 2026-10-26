@@ -5,13 +5,19 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { faNum, faMoney, faDayShort, faMonthShort } from '../format';
 import { Spinner, Bar } from '../ui';
-import { IconUsers, IconVerified, IconBlock, IconRefresh, IconCard, IconCrown, IconChart } from '../icons';
+import { IconUsers, IconVerified, IconBlock, IconRefresh, IconCard, IconCrown, IconChart, IconWarning } from '../icons';
 
 type Stats = Awaited<ReturnType<typeof api.stats>>['stats'];
+
+interface HealthWarning {
+  code: string;
+  message: string;
+}
 
 export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'error', text: string) => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [busy, setBusy] = useState(false);
+  const [warnings, setWarnings] = useState<HealthWarning[]>([]);
 
   const load = async () => {
     setBusy(true);
@@ -27,7 +33,11 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // گام ۱ — هشدارهای پیکربندی از سلامت سرویس (endpoint عمومی)
+    fetch('/api/health', { headers: { Accept: 'application/json' } })
+      .then((r) => r.json())
+      .then((j: { warnings?: HealthWarning[] }) => setWarnings(Array.isArray(j.warnings) ? j.warnings : []))
+      .catch(() => setWarnings([]));
   }, []);
 
   if (!stats) return busy ? <Spinner /> : null;
@@ -37,6 +47,20 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
 
   return (
     <div className="space-y-5">
+      {/* هشدارهای پیکربندی (گام ۱) */}
+      {warnings.map((w) => (
+        <div
+          key={w.code}
+          role="alert"
+          className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-6 text-amber-800"
+        >
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <span>
+            <b>هشدار امنیتی:</b> {w.message}
+          </span>
+        </div>
+      ))}
+
       {/* کارت‌های آمار */}
       <section aria-label="آمار کلی" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard icon={<IconUsers size={20} />} label="کل کاربران" value={faNum(stats.users.total)} />

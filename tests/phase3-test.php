@@ -133,7 +133,8 @@ function tgMockLastCode(int $chatId): ?string
     $s = json_decode((string) @file_get_contents(__DIR__ . '/telegram-mock-state.json'), true) ?: ['sent' => []];
     for ($i = count($s['sent']) - 1; $i >= 0; $i--) {
         $m = $s['sent'][$i];
-        if ((int) $m['chat_id'] === $chatId && preg_match('/کد ورود شما:\s*(\d{6})/u', (string) $m['text'], $mm)) {
+        // گام ۱ — پیام ربات شامل تگ <code> است: «کد ورود شما: <code>123456</code>»
+        if ((int) $m['chat_id'] === $chatId && preg_match('/کد ورود شما:\s*(?:<code>)?\s*(\d{6})/u', (string) $m['text'], $mm)) {
             return $mm[1];
         }
     }

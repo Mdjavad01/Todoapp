@@ -3,10 +3,9 @@
  * میان‌بر مالک برای تست کامل جریان ورود بدون دسترسی به ایمیل/تلگرام/پیامک:
  * کد از سرور مستقیماً همین‌جا نمایش و تأیید داده می‌شود (همه‌ی اعمال در audit ثبت می‌شوند).
  *
- * میان‌برهای ثابت:
- *   - تلگرام (ربات): باید از حساب تلگرام خودتان روی «باز کردن تلگرام» بزنید و START بفرستید
- *   - ایمیل:         md1.javad401@gmail.com
- *   - موبایل:        ۰۹۳۸۹۶۵۹۹۱۰
+ * گام ۱ — میان‌برها دیگر در کد هاردکد نیستند؛ از تنظیمات سرور
+ * (کلید admin_otp_shortcuts — فقط برای ادمین با users.manage) خوانده می‌شوند.
+ * اگر شورتکدی تنظیم نشده باشد، همان جریان به‌صورت دستی (انتخاب کانال + تایپ هدف) کار می‌کند.
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
@@ -15,8 +14,11 @@ import { IconCheck, IconKey, IconWarning } from '../icons';
 
 type Channel = 'email' | 'telegram' | 'sms';
 
-const OWNER_EMAIL = 'md1.javad401@gmail.com';
-const OWNER_PHONE = '09389659910';
+interface Shortcut {
+  label: string;
+  channel: Channel;
+  target: string;
+}
 
 interface VerifyOk {
   isNew: boolean;
@@ -26,15 +28,21 @@ interface VerifyOk {
 }
 
 const CHANNELS: { key: Channel; label: string; hint: string; targetLabel: string }[] = [
-  { key: 'telegram', label: 'ربات تلگرام', hint: 'بعد از شروع، باید از حساب تلگرام خودتان روی دکمه‌ی «باز کردن تلگرام» بزنید و START را بفرستید؛ کد همان‌جا در پنل ظاهر می‌شود.', targetLabel: 'شناسه تلگرام مالک (نمایشی)' },
-  { key: 'email', label: 'ایمیل', hint: 'کد به صندوق ایمیل هم ارسال می‌شود؛ ولی برای شورتکد، همان‌جا زیر نشان داده می‌شود.', targetLabel: 'آدرس ایمیل' },
+  { key: 'telegram', label: 'ربات تلگرام', hint: 'بعد از شروع، باید از حساب تلگرام خودتان روی دکمه‌ی «باز کردن تلگرام» بزنید و START را بفرستید؛ کد همان‌جا در پنل ظاهر می‌شود.', targetLabel: 'شناسه تلگرام (نمایشی — نیازی نیست)' },
+  { key: 'email', label: 'ایمیل', hint: 'کد به صندوق ایمیل ارسال می‌شود؛ در شورتکد ادمین همان‌جا زیر هم نشان داده می‌شود.', targetLabel: 'آدرس ایمیل' },
   { key: 'sms', label: 'پیامک موبایل', hint: 'اگر پروایدر پیامک تنظیم نشده باشد، کد فقط در همین پنل نمایش داده می‌شود (حالت log).', targetLabel: 'شماره موبایل' },
 ];
 
+const channelLabel = (c: Channel) => CHANNELS.find((x) => x.key === c)?.label ?? c;
+
 export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'error', text: string) => void }) {
   const [channel, setChannel] = useState<Channel>('email');
-  const [target, setTarget] = useState(OWNER_EMAIL);
+  const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // شورتکدهای داینامیک از سرور (گام ۱)
+  const [shortcuts, setShortcuts] = useState<Shortcut[] | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
 
   // وضعیت جریان
   const [code, setCode] = useState<string | null>(null); // کد نمایشی از سرور
@@ -48,6 +56,13 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
 
   const meta = CHANNELS.find((c) => c.key === channel)!;
 
+  useEffect(() => {
+    api
+      .otpShortcuts()
+      .then((res) => setShortcuts(res.items ?? []))
+      .catch(() => setShortcuts([])); // بدون شورتکد = جریان دستی
+  }, []);
+
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -57,14 +72,23 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
 
   useEffect(() => stopPolling, []);
 
-  // پرکردن پیش‌فرض هدف بر اساس کانال
-  const switchChannel = (c: Channel) => {
-    setChannel(c);
-    setTarget(c === 'email' ? OWNER_EMAIL : OWNER_PHONE);
+  // انتخاب یک شورتکد از تنظیمات
+  const applyShortcut = (idx: number) => {
+    const sc = shortcuts?.[idx];
+    if (!sc) return;
+    setSelected(idx);
+    setChannel(sc.channel);
+    setTarget(sc.target);
     resetFlow();
   };
 
-  // برای کانال تلگرام هدف نمایشی مهم نیست — مقدار خالی بماند
+  // جریان دستی — بدون هدف پیش‌فرض (گام ۱: هیچ مقدار هاردکدی)
+  const switchChannel = (c: Channel) => {
+    setChannel(c);
+    setSelected(null);
+    setTarget('');
+    resetFlow();
+  };
 
   const resetFlow = () => {
     stopPolling();
@@ -152,40 +176,56 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
           <p className="text-sm font-bold text-slate-700">شورتکد ورود OTP</p>
           <p>
             برای تست سریع ورود مالک: کد یک‌بارمصرف از سرور صادر و مستقیماً در همین صفحه نمایش داده می‌شود — بدون نیاز به
-            صندوق ایمیل، بله یا پیامک. نشست کاربرِ حاصل کاملاً واقعی است و همه‌ی این اعمال در «رخدادها» ثبت می‌شوند.
+            صندوق ایمیل، تلگرام یا پیامک. میان‌برها از تنظیمات سرور می‌آیند (تنظیمات ← «شورتکد ورود مالک») و فقط برای
+            ادمین با دسترسی مدیریت کاربران دیده می‌شوند.
           </p>
         </div>
       </div>
 
-      {/* میان‌برهای ثابت */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <button
-          type="button"
-          onClick={() => switchChannel('telegram')}
-          className={`card p-4 text-right transition-colors ${channel === 'telegram' ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
-        >
-          <p className="text-sm font-bold text-slate-700">ورود با تلگرام</p>
-          <p dir="ltr" className="mt-1 text-xs text-slate-400">ربات تلگرام</p>
-          <p className="mt-1 text-[11px] text-slate-400">اتصال چت + کد در پنل</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => switchChannel('email')}
-          className={`card p-4 text-right transition-colors ${channel === 'email' ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
-        >
-          <p className="text-sm font-bold text-slate-700">ورود با ایمیل</p>
-          <p dir="ltr" className="mt-1 text-xs text-slate-400">{OWNER_EMAIL}</p>
-          <p className="mt-1 text-[11px] text-slate-400">کد مستقیم در پنل</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => switchChannel('sms')}
-          className={`card p-4 text-right transition-colors ${channel === 'sms' ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
-        >
-          <p className="text-sm font-bold text-slate-700">ورود با موبایل</p>
-          <p dir="ltr" className="mt-1 text-xs text-slate-400">{OWNER_PHONE}</p>
-          <p className="mt-1 text-[11px] text-slate-400">پیامک / حالت log</p>
-        </button>
+      {/* شورتکدهای تنظیم‌شده (داینامیک — گام ۱) */}
+      {shortcuts === null ? (
+        <Spinner />
+      ) : shortcuts.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {shortcuts.map((sc, idx) => (
+            <button
+              key={`${sc.channel}-${sc.target}-${idx}`}
+              type="button"
+              onClick={() => applyShortcut(idx)}
+              className={`card p-4 text-right transition-colors ${selected === idx && channel === sc.channel ? 'ring-2 ring-brand-500' : 'hover:bg-slate-50'}`}
+            >
+              <p className="text-sm font-bold text-slate-700">{sc.label}</p>
+              <p dir="ltr" className="mt-1 truncate text-xs text-slate-400">
+                {sc.channel === 'telegram' ? 'ربات تلگرام' : sc.target}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-400">{channelLabel(sc.channel)}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-xl bg-slate-50 p-3 text-xs leading-6 text-slate-500">
+          شورتکی تنظیم نشده است. از «تنظیمات ← شورتکد ورود مالک» میان‌بر بسازید، یا همین حالا کانال را دستی انتخاب و هدف
+          را وارد کنید.
+        </p>
+      )}
+
+      {/* انتخاب کانال دستی */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-400">کانال دستی:</span>
+        {CHANNELS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => switchChannel(c.key)}
+            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+              channel === c.key && selected === null
+                ? 'border-brand-500 bg-brand-50 font-bold text-brand-700'
+                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       {/* جریان ورود */}

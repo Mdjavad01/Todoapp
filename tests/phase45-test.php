@@ -207,7 +207,7 @@ check('هدر پیامک JSON نامعتبر → 422', $st === 422);
     'provider_sms_enabled' => '1',
     'provider_sms_method' => 'GET',
     'provider_sms_headers' => '{"Authorization": "Bearer TEST"}',
-    'card_payment_guide' => 'پس از واریز، رسید را با پشتیبانی در میان بگذارید.',
+    'deposit_card_guide' => 'پس از واریز، رسید را با پشتیبانی در میان بگذارید.',
 ], $bossToken, $bossCsrf);
 check('ذخیره‌ی دسته‌ی کامل → 200', $st === 200, (string) ($j['error'] ?? ''));
 
@@ -228,24 +228,22 @@ check('bootstrap: کانال پیامک باز شد', ($j['channels']['sms'] ?? 
 [$st, $j] = http('PATCH', '/api/admin/settings', ['mail_transport' => ''], $bossToken, $bossCsrf);
 check('خالی‌کردن mail_transport (fallback به env) → 200', $st === 200, (string) ($j['error'] ?? ''));
 
-/* ================= ۴) کارت‌ها — شخصی‌سازی کامل ================= */
-echo "\n۴) کارت‌های بانکی (number/holder/bank/note)\n";
-[$st, $j] = http('PATCH', '/api/admin/settings', ['card_numbers' => [['number' => '6037-9975 1234 5678', 'holder' => 'محمد جواد', 'bank' => 'بانک ملی', 'note' => 'کارت اصلی فروشگاه']]], $bossToken, $bossCsrf);
+/* ================= ۴) کارت‌به‌کارت (کلیدهای v14) ================= */
+echo "\n۴) کارت‌به‌کارت (واریز با تأیید ادمین)\n";
+// گام ۱ — به‌روزرسانی تست: کلیدهای card_numbers/card_payment_guide در فاز ۱۴ با deposit_card_* جایگزین شدند
+[$st, $j] = http('PATCH', '/api/admin/settings', ['deposit_card_enabled' => '1', 'deposit_card_number' => '6037997512345678', 'deposit_card_holder' => 'محمد جواد'], $bossToken, $bossCsrf);
 check('کارت کامل → 200', $st === 200, (string) ($j['error'] ?? ''));
 
 [$st, $j] = http('GET', '/api/admin/settings', null, $bossToken);
-$cardRaw = '';
+$cardMap = [];
 foreach (($j['items'] ?? []) as $row) {
-    if ($row['key'] === 'card_numbers') {
-        $cardRaw = (string) $row['value'];
-    }
+    $cardMap[(string) $row['key']] = (string) $row['value'];
 }
-$cards = json_decode($cardRaw, true);
-check('ارقام کارت پاک‌سازی شد (۱۶ رقم)', is_array($cards) && ($cards[0]['number'] ?? '') === '6037997512345678');
-check('یادداشت کارت حفظ شد', is_array($cards) && ($cards[0]['note'] ?? '') === 'کارت اصلی فروشگاه');
+check('شماره کارت ذخیره شد (۱۶ رقم)', ($cardMap['deposit_card_number'] ?? '') === '6037997512345678');
+check('نام صاحب کارت ذخیره شد', ($cardMap['deposit_card_holder'] ?? '') === 'محمد جواد');
 
-[$st] = http('PATCH', '/api/admin/settings', ['card_numbers' => [['number' => '123']]], $bossToken, $bossCsrf);
-check('کارت کوتاه → 422', $st === 422);
+[$st] = http('PATCH', '/api/admin/settings', ['deposit_card_number' => str_repeat('1', 41)], $bossToken, $bossCsrf);
+check('کارت بلندتر از سقف → 422', $st === 422);
 
 /* ================= ۵) گیت حالت تعمیر ================= */
 echo "\n۵) حالت تعمیر و نگهداری\n";
@@ -281,16 +279,16 @@ check('بازکردن ثبت‌نام → 200', $st === 200);
 
 /* ================= ۷) شورتکد OTP ادمین — ایمیل ================= */
 echo "\n۷) شورتکد ورود OTP (ایمیل مالک)\n";
-[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'email', 'target' => 'md1.javad401@gmail.com'], $helperToken, $helperCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'email', 'target' => 'test@example.com'], $helperToken, $helperCsrf);
 check('شورتکد با نقش پشتیبان (بدون users.manage) → 403', $st === 403);
 
-[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'email', 'target' => 'md1.javad401@gmail.com'], $bossToken, $bossCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'email', 'target' => 'test@example.com'], $bossToken, $bossCsrf);
 check('درخواست کد ادمین → 200', $st === 200, (string) ($j['error'] ?? ''));
 $ownerCode = (string) ($j['code'] ?? '');
 check('کد مستقیماً در پاسخ ادمین است', preg_match('/^\d{6}$/', $ownerCode) === 1, $ownerCode);
 check('ارسال ایمیل در حالت log انجام شد', ($j['sent']['mode'] ?? '') === 'log');
 
-[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'email', 'target' => 'md1.javad401@gmail.com', 'code' => $ownerCode], $bossToken, $bossCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'email', 'target' => 'test@example.com', 'code' => $ownerCode], $bossToken, $bossCsrf);
 check('تأیید و صدور نشست کاربر → 200', $st === 200, (string) ($j['error'] ?? ''));
 check('جنسیت کاربر جدید unset است', ($j['user']['gender'] ?? '') === 'unset');
 $ownerAccess = (string) ($j['accessToken'] ?? '');
@@ -303,10 +301,10 @@ check('me شامل جنسیت است', ($j['user']['gender'] ?? '') === 'unset')
 [$st, $j] = http('PATCH', '/api/v1/me', ['gender' => 'male'], $ownerAccess);
 check('ثبت جنسیت male → 200', $st === 200 && ($j['user']['gender'] ?? '') === 'male');
 
-[$st, $j] = http('GET', '/api/admin/users?q=md1.javad401', null, $bossToken);
+[$st, $j] = http('GET', '/api/admin/users?q=test@example', null, $bossToken);
 $foundGender = null;
 foreach (($j['items'] ?? []) as $it) {
-    if (($it['email'] ?? '') === 'md1.javad401@gmail.com') {
+    if (($it['email'] ?? '') === 'test@example.com') {
         $foundGender = $it['gender'] ?? null;
     }
 }
@@ -317,17 +315,17 @@ check('جنسیت نامعتبر → 422', $st === 422);
 
 /* ================= ۸) شورتکد OTP ادمین — موبایل ================= */
 echo "\n۸) شورتکد ورود OTP (موبایل مالک)\n";
-[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'sms', 'target' => '۰۹۳۸۹۶۵۹۹۱۰'], $bossToken, $bossCsrf);
-check('درخواست با ارقام فارسی → 200 و نرمال‌سازی', $st === 200 && ($j['target'] ?? '') === '09389659910', (string) ($j['error'] ?? ''));
+[$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'sms', 'target' => '۰۹۱۲۰۰۰۰۰۰۰'], $bossToken, $bossCsrf);
+check('درخواست با ارقام فارسی → 200 و نرمال‌سازی', $st === 200 && ($j['target'] ?? '') === '09120000000', (string) ($j['error'] ?? ''));
 $smsCode = (string) ($j['code'] ?? '');
 check('کد پیامکی در پاسخ ادمین است', preg_match('/^\d{6}$/', $smsCode) === 1);
 
 [$st, $j] = http('POST', '/api/admin/otp/request', ['channel' => 'sms', 'target' => '12345'], $bossToken, $bossCsrf);
 check('شماره نامعتبر → 422', $st === 422);
 
-[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'sms', 'target' => '09389659910', 'code' => $smsCode], $bossToken, $bossCsrf);
+[$st, $j] = http('POST', '/api/admin/otp/verify', ['channel' => 'sms', 'target' => '09120000000', 'code' => $smsCode], $bossToken, $bossCsrf);
 check('تأیید موبایل و ساخت کاربر → 200', $st === 200, (string) ($j['error'] ?? ''));
-check('هویت موبایل برگشت', ($j['user']['mobile'] ?? '') === '09389659910');
+check('هویت موبایل برگشت', ($j['user']['mobile'] ?? '') === '09120000000');
 
 [$st, $j] = http('GET', '/api/auth/channels');
 check('کانال‌های عمومی: sms=true', ($j['sms'] ?? null) === true);

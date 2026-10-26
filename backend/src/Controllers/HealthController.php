@@ -18,6 +18,15 @@ final class HealthController
             }
         }
 
+        // گام ۱ — هشدارهای پیکربندی (نمایش در سلامت سرویس + داشبورد پنل)
+        $warnings = [];
+        if (Otp::debugMisconfigured()) {
+            $warnings[] = [
+                'code' => 'otp_debug',
+                'message' => 'OTP_DEBUG=1 در محیط production — کد ورود هرگز در پاسخ برنمی‌گردد؛ کلید را در .env خاموش کنید',
+            ];
+        }
+
         Response::ok([
             'service' => 'karam-api',
             'version' => Config::get('APP_VERSION', '1.0.0'),
@@ -25,6 +34,7 @@ final class HealthController
             'php' => PHP_VERSION,
             'time' => gmdate('c'), // همه‌ی تاریخ‌ها UTC
             'database' => Config::isConfigured() ? ($dbOk ? 'connected' : 'error') : 'not_configured',
+            'warnings' => $warnings,
         ]);
     }
 

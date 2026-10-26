@@ -55,10 +55,33 @@ final class Otp
         return max(1, (int) (Config::get('OTP_TICKET_TTL_MINUTES', '10') ?? 10));
     }
 
-    /** حالت توسعه: کد در پاسخ API هم برگردانده می‌شود — فقط برای تست محلی! */
+    /**
+     * گام ۱ — آیا محیط جاری production است؟
+     * APP_ENV نامشخص/خالی = production (محتاطانه — fail-closed).
+     */
+    public static function isProduction(): bool
+    {
+        $env = strtolower(trim((string) (Config::get('APP_ENV', 'production') ?? 'production')));
+        return $env === '' || $env === 'prod' || $env === 'production';
+    }
+
+    /**
+     * حالت توسعه: کد در پاسخ API هم برگردانده می‌شود — فقط برای تست محلی!
+     * گام ۱ — در محیط production هرگز (حتی اگر OTP_DEBUG=1 باشد)؛
+     * این پیکربندی ناسازگار در /api/health و داشبورد پنل هشدار داده می‌شود.
+     */
     public static function debugEcho(): bool
     {
+        if (self::isProduction()) {
+            return false;
+        }
         return Config::get('OTP_DEBUG', '0') === '1';
+    }
+
+    /** گام ۱ — پیکربندی ناسازگار: OTP_DEBUG=1 روی production (برای هشدار) */
+    public static function debugMisconfigured(): bool
+    {
+        return self::isProduction() && Config::get('OTP_DEBUG', '0') === '1';
     }
 
     /* ---------------- ساخت و هش ---------------- */

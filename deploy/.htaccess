@@ -9,6 +9,10 @@ ServerSignature Off
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # گام ۱ — فایل‌های عیب‌یابی و پوشه‌ی نصب: 403 (قبل از هر چیز دیگری)
+    RewriteRule (^|/)install/ - [F,L]
+    RewriteRule (^|/)diag[^/]*\.php$ - [F,L]
+
     # اجبار به HTTPS (پس از فعال‌بودن SSL روی هاست)
     RewriteCond %{HTTPS} !=on
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
@@ -28,6 +32,11 @@ ServerSignature Off
 
 # ---------------- فایل‌های ممنوع ----------------
 <FilesMatch "(^\.|\.(env|sql|log|bak|ini|sh)|~)$">
+    Require all denied
+</FilesMatch>
+
+# گام ۱ — فایل‌های عیب‌یابی (diag*.php) در هر مسیری: 403
+<FilesMatch "^diag[^/]*\.php$">
     Require all denied
 </FilesMatch>
 

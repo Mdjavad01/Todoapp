@@ -125,6 +125,12 @@ function resetEnvironment(): void
             @unlink($f);
         }
     }
+
+    // گام ۱ — کش فایلی تنظیمات (v17) هم باید پاک شود؛ وگرنه سرور مقادیر ران قبلی را
+    // از کش می‌خواند (TTL ۱۰ دقیقه) و گیت‌هایی مثل «درگاه خاموش» بی‌اثر می‌شوند
+    foreach (glob(ROOT . '/backend/storage/cache/k_*.json') ?: [] as $f) {
+        @unlink($f);
+    }
 }
 
 function envKey(string $key, string $default = ''): string
@@ -152,6 +158,10 @@ function setSetting(string $key, string $value): void
     $st = $pdo->prepare("INSERT INTO settings (key, value, updated_at) VALUES (:k, :v, strftime('%Y-%m-%d %H:%M:%S','now'))
                          ON CONFLICT(key) DO UPDATE SET value = :v2");
     $st->execute([':k' => $key, ':v' => $value, ':v2' => $value]);
+    // گام ۱ — باطل‌سازی کش فایلی تنظیمات سرور (وگرنه تا ۱۰ دقیقه مقدار کهنه خوانده می‌شود)
+    foreach (glob(ROOT . '/backend/storage/cache/k_*.json') ?: [] as $f) {
+        @unlink($f);
+    }
 }
 
 /** premium_until کاربر از دیتابیس — برای چک کردن اثر مضاعف/تمدید */
@@ -165,9 +175,24 @@ function userPremiumUntil(string $email): ?string
     return $v === false ? null : (string) $v;
 }
 
+/** گام ۱ — ست/برداشتن فلگ در state سرور ساختگی زیبال (مثل verifyOmitAmount) */
+function setMockFlag(string $key, bool $value): void
+{
+    $f = __DIR__ . '/zibal-mock-state.json';
+    $s = json_decode((string) @file_get_contents($f), true);
+    if (!is_array($s)) {
+        $s = [];
+    }
+    $s[$key] = $value;
+    file_put_contents($f, json_encode($s, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
 /* ================= setup ================= */
 resetEnvironment();
-echo "— آماده‌سازی: دیتابیس نو + لاگ‌ها و مک‌ها پاک شد\n\n";
+// گام ۱ — دوره‌ی آزمایشی v18 در سید SQLite روشن است (برای تست دستی)؛ این تست
+// باید مستقل از آن باشد («کاربر دیگر پرو نیست») — پس قطع می‌کنیم
+setSetting('trial_enabled', '0');
+echo "— آماده‌سازی: دیتابیس نو + لاگ‌ها و مک‌ها و کش پاک شد\n\n";
 
 /* ================= ۱) زیرساخت و پلن‌ها ================= */
 echo "۱) سلامت سرویس و پلن‌ها\n";
@@ -199,7 +224,8 @@ echo "\n۳) سفارش و درگاه\n";
 [$st] = http('POST', '/api/v1/payments/orders', ['planCode' => 'annual']);
 check('ساخت سفارش بدون ورود → 401', $st === 401);
 
-[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'nope']);
+// گام ۱ — این درخواست باید احرازشده باشد (بدون توکن، گیت ورود زودتر 401 می‌دهد)
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'nope'], $tok);
 check('پلن ناشناخته → 404', $st === 404);
 
 [$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'annual'], $tok);
@@ -263,6 +289,28 @@ check('trackId ناهم‌خوان → state=failed', $st === 302 && str_contain
 
 [$st, $j] = http('GET', '/api/v1/payments/orders/' . $order3, null, $tok);
 check('سفارش سوم failed ماند', ($j['order']['status'] ?? '') === 'failed');
+
+/* ================= ۷.۵) verify بدون amount → fail-closed (گام ۱) ================= */
+echo "\n۷.۵) fail-closed مبلغ زیبال\n";
+setMockFlag('verifyOmitAmount', true);
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+$order4 = (string) ($j['orderUuid'] ?? '');
+$track4 = (string) ($j['trackId'] ?? '');
+check('سفارش چهارم ساخته شد', $st === 200 && $order4 !== '' && $track4 !== '');
+
+// درگاه verify موفق (result=100) ولی بدون فیلد amount — سرور باید تأیید را رد کند
+[$st, , $h] = httpRaw('GET', '/api/payments/callback?trackId=' . $track4 . '&success=1&status=1&orderId=' . $order4);
+check('verify بدون amount → state=failed', $st === 302 && str_contains($h['location'] ?? '', 'state=failed'), (string) ($h['location'] ?? ''));
+
+[$st, $j] = http('GET', '/api/v1/payments/orders/' . $order4, null, $tok);
+check('سفارش بدون amount → failed ماند', ($j['order']['status'] ?? '') === 'failed');
+
+setMockFlag('verifyOmitAmount', false);
+[$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly'], $tok);
+$order5 = (string) ($j['orderUuid'] ?? '');
+$track5 = (string) ($j['trackId'] ?? '');
+[$st, , $h] = httpRaw('GET', '/api/payments/callback?trackId=' . $track5 . '&success=1&status=1&orderId=' . $order5);
+check('بعد از رفع حالت → دوباره state=succeeded', $st === 302 && str_contains($h['location'] ?? '', 'state=succeeded'), (string) ($h['location'] ?? ''));
 
 /* ================= ۸) دیتای کاربر دیگر ================= */
 echo "\n۸) جداسازی کاربران\n";

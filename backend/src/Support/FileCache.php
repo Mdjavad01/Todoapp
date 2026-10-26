@@ -16,21 +16,25 @@ declare(strict_types=1);
  */
 final class FileCache
 {
-    /** مسیر پوشه‌ی کش — دو چیدمان: مخزن (backend/storage) و هاست (api/storage) */
+    /** مسیر پوشه‌ی کش — گام ۱: همیشه داخل storage محافظت‌شده (با .htaccess)، نه داخل پوشه‌ی کد!
+     *  قبلاً چیدمان اول «src/storage/cache» بود که در مخزن یعنی backend/src/storage/cache و
+     *  روی هاست یعنی api/src/storage/cache — بیرون از .htaccess محافظت‌شده‌ی storage و
+     *  عملاً از وب خواندنی (فایل کش شامل همه‌ی تنظیمات از جمله رمزهاست). */
     private static function dir(): ?string
     {
         static $dir = null;
         if ($dir !== null) {
             return $dir === '' ? null : $dir;
         }
-        foreach ([dirname(__DIR__) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
+        // مخزن: backend/storage/cache — هاست: api/storage/cache (هر دو .htaccess «deny all» دارند)
+        foreach ([dirname(__DIR__, 2) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
             if (is_dir($candidate) && is_writable($candidate)) {
                 $dir = $candidate;
                 return $dir;
             }
         }
         // تلاش برای ساخت (بار اول) — اگر نشد، کش غیرفعال ولی سرویس سالم
-        foreach ([dirname(__DIR__) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
+        foreach ([dirname(__DIR__, 2) . '/storage/cache', __DIR__ . '/../storage/cache'] as $candidate) {
             if (@mkdir($candidate, 0775, true) && is_writable($candidate)) {
                 $dir = $candidate;
                 return $dir;
@@ -113,4 +117,25 @@ final class FileCache
     /** کلیدهای استاندارد کش کارام (تک منبع حقیقت برای invalidate) */
     public const K_SETTINGS = 'karam_settings';
     public const K_ANN_ACTIVE = 'karam_ann_active';
+
+    /** گام ۱ — آیا کلید در کش موجود (و منقضی‌نشده) است؟
+     * برای باطل‌سازی حافظه‌ی static در سرورهای بلندعمر (php-fpm چندورکری):
+     * وقتی فایل کش حذف/منقضی شود، ورکرهای دیگر هم در اولین درخواست مقدار تازه می‌خوانند */
+    public static function exists(string $key): bool
+    {
+        $path = self::path($key);
+        if (!is_file($path)) {
+            return false;
+        }
+        $raw = @file_get_contents($path);
+        $data = $raw !== false ? json_decode($raw, true) : null;
+        if (!is_array($data) || !array_key_exists('e', $data)) {
+            return false;
+        }
+        if ($data['e'] !== 0 && (int) $data['e'] < time()) {
+            @unlink($path); // منقضی — همان‌جا پاک کن
+            return false;
+        }
+        return true;
+    }
 }

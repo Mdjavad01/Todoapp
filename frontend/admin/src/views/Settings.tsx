@@ -21,7 +21,7 @@ interface SettingRow {
 interface FieldDef {
   key: string;
   label: string;
-  kind: 'text' | 'number' | 'bool' | 'select' | 'textarea';
+  kind: 'text' | 'number' | 'bool' | 'select' | 'textarea' | 'shortcuts';
   options?: { value: string; label: string }[];
   help?: string;
   dir?: 'ltr' | 'rtl';
@@ -44,6 +44,13 @@ const GROUPS: GroupDef[] = [
       { key: 'maintenance_mode', label: 'حالت تعمیر و نگهداری', kind: 'bool', help: 'همه‌ی API به‌جز سلامت سرویس و پنل، ۵۰۳ می‌شود' },
       { key: 'api_allow_registration', label: 'ثبت‌نام حساب جدید', kind: 'bool', help: 'خاموش = فقط کاربران موجود می‌توانند وارد شوند' },
       { key: 'api_max_sync_items', label: 'سقف آیتم در هر درخواست سینک', kind: 'number', help: 'بین ۱۰۰ تا ۵۰۰۰' },
+    ],
+  },
+  {
+    title: 'شورتکد ورود مالک (OTP) — گام ۱ امنیت',
+    description: 'میان‌برهای تب «شورتکد ورود OTP» — به‌جای مقادیر هاردکد، از این‌جا مدیریت می‌شوند. فقط برای ادمین با دسترسی مدیریت کاربران نمایش داده می‌شوند؛ ایمیل و شماره‌ی شما دیگر در کد نیست.',
+    fields: [
+      { key: 'admin_otp_shortcuts', label: 'میان‌برها', kind: 'shortcuts', help: 'برای کانال تلگرام هدف لازم نیست (اتصال با بلیت انجام می‌شود). حداکثر ۱۰ میان‌بر.' },
     ],
   },
   {
@@ -248,6 +255,10 @@ export default function Settings({
     let value = draft[f.key] ?? server;
     const dirty = draft[f.key] !== undefined && draft[f.key] !== server;
 
+    if (f.kind === 'shortcuts') {
+      return <ShortcutsEditor key={f.key} help={f.help} value={value} dirty={dirty} disabled={!canManage} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />;
+    }
+
     if (f.kind === 'bool') {
       return (
         <div className="flex items-center justify-between gap-3 py-2.5" key={f.key}>
@@ -399,5 +410,130 @@ function DirtyNote({ updatedAt }: { updatedAt?: string }) {
       <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium">تغییر داده‌شده (ذخیره نشده)</span>
       {updatedAt ? <span className="text-slate-300">· نسخه‌ی سرور: {faDateTime(updatedAt)}</span> : null}
     </p>
+  );
+}
+
+interface ShortcutRow {
+  label: string;
+  channel: 'email' | 'telegram' | 'sms';
+  target: string;
+}
+
+const SHORTCUT_CHANNELS: { value: ShortcutRow['channel']; label: string }[] = [
+  { value: 'email', label: 'ایمیل' },
+  { value: 'telegram', label: 'ربات تلگرام' },
+  { value: 'sms', label: 'پیامک موبایل' },
+];
+
+function parseShortcuts(raw: string): ShortcutRow[] {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((r) => r && typeof r === 'object')
+      .map((r) => ({
+        label: String(r.label ?? ''),
+        channel: (['email', 'telegram', 'sms'].includes(r.channel) ? r.channel : 'email') as ShortcutRow['channel'],
+        target: String(r.target ?? ''),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** ویرایشگر شورتکدهای ورود مالک (گام ۱) — همان ظاهر بقیه‌ی فرم تنظیمات */
+function ShortcutsEditor({
+  value,
+  help,
+  dirty,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  help?: string;
+  dirty: boolean;
+  disabled: boolean;
+  onChange: (json: string) => void;
+}) {
+  const rows = parseShortcuts(value);
+  const update = (next: ShortcutRow[]) => onChange(JSON.stringify(next));
+  return (
+    <div className="py-2">
+      <p className="text-sm font-semibold text-slate-700">میان‌برهای ورود</p>
+      <div className="mt-2 space-y-2">
+        {rows.length === 0 ? (
+          <p className="text-xs text-slate-400">هیچ میان‌بری ثبت نشده — با دکمه‌ی پایین یکی بسازید.</p>
+        ) : null}
+        {rows.map((row, i) => (
+          <div key={i} className="rounded-xl border border-slate-200 p-2.5">
+            <div className="flex items-center gap-2">
+              <input
+                className="field min-w-0 flex-1"
+                placeholder="برچسب (مثل: ورود خودم)"
+                value={row.label}
+                disabled={disabled}
+                aria-label={`برچسب میان‌بر ${i + 1}`}
+                onChange={(e) => {
+                  const next = [...rows];
+                  next[i] = { ...row, label: e.target.value };
+                  update(next);
+                }}
+              />
+              <select
+                className="field w-36 shrink-0"
+                value={row.channel}
+                disabled={disabled}
+                aria-label={`کانال میان‌بر ${i + 1}`}
+                onChange={(e) => {
+                  const ch = e.target.value as ShortcutRow['channel'];
+                  const next = [...rows];
+                  next[i] = { ...row, channel: ch, target: ch === 'telegram' ? '' : row.target };
+                  update(next);
+                }}
+              >
+                {SHORTCUT_CHANNELS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-ghost shrink-0 text-xs text-rose-600"
+                disabled={disabled}
+                onClick={() => update(rows.filter((_, j) => j !== i))}
+              >
+                حذف
+              </button>
+            </div>
+            {row.channel !== 'telegram' ? (
+              <input
+                className="field mt-1.5 text-left"
+                dir="ltr"
+                placeholder={row.channel === 'email' ? 'you@example.com' : '09xxxxxxxxx'}
+                value={row.target}
+                disabled={disabled}
+                aria-label={`هدف میان‌بر ${i + 1}`}
+                onChange={(e) => {
+                  const next = [...rows];
+                  next[i] = { ...row, target: e.target.value };
+                  update(next);
+                }}
+              />
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-400">این کانال هدف نمی‌خواهد — کد از طریق اتصال چت تلگرام صادر می‌شود.</p>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="btn-ghost mt-2 text-xs"
+        disabled={disabled || rows.length >= 10}
+        onClick={() => update([...rows, { label: '', channel: 'email', target: '' }])}
+      >
+        + افزودن میان‌بر
+      </button>
+      {help ? <p className="mt-0.5 text-[11px] text-slate-400">{help}</p> : null}
+      {dirty ? <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-amber-600"><span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium">تغییر داده‌شده (ذخیره نشده)</span></p> : null}
+    </div>
   );
 }

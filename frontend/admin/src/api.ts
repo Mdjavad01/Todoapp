@@ -206,6 +206,9 @@ export const api = {
     request<{ message: string }>(`/giftcodes/${id}`, { method: 'PATCH', body }),
 
   // ---- شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام) ----
+  // گام ۱ — میان‌برها از تنظیمات سرور (admin_otp_shortcuts)؛ فقط برای ادمین با users.manage
+  otpShortcuts: () =>
+    request<{ items: { label: string; channel: 'email' | 'telegram' | 'sms'; target: string }[] }>('/otp/shortcuts'),
   otpRequest: (channel: 'email' | 'telegram' | 'sms', target?: string) =>
     request<{
       channel: 'email' | 'telegram' | 'sms';

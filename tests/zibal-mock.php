@@ -18,6 +18,9 @@ declare(strict_types=1);
 
 $stateFile = __DIR__ . '/zibal-mock-state.json';
 
+// گام ۱ — حالت تستی «verify بدون amount» : وقتی در state مقدار verifyOmitAmount=true باشد،
+// پاسخ verify فیلد amount را ندارد تا رفتار fail-closed سمت سرور آزموده شود.
+
 header('Content-Type: application/json; charset=utf-8');
 
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -86,17 +89,20 @@ if ($uri === '/v1/verify' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
     $o = $s['orders'][$trackId];
-    echo json_encode([
+    $out = [
         'result' => 100,
         'message' => 'success',
         'status' => 1,
         'trackId' => $trackId,
         'orderId' => $o['orderId'],
-        'amount' => $o['amount'],
         'refNumber' => 'RF' . $trackId,
         'cardNumber' => '621986****5678',
         'paidAt' => gmdate('c'),
-    ]);
+    ];
+    if (empty($s['verifyOmitAmount'])) {
+        $out['amount'] = $o['amount']; // گام ۱ — بدون این فیلد، سرور باید تأیید را رد کند (fail-closed)
+    }
+    echo json_encode($out);
     exit;
 }
 
