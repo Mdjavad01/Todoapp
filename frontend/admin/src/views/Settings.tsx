@@ -123,6 +123,17 @@ const GROUPS: GroupDef[] = [
       { key: 'deposit_card_guide', label: 'راهنمای پرداخت (برای کاربر)', kind: 'textarea', help: 'مثلاً ساعات بررسی، بانک مقصد، الزام مبلغ دقیق' },
     ],
   },
+  {
+    title: 'به‌روزرسانی اپ و پشتیبانی',
+    description: 'کارت «نسخه‌ی جدید موجود است» در تنظیمات اپ کاربر + اطلاعات پشتیبانی در شیت قوانین و صفحه‌ی ورود. همه‌ی فیلدها اختیاری‌اند؛ خالی = غیرفعال.',
+    fields: [
+      { key: 'app_latest_version', label: 'آخرین نسخه‌ی اپ (x.y.z)', kind: 'text', dir: 'ltr', help: 'مثال: 3.7.1 — اگر از نسخه‌ی نصب‌شده‌ی کاربر جدیدتر باشد، کارت آبی به‌روزرسانی در تنظیمات اپ دیده می‌شود. خالی = کارت خاموش' },
+      { key: 'app_update_url', label: 'لینک دانلود پک جدید (اختیاری)', kind: 'text', dir: 'ltr', help: 'مثال: https://app.hojre24shop.ir/karam-fix-v17.zip — دکمه‌ی «دانلود به‌روزرسانی» به این لینک وصل می‌شود' },
+      { key: 'app_update_notes', label: 'توضیح نسخه‌ی جدید (اختیاری)', kind: 'textarea', help: 'چند خط کوتاه درباره‌ی تغییرات — زیر کارت به‌روزرسانی نشان داده می‌شود' },
+      { key: 'support_email', label: 'ایمیل پشتیبانی', kind: 'text', dir: 'ltr', help: 'در شیت «قوانین و حریم خصوصی» و پشتیبانی اپ نمایش داده می‌شود' },
+      { key: 'support_telegram', label: 'آیدی تلگرام پشتیبانی', kind: 'text', dir: 'ltr', help: 'بدون @ یا با @ — مثل: karam_support' },
+    ],
+  },
 ];
 
 const SECRET_MASK = '••••••••';

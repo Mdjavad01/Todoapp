@@ -54,6 +54,8 @@ export type IconName =
   | 'replay'
   | 'search'
   | 'settings'
+  | 'send'
+  | 'shield'
   | 'shop'
   | 'signal_cellular_4_bar'
   | 'star'

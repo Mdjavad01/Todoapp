@@ -16,6 +16,15 @@ final class AnnouncementController
     /** GET /api/v1/announcements/active */
     public function active(): void
     {
+        // v17 (مقیاس) — بنر یکی از دو نقاط داغ عمومی است (هر باز شدن اپ)؛
+        // ۶۰ ثانیه کش فایلی = صفر کوئری برای اکثر درخواست‌ها؛ تغییر از پنل
+        // همان لحظه کش را باطل می‌کند (announcementCreate/Update/Delete).
+        $cached = FileCache::get(FileCache::K_ANN_ACTIVE);
+        if (is_array($cached)) {
+            Response::ok(['items' => $cached]);
+            return;
+        }
+
         AnnouncementsSchema::ensure();
 
         $now = gmdate('Y-m-d H:i:s');
@@ -45,6 +54,7 @@ final class AnnouncementController
             ];
         }
 
+        FileCache::set(FileCache::K_ANN_ACTIVE, $items, 60);
         Response::ok(['items' => $items]);
     }
 }

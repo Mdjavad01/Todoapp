@@ -459,6 +459,18 @@ export function AccountSheet() {
               <p className="text-body-sm text-on-surface-variant leading-relaxed">
                 با ورود، داده‌های این دستگاه با حساب شما سینک می‌شود و روی دستگاه‌های دیگر هم در دسترس خواهد بود.
               </p>
+              {/* پذیرش قوانین (v17) — لینک بازکننده‌ی شیت قوانین */}
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                ورود شما به معنای پذیرش{' '}
+                <button
+                  className="text-primary font-bold underline underline-offset-2"
+                  onClick={() => useAppStore.setState({ termsSheet: true })}
+                  type="button"
+                >
+                  قوانین و حریم خصوصی کارام
+                </button>{' '}
+                است.
+              </p>
             </>
           ) : null}
 

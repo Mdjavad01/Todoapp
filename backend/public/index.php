@@ -22,6 +22,7 @@ require $srcDir . '/src/Http/Request.php';
 require $srcDir . '/src/Http/Response.php';
 require $srcDir . '/src/Http/Router.php';
 require $srcDir . '/src/Support/Uuid.php';
+require $srcDir . '/src/Support/FileCache.php'; // v17 — کش فایلی نقاط داغ (مقیاس‌پذیری)
 require $srcDir . '/src/Support/Settings.php';
 require $srcDir . '/src/Support/DepositSchema.php';
 require $srcDir . '/src/Support/AnnouncementsSchema.php';

@@ -12,6 +12,9 @@ declare(strict_types=1);
  *
  * نکته‌ها:
  *  - کش درون‌درخواستی دارد؛ در هر درخواست حداکثر یک کوئری.
+ *  - v17 (مقیاس): کش فایلی هم دارد (FileCache، TTL ۶۰۰ ثانیه) — با هزاران کاربر
+ *    همزمان، جدول settings دیگر در هر درخواست خوانده نمی‌شود؛ تغییر از پنل ادمین
+ *    همان لحظه کش را باطل می‌کند (settingsUpdate) و پس از ۱۰ دقیقه هم خودبه‌خود تازه می‌شود.
  *  - اگر دیتابیس در دسترس نباشد (نصب اولیه/تست)، بی‌صدا null برمی‌گرداند تا
  *    مسیر به .env/predefault برسد — هیچ مسیری به‌خاطر تنظیمات نمی‌شکند.
  */
@@ -65,6 +68,18 @@ final class Settings
             'paywallTitle' => self::get('paywall_title', 'کارام پرو'),
             'minAppVersion' => self::get('min_app_version', '1.0.0'),
             'maintenance' => self::bool('maintenance_mode'),
+            // v17 — چک‌کننده به‌روزرسانی: ادمین از پنل نسخه‌ی آخر را ثبت می‌کند؛
+            // اپ در تنظیمات کارت «نسخه‌ی جدید موجود است» نشان می‌دهد (خالی = غیرفعال)
+            'update' => [
+                'latest' => self::get('app_latest_version'),
+                'url' => self::get('app_update_url'),
+                'notes' => self::get('app_update_notes'),
+            ],
+            // v17 — اطلاعات پشتیبانی واقعی (شیت قوانین/حریم خصوصی + صفحه‌ی ورود)
+            'support' => [
+                'email' => self::get('support_email'),
+                'telegram' => self::get('support_telegram'),
+            ],
             'voice' => [
                 'enabled' => self::bool('voice_enabled'),
                 'provider' => self::get('voice_provider', 'off'),
@@ -86,17 +101,25 @@ final class Settings
             if (!Config::isConfigured()) {
                 return self::$cache = [];
             }
+            // v17 — کش فایلی بین‌درخواستی: صفر کوئری برای اکثر درخواست‌ها
+            $cached = FileCache::get(FileCache::K_SETTINGS);
+            if (is_array($cached)) {
+                return self::$cache = $cached;
+            }
             $rows = Database::pdo()->query('SELECT `key`, `value` FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
-            return self::$cache = is_array($rows) ? $rows : [];
+            $rows = is_array($rows) ? $rows : [];
+            FileCache::set(FileCache::K_SETTINGS, $rows, 600);
+            return self::$cache = $rows;
         } catch (Throwable) {
             return self::$cache = [];
         }
     }
 
-    /** پاک‌سازی کش (برای تست) */
+    /** پاک‌سازی کش (برای تست + باطل‌سازی از پنل) */
     public static function flush(): void
     {
         self::$cache = null;
         self::$loaded = false;
+        FileCache::delete(FileCache::K_SETTINGS);
     }
 }

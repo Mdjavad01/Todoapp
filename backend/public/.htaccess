@@ -1,4 +1,4 @@
-# کارام — API
+# کارام — API (v17: کارایی زیر بار همزمان)
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
@@ -18,6 +18,13 @@
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
     Header always set Referrer-Policy "no-referrer"
+    # پاسخ API کش‌شدنی نیست (حتی توسط پراکسی‌ها) — داده‌ی هر کاربر مخصوص خودش است
+    Header always set Cache-Control "no-store"
+</IfModule>
+
+# فشرده‌سازی پاسخ JSON — با سینک سنگین (هزاران آیتم) حجم انتقال تا ~۸۰٪ کم می‌شود
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json text/html text/plain
 </IfModule>
 
 # غیرفعال‌کردن نمای دایرکتوری

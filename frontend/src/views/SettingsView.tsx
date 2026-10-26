@@ -5,7 +5,21 @@ import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۳.۶.۱';
+const APP_VERSION = '۳.۷.۰';
+/** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
+const APP_VERSION_RAW = '3.7.0';
+
+/** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
+function isNewerVersion(latest: string | null | undefined, current: string): boolean {
+  if (!latest) return false;
+  const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
+  const [a, b] = [parse(latest), parse(current)];
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) > (b[i] ?? 0)) return true;
+    if ((a[i] ?? 0) < (b[i] ?? 0)) return false;
+  }
+  return false;
+}
 
 /** گزینه‌های اندازه‌ی فونت — preview فقط برای پیش‌نمایش دکمه‌هاست */
 const FONT_SIZES: { value: FontScale; label: string; hint: string; preview: number }[] = [
@@ -41,6 +55,12 @@ export function SettingsView() {
   const session = useAppStore((s) => s.session);
   const showToast = useAppStore((s) => s.showToast);
   const syncState = useAppStore((s) => s.syncState);
+  const appSettings = useAppStore((s) => s.appSettings);
+  const openTermsSheet = useAppStore((s) => s.openTermsSheet);
+
+  // چک‌کننده به‌روزرسانی (v17) — «آخرین نسخه» از پنل ادمین ثبت می‌شود
+  const update = appSettings.update;
+  const hasUpdate = isNewerVersion(update?.latest, APP_VERSION_RAW);
 
   // پشتیبان‌گیری
   const fileRef = useRef<HTMLInputElement>(null);
@@ -101,6 +121,45 @@ export function SettingsView() {
   return (
     <section className="p-margin flex flex-col gap-4" id="view-settings">
       <h2 className="text-headline-lg font-bold text-on-surface dark:text-inverse-on-surface">تنظیمات</h2>
+
+      {/* کارت به‌روزرسانی (v17) — فقط وقتی سرور نسخه‌ی جدیدتری ثبت کرده باشد */}
+      {hasUpdate ? (
+        <div
+          className="rounded-2xl border border-primary/35 bg-primary/10 p-4 relative overflow-hidden"
+          id="settings-update"
+          role="status"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+              <Icon name="auto_awesome" size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">
+                نسخه‌ی جدید کارام ({toFa(update?.latest ?? '')}) منتشر شده
+              </p>
+              <p className="text-xs text-on-surface-variant mt-0.5">شما روی نسخه‌ی {toFa(APP_VERSION)} هستید</p>
+            </div>
+          </div>
+          {update?.notes ? (
+            <p className="text-body-sm text-on-surface-variant leading-relaxed mt-3 whitespace-pre-line">{update.notes}</p>
+          ) : null}
+          {update?.url ? (
+            <a
+              href={update.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 w-full py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+            >
+              <Icon name="refresh" size={17} />
+              دانلود به‌روزرسانی
+            </a>
+          ) : (
+            <p className="text-xs text-on-surface-variant mt-3 leading-relaxed">
+              برای به‌روزرسانی، پک جدید را از داشبورد فرماندهی بگیرید و طبق نصب.txt در هاست استخراج کنید.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/* ظاهر و تم (جنسیت) */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20 text-body-md">
@@ -293,6 +352,26 @@ export function SettingsView() {
           <div className="flex flex-col">
             <span className="font-bold">راهنمای کارام</span>
             <span className="text-xs text-on-surface-variant">۹ پرسش و پاسخ — همه‌چیز درباره‌ی کارام</span>
+          </div>
+        </div>
+        <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+          <Icon name="arrow_back_ios" size={14} />
+        </span>
+      </div>
+
+      {/* قوانین، حریم خصوصی و پشتیبانی (v17) */}
+      <div
+        className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 p-3.5 flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform"
+        onClick={openTermsSheet}
+        role="button"
+        aria-label="قوانین، حریم خصوصی و پشتیبانی"
+        id="settings-terms"
+      >
+        <div className="flex items-center gap-2.5">
+          <Icon name="shield" size={22} className="text-outline" />
+          <div className="flex flex-col">
+            <span className="font-bold">قوانین، حریم خصوصی و پشتیبانی</span>
+            <span className="text-xs text-on-surface-variant">۱۳ بند شفاف + راه ارتباطی تیم کارام</span>
           </div>
         </div>
         <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">

@@ -143,6 +143,10 @@ export interface BootstrapPayload {
   maintenance: boolean;
   voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
   channels: { email: boolean; telegram: boolean; sms: boolean; botUsername: string };
+  /** v17 — کارت «نسخه جدید» در تنظیمات (خالی/ناموجود = غیرفعال) */
+  update?: { latest: string | null; url: string | null; notes: string | null } | null;
+  /** v17 — اطلاعات پشتیبانی در شیت قوانین و صفحه ورود */
+  support?: { email: string | null; telegram: string | null } | null;
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {

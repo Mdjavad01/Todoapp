@@ -22,6 +22,9 @@ export interface AppSettings {
   maintenance: boolean;
   voice: { enabled: boolean; provider: 'off' | 'web_speech'; rate: number; pitch: number; lang: string };
   channels: { email: boolean; telegram: boolean; sms: boolean; botUsername: string } | null;
+  /** v17 — چک‌کننده به‌روزرسانی + پشتیبانی (پاسخ سرورهای قدیمی بدون این‌هاست) */
+  update?: { latest: string | null; url: string | null; notes: string | null } | null;
+  support?: { email: string | null; telegram: string | null } | null;
 }
 
 /** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription) */
@@ -68,6 +71,8 @@ interface AppState {
   genderSheet: boolean;
   /** راهنمای کارام (v11) — پاپ‌آپ مرکزی با پرسش‌های پرتکرار */
   guideSheet: boolean;
+  /** قوانین، حریم خصوصی و پشتیبانی (v17) */
+  termsSheet: boolean;
   /** تور تعاملی مرحله‌به‌مرحله (v12) — توولتیپ روی المان‌های واقعی اپ */
   tourOpen: boolean;
   /** آنبوردینگ کامل (v10) — خوش‌آمد + نام + ظاهر؛ بعد از اولین ورود */
@@ -91,6 +96,7 @@ interface AppState {
   openGenderSheet(): void;
   /** باز کردن پاپ‌آپ راهنمای کارام (v11) */
   openGuideSheet(): void;
+  openTermsSheet(): void;
   /** شروع تور تعاملی (v12) — شیت راهنما و حباب آموزشی بسته می‌شوند */
   openTour(): void;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
@@ -176,6 +182,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   accountSheet: false,
   genderSheet: false,
   guideSheet: false,
+  termsSheet: false,
   tourOpen: false,
   welcomeSheet: false,
   coachAdd: false,
@@ -295,6 +302,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openGuideSheet() {
     set({ guideSheet: true });
+  },
+
+  openTermsSheet() {
+    set({ termsSheet: true });
   },
 
   openTour() {

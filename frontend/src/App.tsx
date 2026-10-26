@@ -15,6 +15,7 @@ import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
 import { GuideSheet } from '@/modals/GuideSheet';
+import { TermsSheet } from '@/modals/TermsSheet';
 import { TourOverlay } from '@/modals/TourOverlay';
 import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
@@ -93,6 +94,7 @@ export default function App() {
         <NewListSheet />
         <AccountSheet />
         <GuideSheet />
+        <TermsSheet />
         <TourOverlay />
         <GenderOnboardingSheet />
         <WelcomeOnboardingSheet />

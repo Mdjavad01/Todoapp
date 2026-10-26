@@ -726,6 +726,7 @@ final class AdminController
         ]);
         $id = (int) $pdo->lastInsertId();
         Audit::admin($ctx['admin']['id'], 'announcement.create', 'announcement', (string) $id, ['title' => $title]);
+        FileCache::delete(FileCache::K_ANN_ACTIVE); // v17 — بنر در اپ فوراً تازه شود
         Response::json(array_merge(['ok' => true], ['message' => 'اطلاعیه ساخته شد', 'id' => $id]), 201);
     }
 
@@ -797,6 +798,7 @@ final class AdminController
         $upd = $pdo->prepare('UPDATE announcements SET ' . implode(', ', $sets) . ' WHERE id = :id');
         $upd->execute($args);
         Audit::admin($ctx['admin']['id'], 'announcement.update', 'announcement', (string) $id, $changed);
+        FileCache::delete(FileCache::K_ANN_ACTIVE); // v17 — بنر در اپ فوراً تازه شود
         Response::ok(['message' => 'اطلاعیه به‌روزرسانی شد']);
     }
 
@@ -821,6 +823,7 @@ final class AdminController
         $del = $pdo->prepare('DELETE FROM announcements WHERE id = :id');
         $del->execute([':id' => $id]);
         Audit::admin($ctx['admin']['id'], 'announcement.delete', 'announcement', (string) $uuid);
+        FileCache::delete(FileCache::K_ANN_ACTIVE); // v17 — بنر در اپ فوراً تازه شود
         Response::ok(['message' => 'اطلاعیه حذف شد']);
     }
 
@@ -1055,6 +1058,12 @@ final class AdminController
             'deposit_card_number' => ['type' => 'str', 'min' => 0, 'max' => 40],
             'deposit_card_holder' => ['type' => 'str', 'min' => 0, 'max' => 120],
             'deposit_card_guide' => ['type' => 'str', 'min' => 0, 'max' => 600],
+            // --- به‌روزرسانی اپ و پشتیبانی (v17 — شیت قوانین + کارت «نسخه جدید») ---
+            'app_latest_version' => ['type' => 'semver', 'allowEmpty' => true],
+            'app_update_url' => ['type' => 'str', 'min' => 0, 'max' => 500],
+            'app_update_notes' => ['type' => 'str', 'min' => 0, 'max' => 1000],
+            'support_email' => ['type' => 'str', 'min' => 0, 'max' => 190],
+            'support_telegram' => ['type' => 'str', 'min' => 0, 'max' => 100],
         ];
     }
 
@@ -1109,10 +1118,15 @@ final class AdminController
                 }
                 $stored = ((int) $value) === 1 ? '1' : '0';
             } elseif ($rule['type'] === 'semver') {
-                if (!is_string($value) || !preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}$/', $value)) {
+                // v17 — خالی = غیرفعال‌کردن کارت به‌روزرسانی (مثل enum)
+                $allowEmpty = ($rule['allowEmpty'] ?? false) === true;
+                if ($allowEmpty && ($value === '' || $value === null)) {
+                    $stored = '';
+                } elseif (!is_string($value) || !preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}$/', $value)) {
                     throw new ValidationError("مقدار «{$key}» باید به شکل x.y.z باشد");
+                } else {
+                    $stored = $value;
                 }
-                $stored = $value;
             } elseif ($rule['type'] === 'int') {
                 if (is_string($value)) {
                     $value = Otp::normalizeDigits($value);
@@ -1164,6 +1178,7 @@ final class AdminController
         }
 
         Audit::admin($ctx['admin']['id'], 'settings.update', 'settings', null, $changed);
+        Settings::flush(); // v17 — کش فایلی تنظیمات همان لحظه باطل شود
 
         // اگر توکن ربات تلگرام ذخیره/تغییر کرد: اعتبارش را زنده تست کن + webhook قدیمی را پاک کن
         // (اگر اپ دیگری روی همین توکن webhook گذاشته باشد، getUpdates با 409 شکست می‌خورد)
