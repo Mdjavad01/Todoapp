@@ -321,6 +321,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('app_update_notes', ''),
   ('support_email', ''),
   ('support_telegram', ''),
+  ('trial_enabled', '1'),
+  ('trial_days', '7'),
   ('provider_email_enabled', '0'),
   ('telegram_bot_token', ''),
   ('telegram_bot_username', ''),

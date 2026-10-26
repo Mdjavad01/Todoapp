@@ -27,13 +27,14 @@ export interface AppSettings {
   support?: { email: string | null; telegram: string | null } | null;
 }
 
-/** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription) */
+/** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription؛ source='trial' = دوره آزمایشی v18) */
 export interface PremiumState {
   loaded: boolean;
   isPremium: boolean;
   lifetime: boolean;
   daysLeft: number | null;
   plan: { code: string; title: string } | null;
+  source: string | null;
 }
 
 /** نگاشت اکسنت به مقادیر RGB برای متغیرهای CSS */
@@ -196,7 +197,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   session: null,
   syncState: { status: 'idle', lastSyncAt: null, error: null },
-  premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null },
+  premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
   paymentResult: null,
 
   async init() {
@@ -345,7 +346,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       session: null,
       syncState: { status: 'idle', lastSyncAt: null, error: null },
-      premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null },
+      premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
       paymentResult: null,
     });
   },
@@ -356,7 +357,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async reloadPremium() {
     if (!get().session) {
-      set({ premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null } });
+      set({ premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null } });
       return;
     }
     try {
@@ -368,6 +369,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           lifetime: sub.lifetime,
           daysLeft: sub.daysLeft,
           plan: sub.plan,
+          source: sub.source ?? null,
         },
       });
     } catch {

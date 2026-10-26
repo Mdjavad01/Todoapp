@@ -289,12 +289,14 @@ export function PaywallView() {
           <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-4 flex items-center gap-3">
             <Icon name="verified" size={26} className="text-emerald-600 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-body-md font-bold text-emerald-700 dark:text-emerald-300">کارام پرو فعال است</p>
+              <p className="text-body-md font-bold text-emerald-700 dark:text-emerald-300">
+                {premium.source === 'trial' ? 'دوره آزمایشی کارام پرو فعال است' : 'کارام پرو فعال است'}
+              </p>
               <p className="text-body-sm text-emerald-600/80 dark:text-emerald-400/80">
                 {premium.lifetime
                   ? 'اشتراک دائمی — همیشه پرو'
                   : premium.daysLeft !== null
-                    ? `${premium.plan?.title ?? 'اشتراک پرو'} · ${toFa(premium.daysLeft)} روز باقی‌مانده`
+                    ? `${premium.source === 'trial' ? 'آزمایشی' : premium.plan?.title ?? 'اشتراک پرو'} · ${toFa(premium.daysLeft)} روز باقی‌مانده${premium.source === 'trial' ? ' — در پایان، یکی از پلن‌های زیر را فعال کنید' : ''}`
                     : premium.plan?.title ?? 'اشتراک پرو'}
               </p>
             </div>

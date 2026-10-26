@@ -1058,6 +1058,9 @@ final class AdminController
             'deposit_card_number' => ['type' => 'str', 'min' => 0, 'max' => 40],
             'deposit_card_holder' => ['type' => 'str', 'min' => 0, 'max' => 120],
             'deposit_card_guide' => ['type' => 'str', 'min' => 0, 'max' => 600],
+            // --- دوره آزمایشی (v18 — ثبت‌نام جدید خودکار پرو می‌شود) ---
+            'trial_enabled' => ['type' => 'bool'],
+            'trial_days' => ['type' => 'int', 'min' => 1, 'max' => 30],
             // --- به‌روزرسانی اپ و پشتیبانی (v17 — شیت قوانین + کارت «نسخه جدید») ---
             'app_latest_version' => ['type' => 'semver', 'allowEmpty' => true],
             'app_update_url' => ['type' => 'str', 'min' => 0, 'max' => 500],

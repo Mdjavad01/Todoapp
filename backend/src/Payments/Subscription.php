@@ -70,6 +70,44 @@ final class Subscription
     }
 
     /**
+     * v18 — دوره آزمایشی برای ثبت‌نام‌های جدید (کلیدهای پنل: trial_enabled / trial_days).
+     * مثل activate اما روزشمار، بدون پلن/سفارش و با source='trial'.
+     * هرگز premium فعلی را کوتاه نمی‌کند (گارد WHERE) و بیرون از تراکنش ثبت‌نام،
+     * در try/catch صدا زده می‌شود — اگر ناموفق بود، ثبت‌نام خودش سالم می‌ماند.
+     * @return array{premiumUntil:string, days:int}
+     */
+    public static function activateTrial(PDO $pdo, int $userId, int $days): array
+    {
+        TrialSchema::ensure();
+        $now = time();
+        $days = max(1, min(30, $days));
+        $premiumUntil = gmdate('Y-m-d H:i:s', $now + $days * 86400);
+
+        $pdo->prepare(
+            'UPDATE users SET premium_until = :pu, updated_at = :now
+             WHERE id = :id AND (premium_until IS NULL OR premium_until < :pu)'
+        )->execute([
+            ':pu' => $premiumUntil,
+            ':now' => gmdate('Y-m-d H:i:s', $now),
+            ':id' => $userId,
+        ]);
+
+        $pdo->prepare(
+            "INSERT INTO subscriptions (uuid, user_id, plan_id, order_id, source, starts_at, expires_at, created_at, updated_at)
+             VALUES (:uuid, :uid, NULL, NULL, 'trial', :start, :exp, :created, :updated)"
+        )->execute([
+            ':uuid' => Uuid::v4(),
+            ':uid' => $userId,
+            ':start' => gmdate('Y-m-d H:i:s', $now),
+            ':exp' => $premiumUntil,
+            ':created' => gmdate('Y-m-d H:i:s', $now),
+            ':updated' => gmdate('Y-m-d H:i:s', $now),
+        ]);
+
+        return ['premiumUntil' => $premiumUntil, 'days' => $days];
+    }
+
+    /**
      * وضعیت پرو کاربر — برای اپ و نمایش «اشتراک من».
      * @return array{isPremium:bool, premiumUntil:?string, daysLeft:?int, lifetime:bool, plan:?array{code:string,title:string}, source:?string, expiresAt:?string}
      */

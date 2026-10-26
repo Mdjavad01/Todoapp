@@ -25,6 +25,7 @@ require $srcDir . '/src/Support/Uuid.php';
 require $srcDir . '/src/Support/FileCache.php'; // v17 — کش فایلی نقاط داغ (مقیاس‌پذیری)
 require $srcDir . '/src/Support/Settings.php';
 require $srcDir . '/src/Support/DepositSchema.php';
+require $srcDir . '/src/Support/TrialSchema.php'; // v18 — مهاجرت خودکار دوره آزمایشی
 require $srcDir . '/src/Support/AnnouncementsSchema.php';
 require $srcDir . '/src/Security/Validator.php';
 require $srcDir . '/src/Auth/AccessToken.php';

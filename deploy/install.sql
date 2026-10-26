@@ -463,6 +463,8 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('app_update_notes', ''),
   ('support_email', ''),
   ('support_telegram', ''),
+  ('trial_enabled', '0'),
+  ('trial_days', '7'),
   ('provider_email_enabled', '0'),
   ('mail_transport', ''),
   ('smtp_host', ''),

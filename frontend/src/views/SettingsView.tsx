@@ -5,9 +5,9 @@ import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۳.۷.۰';
+const APP_VERSION = '۳.۸.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '3.7.0';
+const APP_VERSION_RAW = '3.8.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {

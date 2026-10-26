@@ -520,6 +520,17 @@ final class AuthController
             ];
         }
 
+        // v18 — دوره آزمایشی برای ثبت‌نام‌های جدید: دو کلید پنل (trial_enabled / trial_days)
+        // و منطق کوچک. بیرون از تراکنش و در try/catch — اگر به هر دلیلی ناموفق بود،
+        // ثبت‌نام خودش سالم می‌ماند و فقط آزمایشی فعال نمی‌شود.
+        if (Settings::bool('trial_enabled')) {
+            try {
+                Subscription::activateTrial($pdo, $userId, Settings::int('trial_days', 7, 1, 30));
+            } catch (Throwable $e) {
+                error_log('[karam][trial] فعال‌سازی دوره آزمایشی برای کاربر ' . $userId . ' ناموفق: ' . $e->getMessage());
+            }
+        }
+
         return ['id' => $userId, 'uuid' => $userUuid, 'displayName' => $displayName, 'gender' => 'unset', 'status' => 'active', 'isNew' => true];
     }
 
