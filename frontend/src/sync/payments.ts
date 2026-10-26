@@ -29,6 +29,10 @@ export interface CreateOrderResult {
   trackId: string;
   payUrl: string;
   amountRials: number;
+  /** v20 — اگر کد هدیه اعمال شده باشد */
+  originalPriceRials?: number;
+  discountRials?: number;
+  couponCode?: string | null;
 }
 
 export interface OrderStatus {
@@ -47,11 +51,11 @@ export async function fetchPlans(): Promise<Plan[]> {
   return res.plans;
 }
 
-/** ساخت سفارش و گرفتن لینک درگاه — نیازمند ورود */
-export async function createPaymentOrder(planCode: string): Promise<CreateOrderResult> {
+/** ساخت سفارش و گرفتن لینک درگاه — نیازمند ورود؛ giftCode اختیاری (v20) */
+export async function createPaymentOrder(planCode: string, giftCode?: string): Promise<CreateOrderResult> {
   return authedFetch<CreateOrderResult>('/v1/payments/orders', {
     method: 'POST',
-    body: { planCode },
+    body: { planCode, ...(giftCode && giftCode.trim() !== '' ? { giftCode: giftCode.trim() } : {}) },
   });
 }
 
@@ -85,6 +89,9 @@ export interface DepositRequest {
   planCode: string;
   planTitle: string | null;
   amountRials: number;
+  /** v20 — اگر کد هدیه روی واریز اعمال شده باشد */
+  discountRials?: number;
+  couponCode?: string | null;
   reference: string;
   status: DepositStatus;
   reviewNote: string | null;
@@ -97,13 +104,35 @@ export async function fetchDepositConfig(): Promise<DepositConfig> {
   return authedFetch<DepositConfig>('/v1/payments/deposit/config');
 }
 
-/** ثبت درخواست واریز کارت‌به‌کارت — بعد از تأیید ادمین اشتراک فعال می‌شود */
-export async function createDepositRequest(planCode: string, reference: string, note?: string): Promise<DepositRequest> {
+/** ثبت درخواست واریز کارت‌به‌کارت — بعد از تأیید ادمین اشتراک فعال می‌شود (giftCode اختیاری — v20) */
+export async function createDepositRequest(planCode: string, reference: string, note?: string, giftCode?: string): Promise<DepositRequest> {
   const res = await authedFetch<{ message: string; request: DepositRequest }>('/v1/payments/deposit/requests', {
     method: 'POST',
-    body: { planCode, reference, note: note?.trim() ? note.trim() : undefined },
+    body: {
+      planCode,
+      reference,
+      note: note?.trim() ? note.trim() : undefined,
+      ...(giftCode && giftCode.trim() !== '' ? { giftCode: giftCode.trim() } : {}),
+    },
   });
   return res.request;
+}
+
+/* ---------------- کد هدیه (v20) ---------------- */
+
+export interface GiftQuote {
+  valid: boolean;
+  error?: string;
+  code?: string;
+  discountRials?: number;
+  payableRials?: number;
+}
+
+/** استعلام زنده‌ی کد هدیه برای پلن — نمایش تخفیف قبل از پرداخت */
+export async function fetchGiftQuote(code: string, planCode: string): Promise<GiftQuote> {
+  return authedFetch<GiftQuote>(
+    `/v1/payments/gift/quote?code=${encodeURIComponent(code.trim())}&plan=${encodeURIComponent(planCode)}`,
+  );
 }
 
 /** درخواست‌های واریز من — ۱۰ مورد آخر با وضعیت */

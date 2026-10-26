@@ -5,8 +5,10 @@ import { useAppStore } from '@/store/useAppStore';
 import { toFa, faDateTimeUtc, hezarToman, groupCardNumber } from '@/lib/format';
 import {
   createDepositRequest,
+  fetchGiftQuote,
   type DepositConfig,
   type DepositRequest,
+  type GiftQuote,
   type PaymentMethod,
   type Plan,
 } from '@/sync/payments';
@@ -36,6 +38,9 @@ interface PaymentMethodSheetProps {
   onDepositSuccess(req: DepositRequest): void;
   /** روش آنلاین انتخاب شد — والد شیت را می‌بندد و به درگاه می‌رود */
   onPickOnline(): void;
+  /** v20 — کد هدیه (مالکیت با والد؛ برای استفاده در هر دو مسیر پرداخت) */
+  giftCode: string;
+  onGiftCodeChange(code: string): void;
 }
 
 export function PaymentMethodSheet({
@@ -47,6 +52,8 @@ export function PaymentMethodSheet({
   depositRequests,
   onDepositSuccess,
   onPickOnline,
+  giftCode,
+  onGiftCodeChange,
 }: PaymentMethodSheetProps) {
   const showToast = useAppStore((s) => s.showToast);
 
@@ -57,14 +64,37 @@ export function PaymentMethodSheet({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // v20 — کد هدیه: استعلام زنده‌ی تخفیف
+  const [giftChecking, setGiftChecking] = useState(false);
+  const [giftQuote, setGiftQuote] = useState<GiftQuote | null>(null);
+  const [giftError, setGiftError] = useState<string | null>(null);
+
   // هر بار باز شدن از گام انتخاب شروع می‌شود
   useEffect(() => {
     if (open) {
       setStep('select');
       setPicked(null);
       setError(null);
+      setGiftQuote(null);
+      setGiftError(null);
     }
   }, [open]);
+
+  const checkGift = async () => {
+    if (!plan || giftCode.trim().length < 3 || giftChecking) return;
+    setGiftChecking(true);
+    setGiftError(null);
+    try {
+      const q = await fetchGiftQuote(giftCode, plan.code);
+      setGiftQuote(q);
+      if (!q.valid) setGiftError(q.error ?? 'کد هدیه معتبر نیست');
+    } catch (e) {
+      setGiftQuote(null);
+      setGiftError(e instanceof Error ? e.message : 'استعلام کد ناموفق بود');
+    } finally {
+      setGiftChecking(false);
+    }
+  };
 
   const selected = methods?.find((m) => m.code === picked) ?? null;
   const anyEnabled = (methods ?? []).some((m) => m.enabled);
@@ -113,7 +143,7 @@ export function PaymentMethodSheet({
     setError(null);
     setSubmitting(true);
     try {
-      const req = await createDepositRequest(plan.code, value, note);
+      const req = await createDepositRequest(plan.code, value, note, giftCode);
       setRef('');
       setNote('');
       onDepositSuccess(req);
@@ -148,9 +178,50 @@ export function PaymentMethodSheet({
               <span className="text-xs text-on-surface-variant">
                 پلن انتخابی: <span className="font-black text-on-surface dark:text-inverse-on-surface">{plan.title}</span>
               </span>
-              <span className="text-sm font-black text-primary shrink-0">{hezarToman(plan.priceRials)} هزار تومان</span>
+              <span className="text-sm font-black text-primary shrink-0">{hezarToman(giftQuote?.valid ? giftQuote.payableRials! : plan.priceRials)} هزار تومان</span>
             </div>
           ) : null}
+
+          {/* v20 — ورودی کد هدیه + استعلام زنده */}
+          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-3 space-y-2">
+            <label htmlFor="pm-gift-code" className="text-xs font-bold text-on-surface-variant block">
+              کد هدیه دارید؟ (اختیاری)
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                id="pm-gift-code"
+                type="text"
+                dir="ltr"
+                autoComplete="off"
+                className="flex-1 min-w-0 rounded-xl border border-outline-variant/40 bg-surface-container-lowest dark:bg-slate-700/60 px-3 py-2 text-body-sm text-left font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="مثلاً NOWRUZ1404"
+                value={giftCode}
+                onChange={(e) => {
+                  onGiftCodeChange(e.target.value.toUpperCase());
+                  setGiftQuote(null);
+                  setGiftError(null);
+                }}
+                maxLength={50}
+              />
+              <button
+                type="button"
+                className="shrink-0 rounded-xl bg-primary/10 text-primary px-3 py-2 text-xs font-bold active:scale-95 transition-transform disabled:opacity-40"
+                onClick={() => void checkGift()}
+                disabled={giftCode.trim().length < 3 || giftChecking}
+              >
+                {giftChecking ? '…' : 'بررسی کد'}
+              </button>
+            </div>
+            {giftQuote?.valid ? (
+              <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
+                کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> اعمال شد: {hezarToman(giftQuote.discountRials ?? 0)} هزار تومان تخفیف — قابل پرداخت{' '}
+                <b>{hezarToman(giftQuote.payableRials ?? 0)}</b> هزار تومان
+              </p>
+            ) : null}
+            {giftError ? (
+              <p className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-2.5">{giftError}</p>
+            ) : null}
+          </div>
 
           {/* فهرست روش‌ها — فعال و به‌زودی */}
           {methods === null ? (
@@ -286,7 +357,16 @@ export function PaymentMethodSheet({
           {plan ? (
             <p className="text-xs text-on-surface-variant">
               مبلغ دقیق برای پلن «<span className="font-black text-on-surface dark:text-inverse-on-surface">{plan.title}</span>»:{' '}
-              <span className="font-black text-primary">{hezarToman(plan.priceRials)}</span> هزار تومان
+              {giftQuote?.valid ? (
+                <>
+                  <s className="text-slate-400">{hezarToman(plan.priceRials)}</s>{' '}
+                  <span className="font-black text-primary">{hezarToman(giftQuote.payableRials ?? plan.priceRials)}</span> هزار تومان
+                  {' '}(با کد هدیه <span dir="ltr" className="font-mono">{giftQuote.code}</span>)
+                </>
+              ) : (
+                <span className="font-black text-primary">{hezarToman(plan.priceRials)}</span>
+              )}
+              {' '}هزار تومان
             </p>
           ) : null}
 

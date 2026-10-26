@@ -74,6 +74,8 @@ export function PaywallView() {
   const [depositRequests, setDepositRequests] = useState<DepositRequest[]>([]);
   const [payMethods, setPayMethods] = useState<PaymentMethod[] | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  // v20 — کد هدیه (مالکیت با این ویو؛ شیت پرداخت آن را ویرایش می‌کند و هر دو مسیر از آن استفاده می‌کنند)
+  const [giftCode, setGiftCode] = useState('');
 
   // نتیجه‌ی پرداخت (بازگشت از درگاه)
   const [resultState, setResultState] = useState<'checking' | 'succeeded' | 'failed' | null>(null);
@@ -146,10 +148,14 @@ export function PaywallView() {
   useEffect(() => {
     stopPoll();
     if (!paymentResult) {
+      // ریست نتیجه‌ی پرداخت هنگام پاک‌کردن paymentResult — هم‌زمانی عمدی با پروپس (خطای pre-existing eslint)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResultState(null);
+       
       setResultPlan(null);
       return;
     }
+     
     setResultState('checking');
     pollCountRef.current = 0;
     void checkResult(paymentResult);
@@ -193,7 +199,10 @@ export function PaywallView() {
     setBuyError(null);
     setBuying(true);
     try {
-      const res = await createPaymentOrder(selected);
+      const res = await createPaymentOrder(selected, giftCode);
+      if (res.discountRials && res.discountRials > 0) {
+        showToast(`کد هدیه ${res.couponCode ?? ''} اعمال شد — ${res.discountRials / 10} تومان کمتر`);
+      }
       if (isNativeApp()) {
         // فاز ۶ — اپ اندروید: درگاه در تب مرورگر سیستم باز می‌شود؛ با بسته‌شدن تب
         // رویداد browserFinished شروع بررسی نتیجه را می‌زند (بدون خروج از اپ)
@@ -290,7 +299,11 @@ export function PaywallView() {
             <Icon name="verified" size={26} className="text-emerald-600 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-body-md font-bold text-emerald-700 dark:text-emerald-300">
-                {premium.source === 'trial' ? 'دوره آزمایشی کارام پرو فعال است' : 'کارام پرو فعال است'}
+                {premium.source === 'trial'
+                  ? 'دوره آزمایشی کارام پرو فعال است'
+                  : premium.source === 'referral'
+                    ? 'کارام پرو فعال است (هدیه‌ی دعوت دوست)'
+                    : 'کارام پرو فعال است'}
               </p>
               <p className="text-body-sm text-emerald-600/80 dark:text-emerald-400/80">
                 {premium.lifetime
@@ -498,6 +511,8 @@ export function PaywallView() {
         depositRequests={depositRequests}
         onDepositSuccess={(req) => setDepositRequests((prev) => [req, ...prev].slice(0, 10))}
         onPickOnline={pickOnline}
+        giftCode={giftCode}
+        onGiftCodeChange={setGiftCode}
       />
     </section>
   );

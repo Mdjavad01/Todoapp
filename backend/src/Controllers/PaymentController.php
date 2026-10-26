@@ -6,7 +6,8 @@ declare(strict_types=1);
  * کارام — کنترلر پرداخت و اشتراک — فاز ۵
  *
  *  GET  /api/v1/plans                    → پلن‌های فعال (عمومی — بدون راز)
- *  POST /api/v1/payments/orders          {planCode} → ساخت سفارش + دریافت لینک درگاه (Bearer)
+ *  POST /api/v1/payments/orders          {planCode, giftCode?} → ساخت سفارش + لینک درگاه (Bearer)
+ *  GET  /api/v1/payments/gift/quote      ?code=&plan= → استعلام کد هدیه (Bearer — v20)
  *  GET  /api/v1/payments/orders/{uuid}   → وضعیت سفارش (Bearer — برای poll بعد از بازگشت)
  *  GET  /api/v1/me/subscription          → وضعیت اشتراک فعلی کاربر (Bearer)
  *  GET  /api/payments/callback           → بازگشت از درگاه زیبال (بدون احراز — تأیید سمت سرور)
@@ -84,7 +85,7 @@ final class PaymentController
         Response::ok(['methods' => $methods]);
     }
 
-    /** POST /api/v1/payments/orders — {planCode} */
+    /** POST /api/v1/payments/orders — {planCode, giftCode?} */
     public function createOrder(): void
     {
         $user = Guard::requireUser();
@@ -95,6 +96,7 @@ final class PaymentController
 
         $body = Request::json();
         $planCode = Validator::str($body, 'planCode', 2, 50);
+        $giftRaw = Validator::str($body, 'giftCode', 3, 32, false); // v20 — کد هدیه اختیاری
         $pdo = Database::pdo();
 
         $stmt = $pdo->prepare('SELECT id, code, title, months, price_rials FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
@@ -111,6 +113,22 @@ final class PaymentController
             return;
         }
 
+        // v20 — اعمال کد هدیه: مبلغ درگاه = مبلغ پلن − تخفیف (کف امن ۱۰۰۰ ریال)
+        $discount = 0;
+        $couponId = null;
+        $couponCode = null;
+        if ($giftRaw !== null && trim($giftRaw) !== '') {
+            $q = GiftCode::quote($pdo, $giftRaw, (int) $user['id'], $amount);
+            if (!$q['ok']) {
+                Response::error($q['error'], 422, ['code' => 'gift_invalid']);
+                return;
+            }
+            $discount = $q['discountRials'];
+            $couponId = $q['couponId'];
+            $couponCode = $q['code'];
+        }
+        $payable = max(100, $amount - $discount);
+
         $orderUuid = Uuid::v4();
         $now = gmdate('Y-m-d H:i:s');
         $description = 'خرید اشتراک «' . $plan['title'] . '» — کارام';
@@ -118,13 +136,15 @@ final class PaymentController
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
-                "INSERT INTO orders (uuid, user_id, plan_id, amount_rials, discount_rials, status, description, created_at, updated_at)
-                 VALUES (:uuid, :uid, :pid, :amount, 0, 'created', :desc, :created, :updated)"
+                "INSERT INTO orders (uuid, user_id, plan_id, coupon_id, amount_rials, discount_rials, status, description, created_at, updated_at)
+                 VALUES (:uuid, :uid, :pid, :coupon, :amount, :discount, 'created', :desc, :created, :updated)"
             )->execute([
                 ':uuid' => $orderUuid,
                 ':uid' => $user['id'],
                 ':pid' => (int) $plan['id'],
-                ':amount' => $amount,
+                ':coupon' => $couponId,
+                ':amount' => $payable,
+                ':discount' => $discount,
                 ':desc' => $description,
                 ':created' => $now,
                 ':updated' => $now,
@@ -137,7 +157,7 @@ final class PaymentController
             )->execute([
                 ':uuid' => Uuid::v4(),
                 ':oid' => $orderId,
-                ':amount' => $amount,
+                ':amount' => $payable,
                 ':created' => $now,
                 ':updated' => $now,
             ]);
@@ -164,7 +184,7 @@ final class PaymentController
             $mobile = $m;
         }
 
-        $req = ZibalProvider::request($amount, $callbackUrl, $orderUuid, $description, $mobile);
+        $req = ZibalProvider::request($payable, $callbackUrl, $orderUuid, $description, $mobile);
         if (!$req['ok']) {
             // سفارش و پرداختِ ناموفق در تاریخچه می‌مانند (وضعیت failed)
             $pdo->prepare("UPDATE payments SET status = 'failed', updated_at = :now WHERE order_id = (SELECT id FROM orders WHERE uuid = :ou) AND status = 'created'")
@@ -185,7 +205,43 @@ final class PaymentController
             'orderUuid' => $orderUuid,
             'trackId' => $trackId,
             'payUrl' => (string) $req['payUrl'],
-            'amountRials' => $amount,
+            'amountRials' => $payable,
+            'originalPriceRials' => $amount,
+            'discountRials' => $discount,
+            'couponCode' => $couponCode,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/payments/gift/quote?code=..&plan=.. — استعلام کد هدیه (v20)
+     * خروجی همیشه 200 با valid=true/false — برای نمایش زنده‌ی تخفیف در شیت پرداخت.
+     */
+    public function giftQuote(): void
+    {
+        $user = Guard::requireUser();
+        $code = trim((string) Request::query('code', ''));
+        $planCode = trim((string) Request::query('plan', ''));
+        if ($planCode === '') {
+            throw new ValidationError('پلن مشخص نشده است');
+        }
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT price_rials FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
+        $stmt->execute([':c' => $planCode]);
+        $price = $stmt->fetchColumn();
+        if ($price === false) {
+            Response::ok(['valid' => false, 'error' => 'پلن یافت نشد یا غیرفعال است']);
+            return;
+        }
+        $q = GiftCode::quote($pdo, $code, (int) $user['id'], (int) $price);
+        if (!$q['ok']) {
+            Response::ok(['valid' => false, 'error' => $q['error']]);
+            return;
+        }
+        Response::ok([
+            'valid' => true,
+            'code' => $q['code'],
+            'discountRials' => $q['discountRials'],
+            'payableRials' => $q['payableRials'],
         ]);
     }
 
@@ -217,7 +273,7 @@ final class PaymentController
 
         $pdo = Database::pdo();
         $stmt = $pdo->prepare(
-            'SELECT o.id, o.uuid, o.user_id, o.amount_rials, o.status AS order_status, o.plan_id,
+            'SELECT o.id, o.uuid, o.user_id, o.amount_rials, o.status AS order_status, o.plan_id, o.coupon_id, o.discount_rials,
                     p.id AS payment_id, p.status AS payment_status, p.gateway_ref
              FROM orders o JOIN payments p ON p.order_id = o.id
              WHERE o.uuid = :u ORDER BY p.id DESC LIMIT 1'
@@ -292,6 +348,8 @@ final class PaymentController
                     $back($orderUuid, 'succeeded');
                     return;
                 }
+                // v20 — ژورنال استفاده از کد هدیه (بعد از commit — اگر خطا خورد، پرداخت سالم می‌ماند)
+                GiftCode::registerRedemption($pdo, $row['coupon_id'] !== null ? (int) $row['coupon_id'] : null, (int) $row['user_id'], 'order', (int) $row['id'], (int) ($row['discount_rials'] ?? 0));
                 $back($orderUuid, 'succeeded');
                 return;
             }

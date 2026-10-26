@@ -18,6 +18,8 @@ declare(strict_types=1);
  *  PATCH  /api/v1/me
  *  GET    /api/v1/me/sessions
  *  DELETE /api/v1/me/sessions/{id}
+ *  GET    /api/v1/me/referral            → وضعیت دعوت دوستان (v20)
+ *  POST   /api/v1/me/referral {code}     → فعال‌سازی کد دعوت (v20)
  *
  * POST /api/auth/session (ورود مستقیم بدون کد) از فاز ۲ باقی مانده و فقط وقتی
  * OPEN_SESSION=1 باشد کار می‌کند — پیش‌فرض فاز ۳: بسته (0).
@@ -406,6 +408,33 @@ final class AuthController
             return;
         }
         Response::ok(['revoked' => true]);
+    }
+
+    /* ================= دعوت دوستان / رفرال (v20) ================= */
+
+    /** GET /api/v1/me/referral — وضعیت رفرال کاربر جاری */
+    public function referralStatus(): void
+    {
+        $user = Guard::requireUser();
+        Response::ok(['referral' => Referral::summary(Database::pdo(), (int) $user['id'])]);
+    }
+
+    /** POST /api/v1/me/referral  {code} — فعال‌سازی کد دعوت دوست */
+    public function referralRedeem(): void
+    {
+        $user = Guard::requireUser();
+        $body = Request::json();
+        $code = Validator::str($body, 'code', 4, 16);
+        $res = Referral::redeem(Database::pdo(), (int) $user['id'], (string) $code);
+        if (!$res['ok']) {
+            Response::error($res['error'], $res['status'], ['code' => $res['code']]);
+            return;
+        }
+        Response::ok([
+            'message' => 'کد دعوت فعال شد؛ ' . $res['days'] . ' روز کارام پرو برای شما و دوستتان فعال گردید',
+            'days' => $res['days'],
+            'premiumUntil' => $res['premiumUntil'],
+        ]);
     }
 
     /* ================= نشست بدون OTP (فاز ۲ — پیش‌فرض بسته) ================= */

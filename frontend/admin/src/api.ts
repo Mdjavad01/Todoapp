@@ -198,6 +198,13 @@ export const api = {
   rejectDeposit: (id: number, note?: string) =>
     request<{ message: string }>(`/deposits/${id}/reject`, { method: 'POST', body: note ? { note } : {} }),
 
+  // ---- کدهای هدیه (v20) ----
+  giftcodes: () => request<{ items: AdminGiftCode[] }>('/giftcodes'),
+  createGiftcode: (body: Record<string, unknown>) =>
+    request<{ message: string; id: number; code: string }>('/giftcodes', { method: 'POST', body }),
+  updateGiftcode: (id: number, body: Record<string, unknown>) =>
+    request<{ message: string }>(`/giftcodes/${id}`, { method: 'PATCH', body }),
+
   // ---- شورتکد ورود OTP (فاز ۴.۵ — فاز ۵: بله ← تلگرام) ----
   otpRequest: (channel: 'email' | 'telegram' | 'sms', target?: string) =>
     request<{
@@ -324,10 +331,26 @@ export interface AdminDepositRow {
   planCode: string;
   planTitle: string | null;
   amountRials: number;
+  discountRials?: number;
+  couponCode?: string | null;
   reference: string;
   note: string | null;
   status: 'pending' | 'approved' | 'rejected';
   reviewNote: string | null;
   reviewedAt: string | null;
+  createdAt: string;
+}
+
+/** v20 — کد هدیه (جدول coupons از فاز ۵) */
+export interface AdminGiftCode {
+  id: number;
+  uuid: string;
+  code: string;
+  kind: 'percent' | 'amount';
+  value: number;
+  maxUses: number; // ۰ = بی‌نهایت
+  usedCount: number;
+  active: boolean;
+  expiresAt: string | null;
   createdAt: string;
 }

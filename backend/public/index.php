@@ -26,6 +26,8 @@ require $srcDir . '/src/Support/FileCache.php'; // v17 — کش فایلی نق�
 require $srcDir . '/src/Support/Settings.php';
 require $srcDir . '/src/Support/DepositSchema.php';
 require $srcDir . '/src/Support/TrialSchema.php'; // v18 — مهاجرت خودکار دوره آزمایشی
+require $srcDir . '/src/Support/ReferralSchema.php'; // v20 — مهاجرت خودکار دعوت دوستان
+require $srcDir . '/src/Support/GiftSchema.php'; // v20 — مهاجرت خودکار کد هدیه
 require $srcDir . '/src/Support/AnnouncementsSchema.php';
 require $srcDir . '/src/Security/Validator.php';
 require $srcDir . '/src/Auth/AccessToken.php';
@@ -41,6 +43,8 @@ require $srcDir . '/src/Services/Entities.php';
 require $srcDir . '/src/Services/SyncService.php';
 require $srcDir . '/src/Payments/Subscription.php';
 require $srcDir . '/src/Payments/ZibalProvider.php';
+require $srcDir . '/src/Services/Referral.php'; // v20 — دعوت دوستان
+require $srcDir . '/src/Services/GiftCode.php'; // v20 — کد هدیه
 require $srcDir . '/src/Controllers/HealthController.php';
 require $srcDir . '/src/Controllers/AuthController.php';
 require $srcDir . '/src/Controllers/RestEntityController.php';
@@ -108,6 +112,8 @@ $router->get('/api/v1/me', [$auth, 'me']);
 $router->patch('/api/v1/me', [$auth, 'updateMe']);
 $router->get('/api/v1/me/sessions', [$auth, 'sessions']);
 $router->delete('/api/v1/me/sessions/{id}', [$auth, 'revokeSession']);
+$router->get('/api/v1/me/referral', [$auth, 'referralStatus']); // v20 — دعوت دوستان
+$router->post('/api/v1/me/referral', [$auth, 'referralRedeem']);
 
 // ---- CRUD موجودیت‌ها (Bearer) ----
 $lists = new RestEntityController(Entities::ENTITY_LISTS);
@@ -139,6 +145,7 @@ $router->post('/api/v1/sync', [new SyncController(), 'sync']);
 $payments = new PaymentController();
 $router->get('/api/v1/plans', [$payments, 'plans']);
 $router->post('/api/v1/payments/orders', [$payments, 'createOrder']);
+$router->get('/api/v1/payments/gift/quote', [$payments, 'giftQuote']); // v20 — استعلام کد هدیه
 $router->get('/api/v1/payments/orders/{uuid}', [$payments, 'orderStatus']);
 $router->get('/api/v1/me/subscription', [$payments, 'mySubscription']);
 // فهرست روش‌های پرداخت و وضعیت فعال بودن هرکدام (فاز ۹ — انتخاب روش قبل از پرداخت)
@@ -175,6 +182,9 @@ $router->patch('/api/admin/settings', [$admin, 'settingsUpdate']);
 $router->get('/api/admin/deposits', [$admin, 'depositsIndex']);
 $router->post('/api/admin/deposits/{id}/approve', [$admin, 'depositApprove']);
 $router->post('/api/admin/deposits/{id}/reject', [$admin, 'depositReject']);
+$router->get('/api/admin/giftcodes', [$admin, 'giftCodesIndex']); // v20 — کد هدیه
+$router->post('/api/admin/giftcodes', [$admin, 'giftCodeCreate']);
+$router->patch('/api/admin/giftcodes/{id}', [$admin, 'giftCodeUpdate']);
 $router->post('/api/admin/otp/request', [$admin, 'otpShortcutRequest']);
 $router->post('/api/admin/otp/telegram/poll', [$admin, 'otpShortcutTelegramPoll']);
 $router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);

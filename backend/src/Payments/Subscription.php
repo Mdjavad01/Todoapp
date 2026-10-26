@@ -72,13 +72,17 @@ final class Subscription
     /**
      * v18 — دوره آزمایشی برای ثبت‌نام‌های جدید (کلیدهای پنل: trial_enabled / trial_days).
      * مثل activate اما روزشمار، بدون پلن/سفارش و با source='trial'.
+     * v20 — همین منطق برای «دعوت دوستان» هم استفاده می‌شود با source='referral'.
      * هرگز premium فعلی را کوتاه نمی‌کند (گارد WHERE) و بیرون از تراکنش ثبت‌نام،
      * در try/catch صدا زده می‌شود — اگر ناموفق بود، ثبت‌نام خودش سالم می‌ماند.
      * @return array{premiumUntil:string, days:int}
      */
-    public static function activateTrial(PDO $pdo, int $userId, int $days): array
+    public static function activateTrial(PDO $pdo, int $userId, int $days, string $source = 'trial'): array
     {
         TrialSchema::ensure();
+        if ($source === 'referral') {
+            ReferralSchema::ensure(); // مقدار 'referral' باید در ENUM source باشد
+        }
         $now = time();
         $days = max(1, min(30, $days));
         $premiumUntil = gmdate('Y-m-d H:i:s', $now + $days * 86400);
@@ -94,8 +98,9 @@ final class Subscription
 
         $pdo->prepare(
             "INSERT INTO subscriptions (uuid, user_id, plan_id, order_id, source, starts_at, expires_at, created_at, updated_at)
-             VALUES (:uuid, :uid, NULL, NULL, 'trial', :start, :exp, :created, :updated)"
+             VALUES (:uuid, :uid, NULL, NULL, :source, :start, :exp, :created, :updated)"
         )->execute([
+            ':source' => $source,
             ':uuid' => Uuid::v4(),
             ':uid' => $userId,
             ':start' => gmdate('Y-m-d H:i:s', $now),

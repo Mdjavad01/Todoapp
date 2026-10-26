@@ -6,7 +6,7 @@ declare(strict_types=1);
  * کارام — کارت‌به‌کارت با تأیید ادمین (فاز ۸)
  *
  *  GET  /api/v1/payments/deposit/config         → فعال بودن + شماره کارت + راهنما (Bearer)
- *  POST /api/v1/payments/deposit/requests       → ثبت درخواست واریز {planCode, reference, note?} (Bearer)
+ *  POST /api/v1/payments/deposit/requests       → ثبت درخواست واریز {planCode, reference, note?, giftCode?} (Bearer)
  *  GET  /api/v1/payments/deposit/requests/mine  → درخواست‌های من + وضعیت (Bearer)
  *
  * قواعد امنیتی:
@@ -42,7 +42,7 @@ final class DepositController
         ]);
     }
 
-    /** POST /api/v1/payments/deposit/requests — {planCode, reference, note?} */
+    /** POST /api/v1/payments/deposit/requests — {planCode, reference, note?, giftCode?} */
     public function createRequest(): void
     {
         $user = Guard::requireUser();
@@ -57,6 +57,7 @@ final class DepositController
         $planCode = Validator::str($body, 'planCode', 2, 50);
         $referenceRaw = Validator::str($body, 'reference', 4, 40);
         $note = Validator::str($body, 'note', 0, 300, false);
+        $giftRaw = Validator::str($body, 'giftCode', 3, 32, false); // v20 — کد هدیه اختیاری
 
         // ارقام فارسی/عربی → لاتین + حذف فاصله‌ها و جداکننده‌ها
         $reference = preg_replace('/[\s\-_.]/u', '', Otp::normalizeDigits($referenceRaw)) ?? '';
@@ -79,6 +80,22 @@ final class DepositController
             return;
         }
 
+        // v20 — اعمال کد هدیه: مبلغ قابل واریز = مبلغ پلن − تخفیف (کف امن)
+        $discount = 0;
+        $couponId = null;
+        $couponCode = null;
+        if ($giftRaw !== null && trim($giftRaw) !== '') {
+            $q = GiftCode::quote($pdo, $giftRaw, (int) $user['id'], $amount);
+            if (!$q['ok']) {
+                Response::error($q['error'], 422, ['code' => 'gift_invalid']);
+                return;
+            }
+            $discount = $q['discountRials'];
+            $couponId = $q['couponId'];
+            $couponCode = $q['code'];
+        }
+        $payable = max(1000, $amount - $discount);
+
         // ضد اسپم — سقف درخواستِ در انتظار
         $p = $pdo->prepare("SELECT COUNT(*) FROM deposit_requests WHERE user_id = :uid AND status = 'pending'");
         $p->execute([':uid' => $user['id']]);
@@ -98,14 +115,16 @@ final class DepositController
         $now = gmdate('Y-m-d H:i:s');
         $uuid = Uuid::v4();
         $pdo->prepare(
-            "INSERT INTO deposit_requests (uuid, user_id, plan_id, plan_code, amount_rials, reference, note, status, created_at, updated_at)
-             VALUES (:uuid, :uid, :pid, :pcode, :amount, :ref, :note, 'pending', :created, :updated)"
+            "INSERT INTO deposit_requests (uuid, user_id, plan_id, plan_code, amount_rials, discount_rials, coupon_id, reference, note, status, created_at, updated_at)
+             VALUES (:uuid, :uid, :pid, :pcode, :amount, :discount, :coupon, :ref, :note, 'pending', :created, :updated)"
         )->execute([
             ':uuid' => $uuid,
             ':uid' => $user['id'],
             ':pid' => (int) $plan['id'],
             ':pcode' => (string) $plan['code'],
-            ':amount' => $amount,
+            ':amount' => $payable,
+            ':discount' => $discount,
+            ':coupon' => $couponId,
             ':ref' => $reference,
             ':note' => $note,
             ':created' => $now,
@@ -114,16 +133,23 @@ final class DepositController
 
         Audit::log('user', (int) $user['id'], 'deposit.request_create', 'deposit_request', $uuid, [
             'planCode' => (string) $plan['code'],
-            'amountRials' => $amount,
+            'amountRials' => $payable,
+            'discountRials' => $discount,
+            'couponCode' => $couponCode,
         ]);
 
         Response::ok([
-            'message' => 'درخواست شما ثبت شد؛ بعد از بررسی، اشتراک فعال می‌شود',
+            'message' => $discount > 0
+                ? 'درخواست شما با کد هدیه ثبت شد؛ بعد از بررسی، اشتراک فعال می‌شود'
+                : 'درخواست شما ثبت شد؛ بعد از بررسی، اشتراک فعال می‌شود',
             'request' => [
                 'uuid' => $uuid,
                 'planCode' => (string) $plan['code'],
                 'planTitle' => (string) $plan['title'],
-                'amountRials' => $amount,
+                'amountRials' => $payable,
+                'originalPriceRials' => $amount,
+                'discountRials' => $discount,
+                'couponCode' => $couponCode,
                 'reference' => $reference,
                 'status' => 'pending',
                 'createdAt' => $now,
@@ -138,9 +164,11 @@ final class DepositController
         DepositSchema::ensure();
 
         $stmt = Database::pdo()->prepare(
-            'SELECT d.uuid, d.plan_code, d.amount_rials, d.reference, d.status, d.review_note, d.created_at, d.reviewed_at,
+            'SELECT d.uuid, d.plan_code, d.amount_rials, d.discount_rials, cp.code AS coupon_code, d.reference, d.status, d.review_note, d.created_at, d.reviewed_at,
                     p.title AS plan_title
-             FROM deposit_requests d LEFT JOIN plans p ON p.id = d.plan_id
+             FROM deposit_requests d
+             LEFT JOIN plans p ON p.id = d.plan_id
+             LEFT JOIN coupons cp ON cp.id = d.coupon_id
              WHERE d.user_id = :uid
              ORDER BY d.id DESC
              LIMIT 10'
@@ -154,6 +182,8 @@ final class DepositController
                 'planCode' => (string) $r['plan_code'],
                 'planTitle' => $r['plan_title'] !== null ? (string) $r['plan_title'] : null,
                 'amountRials' => (int) $r['amount_rials'],
+                'discountRials' => (int) ($r['discount_rials'] ?? 0),
+                'couponCode' => $r['coupon_code'] !== null ? (string) $r['coupon_code'] : null,
                 'reference' => (string) $r['reference'],
                 'status' => (string) $r['status'],
                 'reviewNote' => $r['review_note'] !== null ? (string) $r['review_note'] : null,

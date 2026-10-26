@@ -1116,6 +1116,14 @@ final class AdminController
             'support_telegram' => ['type' => 'str', 'min' => 0, 'max' => 100],
             // --- بکاپ خودکار (v19 — کرون روزانه cron/backup-db.php + گزارش تلگرامی) ---
             'backup_telegram_chat' => ['type' => 'str', 'min' => 0, 'max' => 60],
+            // --- دعوت دوستان / رفرال (v20) ---
+            'referral_enabled' => ['type' => 'bool'],
+            'referral_days' => ['type' => 'int', 'min' => 1, 'max' => 30],
+            // --- کد هدیه (v20 — مدیریت کدها در تب «کدهای هدیه») ---
+            'gift_enabled' => ['type' => 'bool'],
+            // --- یادآور تلگرامی (v20 — کرون روزانه cron/reminder-cron.php) ---
+            'reminder_enabled' => ['type' => 'bool'],
+            'reminder_lookback_days' => ['type' => 'int', 'min' => 1, 'max' => 365],
         ];
     }
 
@@ -1274,13 +1282,14 @@ final class AdminController
 
         $offset = ($page - 1) * $perPage;
         $stmt = $pdo->prepare(
-            "SELECT d.id, d.uuid, d.plan_code, d.amount_rials, d.reference, d.note, d.status,
+            "SELECT d.id, d.uuid, d.plan_code, d.amount_rials, d.discount_rials, cp.code AS coupon_code, d.reference, d.note, d.status,
                     d.review_note, d.reviewed_at, d.created_at,
                     u.uuid AS user_uuid, u.display_name,
                     p.title AS plan_title
              FROM deposit_requests d
              LEFT JOIN users u ON u.id = d.user_id
              LEFT JOIN plans p ON p.id = d.plan_id
+             LEFT JOIN coupons cp ON cp.id = d.coupon_id
              WHERE {$whereSql}
              ORDER BY d.id DESC LIMIT {$perPage} OFFSET {$offset}"
         );
@@ -1298,6 +1307,8 @@ final class AdminController
                 'planCode' => (string) $r['plan_code'],
                 'planTitle' => $r['plan_title'] !== null ? (string) $r['plan_title'] : null,
                 'amountRials' => (int) $r['amount_rials'],
+                'discountRials' => (int) ($r['discount_rials'] ?? 0),
+                'couponCode' => $r['coupon_code'] !== null ? (string) $r['coupon_code'] : null,
                 'reference' => (string) $r['reference'],
                 'note' => $r['note'] !== null ? (string) $r['note'] : null,
                 'status' => (string) $r['status'],
@@ -1329,7 +1340,7 @@ final class AdminController
         $pdo->beginTransaction();
         try {
             $lock = Database::driver() === 'mysql' ? ' FOR UPDATE' : '';
-            $stmt = $pdo->prepare('SELECT id, uuid, user_id, plan_id, plan_code, status FROM deposit_requests WHERE id = :id' . $lock);
+            $stmt = $pdo->prepare('SELECT id, uuid, user_id, plan_id, plan_code, status, coupon_id, discount_rials FROM deposit_requests WHERE id = :id' . $lock);
             $stmt->execute([':id' => $id]);
             $dep = $stmt->fetch();
             if ($dep === false) {
@@ -1380,7 +1391,18 @@ final class AdminController
             'planCode' => (string) $plan['code'],
             'months' => (int) $plan['months'],
             'premiumUntil' => $activated['premiumUntil'],
+            'couponId' => $dep['coupon_id'] !== null ? (int) $dep['coupon_id'] : null,
         ]);
+
+        // v20 — ژورنال استفاده از کد هدیه (بعد از commit — خطای ژورنال تأیید را نمی‌شکند)
+        GiftCode::registerRedemption(
+            $pdo,
+            $dep['coupon_id'] !== null ? (int) $dep['coupon_id'] : null,
+            (int) $dep['user_id'],
+            'deposit',
+            (int) $dep['id'],
+            (int) ($dep['discount_rials'] ?? 0)
+        );
 
         Response::ok([
             'message' => (int) $plan['months'] === 0 ? 'واریز تأیید شد و اشتراک دائمی فعال گردید' : 'واریز تأیید شد و اشتراک فعال گردید',
@@ -1432,6 +1454,135 @@ final class AdminController
         ]);
 
         Response::ok(['message' => 'درخواست واریز رد شد']);
+    }
+
+    /* ================= کدهای هدیه (v20 — جدول coupons از فاز ۵) ================= */
+
+    /** GET /api/admin/giftcodes — دسترسی: plans.manage */
+    public function giftCodesIndex(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'plans.manage');
+        GiftSchema::ensure();
+        $rows = Database::pdo()
+            ->query('SELECT id, uuid, code, type, value, max_uses, used_count, is_active, expires_at, created_at FROM coupons ORDER BY id DESC LIMIT 200')
+            ->fetchAll();
+        $items = [];
+        foreach ($rows as $r) {
+            $items[] = [
+                'id' => (int) $r['id'],
+                'uuid' => (string) $r['uuid'],
+                'code' => (string) $r['code'],
+                'kind' => (string) $r['type'], // percent | amount — در UI: درصد / مبلغ ثابت
+                'value' => (int) $r['value'],
+                'maxUses' => $r['max_uses'] === null ? 0 : (int) $r['max_uses'],
+                'usedCount' => (int) $r['used_count'],
+                'active' => (int) $r['is_active'] === 1,
+                'expiresAt' => $r['expires_at'] !== null ? (string) $r['expires_at'] : null,
+                'createdAt' => (string) $r['created_at'],
+            ];
+        }
+        Response::ok(['items' => $items]);
+    }
+
+    /** POST /api/admin/giftcodes — ساخت کد جدید · دسترسی: plans.manage */
+    public function giftCodeCreate(): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'plans.manage');
+        AdminGuard::requireCsrf($ctx);
+        GiftSchema::ensure();
+
+        $body = Request::json();
+        $kind = Validator::enum($body, 'kind', ['percent', 'amount'], 'percent');
+        $value = Validator::int($body, 'value', 1, $kind === 'percent' ? 100 : 99999999);
+        $maxUses = Validator::int($body, 'maxUses', 0, 100000, 0);
+        $expiresAt = Validator::dateOnly($body, 'expiresAt'); // اختیاری — YYYY-MM-DD
+        $rawCode = Validator::str($body, 'code', 3, 50, false); // خالی = کد تصادفی
+
+        $code = $rawCode !== null ? GiftCode::normalize($rawCode) : '';
+        if ($code !== '' && !preg_match('/^[A-Z0-9]{3,50}$/', $code)) {
+            throw new ValidationError('کد باید ۳ تا ۵۰ حرف لاتین یا رقم باشد');
+        }
+
+        $pdo = Database::pdo();
+        if ($code === '') {
+            $code = GiftCode::randomCode($pdo);
+        } else {
+            $dup = $pdo->prepare('SELECT id FROM coupons WHERE code = :c LIMIT 1');
+            $dup->execute([':c' => $code]);
+            if ($dup->fetchColumn() !== false) {
+                Response::error('این کد قبلاً ساخته شده است', 409, ['code' => 'gift_code_exists']);
+                return;
+            }
+        }
+
+        $now = gmdate('Y-m-d H:i:s');
+        $pdo->prepare(
+            'INSERT INTO coupons (uuid, code, type, value, max_uses, used_count, is_active, expires_at, created_at, updated_at)
+             VALUES (:uuid, :code, :type, :value, :max, 0, 1, :exp, :created, :updated)'
+        )->execute([
+            ':uuid' => Uuid::v4(),
+            ':code' => $code,
+            ':type' => $kind,
+            ':value' => $value,
+            ':max' => $maxUses > 0 ? $maxUses : null,
+            ':exp' => $expiresAt !== null ? $expiresAt . ' 23:59:59' : null,
+            ':created' => $now,
+            ':updated' => $now,
+        ]);
+        $id = (int) $pdo->lastInsertId();
+
+        Audit::admin($ctx['admin']['id'], 'giftcode.create', 'coupon', $code, [
+            'kind' => $kind,
+            'value' => $value,
+            'maxUses' => $maxUses,
+            'expiresAt' => $expiresAt,
+        ]);
+
+        Response::json(array_merge(['ok' => true], ['message' => 'کد هدیه ساخته شد', 'id' => $id, 'code' => $code]), 201);
+    }
+
+    /** PATCH /api/admin/giftcodes/{id} — فعال/غیرفعال، سقف استفاده · دسترسی: plans.manage */
+    public function giftCodeUpdate(array $params): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'plans.manage');
+        AdminGuard::requireCsrf($ctx);
+        GiftSchema::ensure();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id < 1) {
+            throw new ValidationError('شناسه کد نامعتبر است');
+        }
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT id, code FROM coupons WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        if ($stmt->fetch() === false) {
+            Response::error('کد هدیه یافت نشد', 404);
+            return;
+        }
+
+        $body = Request::json();
+        $sets = [];
+        $args = [':id' => $id];
+        $changed = [];
+        if (array_key_exists('active', $body)) {
+            $sets[] = 'is_active = :a';
+            $args[':a'] = Validator::bool($body, 'active') === true ? 1 : 0;
+            $changed['active'] = (bool) $args[':a'];
+        }
+        if (array_key_exists('maxUses', $body)) {
+            $sets[] = 'max_uses = :m';
+            $args[':m'] = Validator::int($body, 'maxUses', 0, 100000);
+            $args[':m'] = $args[':m'] > 0 ? $args[':m'] : null; // ۰ = بی‌نهایت
+            $changed['maxUses'] = $args[':m'] ?? 0;
+        }
+        if ($sets === []) {
+            throw new ValidationError('چیزی برای تغییر ارسال نشده است');
+        }
+        $pdo->prepare('UPDATE coupons SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($args);
+        Audit::admin($ctx['admin']['id'], 'giftcode.update', 'coupon', (string) $id, $changed);
+        Response::ok(['message' => 'کد هدیه به‌روزرسانی شد']);
     }
 
     /* ================= لاگ رخدادها ================= */

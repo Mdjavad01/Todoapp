@@ -59,7 +59,7 @@ export default function Deposits({
 
   useEffect(() => {
     void load(1, 'pending');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const switchTab = (st: 'pending' | 'approved' | 'rejected' | '') => {
@@ -137,8 +137,19 @@ export default function Deposits({
                       {d.user.displayName ?? 'بدون نام'}
                     </h3>
                     <Badge tone={STATUS_BADGE[d.status].tone}>{STATUS_BADGE[d.status].label}</Badge>
+                    {d.discountRials && d.discountRials > 0 ? (
+                      <Badge tone="amber">کد هدیه {d.couponCode ?? ''}</Badge>
+                    ) : null}
                     <span className="text-xs text-slate-500">
-                      {d.planTitle ?? d.planCode} · {faMoney(d.amountRials)} تومان
+                      {d.planTitle ?? d.planCode} ·{' '}
+                      {d.discountRials && d.discountRials > 0 ? (
+                        <>
+                          <s className="text-slate-400">{faMoney(d.amountRials + d.discountRials)}</s>{' '}
+                          {faMoney(d.amountRials)} تومان
+                        </>
+                      ) : (
+                        <>{faMoney(d.amountRials)} تومان</>
+                      )}
                     </span>
                   </div>
                   <p className="text-xs text-slate-600">
@@ -198,7 +209,15 @@ export default function Deposits({
                 کاربر: <b>{approveRow.user.displayName ?? 'بدون نام'}</b>
               </p>
               <p>
-                پلن: <b>{approveRow.planTitle ?? approveRow.planCode}</b> · مبلغ: <b>{faMoney(approveRow.amountRials)} تومان</b>
+                پلن: <b>{approveRow.planTitle ?? approveRow.planCode}</b> · مبلغ:{' '}
+                {approveRow.discountRials && approveRow.discountRials > 0 ? (
+                  <>
+                    <s className="text-slate-400">{faMoney(approveRow.amountRials + approveRow.discountRials)}</s>{' '}
+                    <b>{faMoney(approveRow.amountRials)} تومان</b> (با کد هدیه {approveRow.couponCode})
+                  </>
+                ) : (
+                  <b>{faMoney(approveRow.amountRials)} تومان</b>
+                )}
               </p>
               <p>
                 شماره پیگیری: <span dir="ltr" className="font-mono">{approveRow.reference}</span>

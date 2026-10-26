@@ -12,7 +12,7 @@ import {
   type AdminSession,
 } from './api';
 import { Toast, Spinner, useToast } from './ui';
-import { IconDashboard, IconUsers, IconCard, IconMegaphone, IconSettings, IconHistory, IconLogout, IconMenu, IconClose, IconKey } from './icons';
+import { IconDashboard, IconUsers, IconCard, IconMegaphone, IconSettings, IconHistory, IconLogout, IconMenu, IconClose, IconKey, IconGift } from './icons';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Users from './views/Users';
@@ -22,7 +22,8 @@ import Settings from './views/Settings';
 import OtpLogin from './views/OtpLogin';
 import Audit from './views/Audit';
 import Deposits from './views/Deposits';
-type Route = 'dashboard' | 'users' | 'otplogin' | 'plans' | 'deposits' | 'announcements' | 'settings' | 'audit';
+import GiftCodes from './views/GiftCodes';
+type Route = 'dashboard' | 'users' | 'otplogin' | 'plans' | 'deposits' | 'giftcodes' | 'announcements' | 'settings' | 'audit';
 
 const NAV: { key: Route; label: string; icon: typeof IconDashboard; perm?: string }[] = [
   { key: 'dashboard', label: 'داشبورد', icon: IconDashboard },
@@ -30,6 +31,7 @@ const NAV: { key: Route; label: string; icon: typeof IconDashboard; perm?: strin
   { key: 'users', label: 'کاربران', icon: IconUsers, perm: 'users.view' },
   { key: 'plans', label: 'پلن‌ها', icon: IconCard, perm: 'plans.manage' },
   { key: 'deposits', label: 'واریزی‌ها', icon: IconCard, perm: 'orders.view' },
+  { key: 'giftcodes', label: 'کدهای هدیه', icon: IconGift, perm: 'plans.manage' },
   { key: 'announcements', label: 'اطلاعیه‌ها', icon: IconMegaphone, perm: 'announcements.manage' },
   { key: 'settings', label: 'تنظیمات', icon: IconSettings, perm: 'settings.manage' },
   { key: 'audit', label: 'رخدادها', icon: IconHistory, perm: 'audit.view' },
@@ -84,7 +86,7 @@ export default function App() {
       .catch(() => {
         /* ۴۰۱ خودش هندل می‌شود؛ بقیه‌ی خطاها مهم نیستند */
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const navigate = (r: Route) => {
@@ -164,6 +166,7 @@ export default function App() {
           {activeRoute === 'users' && <Users onToast={show} session={session} />}
           {activeRoute === 'plans' && <Plans onToast={show} session={session} />}
           {activeRoute === 'deposits' && <Deposits onToast={show} session={session} />}
+          {activeRoute === 'giftcodes' && <GiftCodes onToast={show} session={session} />}
           {activeRoute === 'announcements' && <Announcements onToast={show} />}
           {activeRoute === 'settings' && <Settings onToast={show} session={session} />}
           {activeRoute === 'audit' && <Audit onToast={show} />}

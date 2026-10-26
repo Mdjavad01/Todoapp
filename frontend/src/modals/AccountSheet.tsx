@@ -16,6 +16,7 @@ import {
   type ActiveSession,
   type AuthChannels,
 } from '@/sync/auth';
+import { fetchReferral, redeemReferral, referralShareText, type ReferralInfo } from '@/sync/referral';
 
 /**
  * شیت «حساب کاربری و سینک» — فاز ۳ (فاز ۵: بله ← تلگرام)
@@ -64,6 +65,13 @@ export function AccountSheet() {
   const [nameDraft, setNameDraft] = useState('');
   const codeRef = useRef<HTMLInputElement>(null);
 
+  // v20 — دعوت دوستان (رفرال)
+  const [referral, setReferral] = useState<ReferralInfo | null>(null);
+  const [refInput, setRefInput] = useState('');
+  const [refBusy, setRefBusy] = useState(false);
+  const [refError, setRefError] = useState<string | null>(null);
+  const [refCopied, setRefCopied] = useState(false);
+
   // باز شدن شیت: کانال‌ها + نشست‌ها را بگیر
   useEffect(() => {
     if (!open) return;
@@ -75,6 +83,12 @@ export function AccountSheet() {
     void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
     if (useAppStore.getState().session) {
       void listSessions().then(setSessions).catch(() => setSessions([]));
+      // v20 — وضعیت رفرال (اگر فعال باشد کارت دعوت نشان داده می‌شود)
+      setReferral(null);
+      setRefError(null);
+      fetchReferral()
+        .then((r) => setReferral(r.enabled ? r : { ...r, enabled: false }))
+        .catch(() => setReferral(null));
     }
   }, [open]);
 
@@ -275,6 +289,47 @@ export function AccountSheet() {
     }
   };
 
+  /* ---------- v20 — دعوت دوستان ---------- */
+
+  const copyReferral = async () => {
+    if (!referral?.code) return;
+    try {
+      await navigator.clipboard.writeText(referral.code);
+      setRefCopied(true);
+      setTimeout(() => setRefCopied(false), 2000);
+      showToast('کد دعوت کپی شد');
+    } catch {
+      showToast('کپی خودکار نشد؛ کد را دستی انتخاب کنید');
+    }
+  };
+
+  const shareReferral = () => {
+    if (!referral?.code) return;
+    const text = referralShareText(referral.code, referral.days);
+    const url = referral.shareUrl ?? 'https://app.hojre24shop.ir';
+    void openExternal(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`);
+  };
+
+  const doRedeem = async () => {
+    const code = refInput.trim();
+    if (code.length < 4 || refBusy) return;
+    setRefBusy(true);
+    setRefError(null);
+    try {
+      const res = await redeemReferral(code);
+      showToast(res.message);
+      setRefInput('');
+      void useAppStore.getState().reloadPremium();
+      fetchReferral()
+        .then((r) => setReferral(r.enabled ? r : { ...r, enabled: false }))
+        .catch(() => setReferral(null));
+    } catch (e) {
+      setRefError(e instanceof Error ? e.message : 'فعال‌سازی کد ناموفق بود');
+    } finally {
+      setRefBusy(false);
+    }
+  };
+
   const syncLabel = (): string => {
     if (syncState.status === 'syncing') return 'در حال سینک…';
     if (syncState.status === 'error') return 'خطا در سینک';
@@ -348,6 +403,77 @@ export function AccountSheet() {
             <p className="text-body-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-3">
               {syncState.error}
             </p>
+          ) : null}
+
+          {/* ---------- v20 — دعوت دوستان (رفرال) ---------- */}
+          {referral?.enabled && referral.code ? (
+            <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Icon name="workspace_premium" size={20} className="text-primary shrink-0" />
+                <p className="text-body-sm font-black text-on-surface dark:text-inverse-on-surface flex-1">
+                  دعوت دوستان — هر دو طرف {toFa(referral.days)} روز پرو
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <code
+                  dir="ltr"
+                  className="flex-1 min-w-0 rounded-xl bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30 px-3 py-2.5 text-center text-body-md font-black tracking-widest text-primary"
+                >
+                  {referral.code}
+                </code>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-xl bg-primary text-on-primary px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform flex items-center gap-1"
+                  onClick={() => void copyReferral()}
+                  aria-label="کپی کد دعوت"
+                >
+                  <Icon name="content_copy" size={15} />
+                  {refCopied ? 'کپی شد' : 'کپی'}
+                </button>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-xl bg-surface-container dark:bg-slate-700 text-on-surface dark:text-slate-100 px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform flex items-center gap-1"
+                  onClick={shareReferral}
+                  aria-label="اشتراک کد دعوت در تلگرام"
+                >
+                  <Icon name="send" size={15} />
+                  اشتراک
+                </button>
+              </div>
+              <p className="text-[11px] leading-5 text-on-surface-variant">
+                دوستتان کد را در «حساب کاربری» وارد می‌کند؛ {toFa(referral.days)} روز پرو برای شما و او فعال می‌شود
+                {referral.invitedCount > 0 ? ` · تا حالا ${toFa(referral.invitedCount)} دوست دعوت کرده‌اید` : ''}.
+              </p>
+              {referral.canRedeem ? (
+                <div className="border-t border-primary/15 pt-2.5 space-y-1.5">
+                  <label htmlFor="ref-input" className="text-[11px] font-bold text-on-surface-variant block">
+                    کد دعوت دوستتان را دارید؟
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      id="ref-input"
+                      type="text"
+                      dir="ltr"
+                      autoComplete="off"
+                      className="flex-1 min-w-0 rounded-xl border border-outline-variant/40 bg-surface-container-lowest dark:bg-slate-700/60 px-3 py-2 text-body-sm text-left font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      placeholder="مثلاً KRM7AB2X"
+                      value={refInput}
+                      onChange={(e) => setRefInput(e.target.value.toUpperCase())}
+                      maxLength={16}
+                    />
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-xl border-2 border-primary text-primary px-3 py-2 text-xs font-bold active:scale-95 transition-transform disabled:opacity-40"
+                      onClick={() => void doRedeem()}
+                      disabled={refInput.trim().length < 4 || refBusy}
+                    >
+                      {refBusy ? '…' : 'فعال‌سازی'}
+                    </button>
+                  </div>
+                  {refError ? <p className="text-[11px] text-red-600 dark:text-red-300">{refError}</p> : null}
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="flex gap-2">

@@ -1,0 +1,41 @@
+# کارام — اپ (v17: سرعت و روانی زیر بار همزمان)
+# فایل‌های assets نام hash شده دارند (نام فایل = محتوا) → کش یک‌ساله‌ی immutable؛
+# بار دوم باز کردن اپ، هیچ فایلی دوباره دانلود نمی‌شود — حتی با ۲۰۰۰ کاربر همزمان
+# فشار این فایل‌ها روی سرور صفر می‌شود.
+
+# فشرده‌سازی — حجم انتقال JS/CSS/فونت/JSON تا ~۸۰٪ کم می‌شود
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml
+    AddOutputFilterByType DEFLATE application/javascript application/json application/manifest+json
+    AddOutputFilterByType DEFLATE image/svg+xml font/woff font/woff2
+</IfModule>
+
+# کش مرورگر
+<IfModule mod_expires.c>
+    ExpiresActive On
+    # اسکریپت/استایل hash‌دار + فونت‌ها و آیکن‌ها: یک سال، بی‌بازپرسی
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    # صفحه‌ی ورود و مانیفست و سرویس‌ورکر: همیشه تازه تا به‌روزرسانی‌ها فوراً دیده شود
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType application/manifest+json "access plus 0 seconds"
+</IfModule>
+
+<IfModule mod_headers.c>
+    # immutable = مرورگر حتی If-None-Match هم نمی‌پرسد — صفر درخواست برای assets
+    <FilesMatch "\-[^/]*\.(js|css)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(woff2|png|svg)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    # سرویس‌ورکر همیشه تازه — وگرنه به‌روزرسانی PWA گیر می‌کند
+    <FilesMatch "^(sw\.js)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
+Options -Indexes
