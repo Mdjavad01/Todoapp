@@ -65,6 +65,11 @@ export function TopBar() {
 const CHIPS: { view: ViewName; label: string }[] = [
   { view: 'home', label: 'خانه' },
   { view: 'listView', label: 'لیست‌ها' },
+  // فاز ۳ — میانبرهای نمای‌های هوشمند
+  { view: 'myday', label: 'روزهای من' },
+  { view: 'important', label: 'مهم' },
+  { view: 'planned', label: 'برنامه‌ریزی‌شده' },
+  { view: 'all', label: 'همه' },
   { view: 'todayView', label: 'امروز' },
   { view: 'analytics', label: 'آمار' },
   { view: 'templates', label: 'قالب‌ها' },

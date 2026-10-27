@@ -20,7 +20,6 @@ export function HomeView() {
   const displayName = session?.displayName?.trim() || userName.trim();
   const setView = useAppStore((s) => s.setView);
   const openList = useAppStore((s) => s.openList);
-  const openCalendar = useAppStore((s) => s.openCalendar);
   const openModal = useAppStore((s) => s.openModal);
   const reorderWithin = useAppStore((s) => s.reorderWithin);
   const openEditList = useAppStore((s) => s.openEditList);
@@ -45,10 +44,11 @@ export function HomeView() {
     all: stats.allCount,
   };
   const hubClicks: Record<string, () => void> = {
-    today: () => setView('todayView'),
-    urgent: () => setView('listView'),
-    planned: () => openCalendar('hub'),
-    all: () => setView('listView'),
+    // فاز ۳ — هر کارت هوشمند به نمای واقعی خودش می‌رود (روزهای من / مهم / برنامه‌ریزی‌شده / همه)
+    today: () => setView('myday'),
+    urgent: () => setView('important'),
+    planned: () => setView('planned'),
+    all: () => setView('all'),
   };
   const hubIconCls: Record<string, string> = {
     today: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',

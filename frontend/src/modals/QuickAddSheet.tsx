@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetHeader, MicButton } from '@/components/Sheet';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
@@ -17,10 +17,21 @@ export function QuickAddSheet() {
   const pendingDate = useAppStore((s) => s.pendingDate);
   const openCalendar = useAppStore((s) => s.openCalendar);
   const addQuickTask = useAppStore((s) => s.addQuickTask);
+  const quickDraft = useAppStore((s) => s.quickDraft);
+  const setQuickDraft = useAppStore((s) => s.setQuickDraft);
 
   const [title, setTitle] = useState('');
   const [listId, setListId] = useState<string | null>(null);
   const [priority, setPriority] = useState<TaskEntity['priority']>('normal');
+
+  // فاز ۳ — پیش‌نویس نوار افزودن سریع به شیت کامل منتقل می‌شود
+  useEffect(() => {
+    if (modal === 'quickAdd' && quickDraft.trim()) {
+      setTitle(quickDraft);
+      setQuickDraft('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal]);
 
   const effectiveList = useMemo(() => {
     // فاز ۲: بدون انتخاب کاربر، اول لیستِ در حال نمایش و بعد «لیست پیش‌فرض» (اولین لیست ترتیب) هدف است

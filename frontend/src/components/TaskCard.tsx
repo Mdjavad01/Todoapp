@@ -59,6 +59,11 @@ export function TaskCard({
             done ? 'line-through opacity-60' : ''
           }`}
         >
+          {task.starred ? (
+            <span className="text-amber-500 inline-flex align-[-3px] ml-1" aria-label="مهم (ستاره‌دار)">
+              <Icon name="star_filled" size={15} />
+            </span>
+          ) : null}
           {task.title}
         </h3>
         {task.notes ? <p className="text-body-sm text-on-surface-variant mt-0.5">{task.notes}</p> : null}

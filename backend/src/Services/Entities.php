@@ -19,7 +19,10 @@ final class Entities
 
     public const LIST_COLORS = ['teal', 'amber', 'indigo', 'emerald', 'rose', 'purple'];
     public const PRIORITIES = ['urgent', 'high', 'normal', 'low'];
-    public const REPEATS = ['none', 'daily', 'weekly', 'monthly'];
+    /** فاز ۳ — انواع تکرار (ماهانه/سالانه شمسی + روزهای کاری + سفارشی با repeat_meta) */
+    public const REPEATS = ['none', 'daily', 'workdays', 'weekly', 'monthly', 'yearly', 'custom'];
+    /** واحدهای تکرار سفارشی — همان lib/repeat.ts سمت کلاینت */
+    private const REPEAT_UNITS = ['day', 'week', 'month', 'year'];
 
     private static array $tables = [
         self::ENTITY_LISTS => 'lists',
@@ -157,10 +160,84 @@ final class Entities
                 $cols['repeat'] = $r;
             }
         }
+        // فاز ۳ — ستاره/تکرار سفارشی: فقط وقتی کلید در ورودی باشد اعمال می‌شود (حتی در push کامل).
+        // کلاینت جدید همیشه هر دو کلید را می‌فرستد؛ APKهای قدیمی نمی‌فرستند → مقادیر سرور حفظ می‌شود
+        // (سازگاری پس‌رو: یک بارِ push قدیمی نباید ستاره/تنظیم سفارشی را پاک کند).
+        if (array_key_exists('starred', $in)) {
+            $cols['starred'] = (int) (Validator::bool($in, 'starred', false) ?? false);
+        }
+        if (array_key_exists('repeatMeta', $in)) {
+            $cols['repeat_meta'] = self::repeatMetaToSql($in['repeatMeta'] ?? null);
+        }
         if (!$partial || array_key_exists('completedAt', $in)) {
             $cols['completed_at'] = Validator::isoDateTime($in, 'completedAt', false);
         }
         return $cols;
+    }
+
+    /**
+     * تنظیم تکرار سفارشی — اعتبارسنجی ساختاری و نگهداری JSON کانونی.
+     * قاعده‌ی قطعی مشترک با normalizeRepeatMeta کلاینت (frontend/src/lib/repeat.ts):
+     *   every: ۱..۳۶۵ — unit: day/week/month/year — days (فقط week): ۰..۶ (۰=شنبه) حداکثر ۷ عضو یکتا
+     * ورودی نامعتبر = ValidationError (در سینک → rejected با دلیل؛ هیچ داده‌ی زباله‌ای وارد DB نمی‌شود)
+     */
+    private static function repeatMetaToSql(mixed $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                throw new ValidationError('ساختار repeatMeta نامعتبر است');
+            }
+            $raw = $decoded;
+        }
+        if (!is_array($raw)) {
+            throw new ValidationError('ساختار repeatMeta نامعتبر است');
+        }
+        $every = $raw['every'] ?? null;
+        if (is_bool($every) || !is_numeric($every) || (int) $every != $every) {
+            throw new ValidationError('فاصله‌ی تکرار باید عدد صحیح باشد');
+        }
+        $every = (int) $every;
+        if ($every < 1 || $every > 365) {
+            throw new ValidationError('فاصله‌ی تکرار باید بین ۱ تا ۳۶۵ باشد');
+        }
+        $unit = $raw['unit'] ?? null;
+        if (!is_string($unit) || !in_array($unit, self::REPEAT_UNITS, true)) {
+            throw new ValidationError('واحد تکرار نامعتبر است');
+        }
+        $days = null;
+        if (array_key_exists('days', $raw) && $raw['days'] !== null) {
+            if (!is_array($raw['days'])) {
+                throw new ValidationError('روزهای تکرار باید آرایه باشند');
+            }
+            $clean = [];
+            foreach ($raw['days'] as $d) {
+                if (is_bool($d) || !is_numeric($d) || (int) $d != $d || (int) $d < 0 || (int) $d > 6) {
+                    throw new ValidationError('روزهای هفته باید بین ۰ (شنبه) تا ۶ (جمعه) باشند');
+                }
+                $clean[] = (int) $d;
+            }
+            $clean = array_values(array_unique($clean));
+            if (count($clean) > 7) {
+                throw new ValidationError('روزهای هفته بیش از حد مجاز است');
+            }
+            if (count($clean) > 0) {
+                sort($clean);
+                $days = $clean;
+            }
+        }
+        $out = ['every' => $every, 'unit' => $unit];
+        if ($days !== null) {
+            $out['days'] = $days;
+        }
+        $json = json_encode($out, JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            throw new ValidationError('ساختار repeatMeta نامعتبر است');
+        }
+        return $json;
     }
 
     private static function normalizeSubtask(array $in, bool $partial): array
@@ -370,6 +447,11 @@ final class Entities
                     'dueTime' => $row['due_time'] !== null ? substr((string) $row['due_time'], 0, 5) : null,
                     'reminderMinutes' => $row['reminder_minutes'] !== null ? (int) $row['reminder_minutes'] : null,
                     'repeat' => (string) $row['repeat'],
+                    // فاز ۳ — ستاره و تکرار سفارشی (با ?? برای سازگاری با دیتابیسِ هنوز-مهاجرت‌نشده)
+                    'starred' => (bool) ($row['starred'] ?? 0),
+                    'repeatMeta' => isset($row['repeat_meta']) && $row['repeat_meta'] !== null && $row['repeat_meta'] !== ''
+                        ? (json_decode((string) $row['repeat_meta'], true) ?? null)
+                        : null,
                     'completedAt' => self::sqlToIso($row['completed_at'] ?? null),
                 ];
             case self::ENTITY_SUBTASKS:

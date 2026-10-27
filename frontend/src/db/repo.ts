@@ -1,6 +1,7 @@
 import { idbGetAll, idbGet, idbPut, idbDelete, STORES } from './idb';
 import { uuid, nowIso } from '@/lib/uuid';
 import { compareLists } from '@/lib/selectors';
+import { nextOccurrence, type RepeatKind, type RepeatMeta } from '@/lib/repeat';
 import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity } from '@/types';
 
 /**
@@ -123,6 +124,10 @@ export interface TaskInput {
   dueTime?: string | null;
   reminderMinutes?: number | null;
   repeat?: TaskEntity['repeat'];
+  /** فاز ۳ — ستاره‌ی «مهم» */
+  starred?: boolean;
+  /** فاز ۳ — تنظیم تکرار سفارشی */
+  repeatMeta?: RepeatMeta | null;
 }
 
 export async function tasksCreate(input: TaskInput): Promise<TaskEntity> {
@@ -137,6 +142,8 @@ export async function tasksCreate(input: TaskInput): Promise<TaskEntity> {
     dueTime: input.dueTime ?? null,
     reminderMinutes: input.reminderMinutes ?? null,
     repeat: input.repeat ?? 'none',
+    starred: input.starred ?? false,
+    repeatMeta: input.repeatMeta ?? null,
     completedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -160,6 +167,35 @@ export async function tasksToggleComplete(id: string, completed: boolean): Promi
     completedAt: completed ? nowIso() : null,
     updatedAt: nowIso(),
   });
+}
+
+/**
+ * فاز ۳ — تکمیل کارِ تکرارشونده: کارِ اصلی «انجام‌شده» می‌ماند (آمار و آکاردئون) و
+ * نوبت بعدی با همان فیلدها و سررسیدِ محاسبه‌شده از موتور تکرار ساخته می‌شود
+ * (شناسه‌ی نو؛ زیرکارها با وضعیت باز کپی می‌شوند). اگر تکرار نبود = null.
+ */
+export async function completeRecurring(taskId: string, completedOn: Date = new Date()): Promise<TaskEntity | null> {
+  const row = await idbGet<TaskEntity>(STORES.tasks, taskId);
+  if (!row || row.deletedAt || row.repeat === 'none') return null;
+  const nextDue = nextOccurrence(row.dueDate, row.repeat as RepeatKind, row.repeatMeta ?? null, completedOn);
+  if (nextDue === null) return null;
+  const now = nowIso();
+  const next: TaskEntity = {
+    ...row,
+    id: uuid(),
+    dueDate: nextDue,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  await idbPut(STORES.tasks, next);
+  // کپی زیرکارهای باز برای نوبت بعدی (وضعیت تیک ریست می‌شود)
+  const subs = await idbGetAll<SubtaskEntity>(STORES.subtasks);
+  for (const s of subs.filter((x) => x.taskId === taskId && !x.deletedAt)) {
+    await idbPut(STORES.subtasks, { ...s, id: uuid(), taskId: next.id, done: false, createdAt: now, updatedAt: now });
+  }
+  return next;
 }
 
 export async function tasksSoftDelete(id: string): Promise<void> {

@@ -15,6 +15,10 @@ final class RestEntityController
         if (!in_array($entity, [Entities::ENTITY_LISTS, Entities::ENTITY_TASKS, Entities::ENTITY_SUBTASKS], true)) {
             throw new InvalidArgumentException('موجودیت نامعتبر');
         }
+        // فاز ۳ — اسکیمای ستاره/تکرار سفارشی (فقط برای مسیرهای کارها؛ تکرارپذیر و ارزان)
+        if ($entity === Entities::ENTITY_TASKS) {
+            TaskSchema::ensure();
+        }
     }
 
     /** GET /api/v1/{entity} */

@@ -15,7 +15,7 @@ export function CoachAdd() {
   if (!ready || !coachAdd || view !== 'home') return null;
 
   return (
-    <div className="absolute bottom-[140px] left-4 right-12 z-40" role="note" aria-label="راهنمای افزودن کار">
+    <div className="absolute bottom-[196px] left-4 right-12 z-40" role="note" aria-label="راهنمای افزودن کار">
       <div
         className="relative bg-primary text-on-primary rounded-2xl p-3.5 shadow-xl fade-in cursor-pointer"
         onClick={() => openModal('quickAdd')}

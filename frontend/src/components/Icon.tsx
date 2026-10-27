@@ -64,6 +64,7 @@ export type IconName =
   | 'signal_cellular_4_bar'
   | 'sort'
   | 'star'
+  | 'star_filled'
   | 'task_alt'
   | 'today'
   | 'verified'

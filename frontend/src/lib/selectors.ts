@@ -1,5 +1,6 @@
 import type { ListEntity, ListColor, ListSortKey, HubKey, TaskEntity } from '@/types';
-import { startOfDay, toIsoDate } from './format';
+import { toIsoDate, startOfDay } from './format';
+import { pruneMyDay } from './repeat';
 
 /** توابع محاسباتی آمار — همه از داده‌ی واقعی IndexedDB */
 
@@ -67,8 +68,11 @@ export const PRIORITY_BADGE: Record<TaskEntity['priority'], { label: string; cls
 export const REPEAT_LABEL: Record<TaskEntity['repeat'], string> = {
   none: 'بدون تکرار',
   daily: 'روزانه',
+  workdays: 'روزهای کاری',
   weekly: 'هفتگی',
-  monthly: 'ماهانه',
+  monthly: 'ماهانه (شمسی)',
+  yearly: 'سالانه (شمسی)',
+  custom: 'سفارشی',
 };
 
 export interface WeekBar {
@@ -216,13 +220,83 @@ export function sortTasks(tasks: TaskEntity[], key: ListSortKey, manualOrder: st
   }
 }
 
-/** کارت‌های هوشمند خانه — مرجع واحد برای HomeView و شیت مدیریت (فاز ۲) */
+/** کارت‌های هوشمند خانه — مرجع واحد برای HomeView و شیت مدیریت (فاز ۲ + ناوبری واقعی فاز ۳) */
 export const HUB_CARDS: { key: HubKey; label: string }[] = [
-  { key: 'today', label: 'امروز' },
-  { key: 'urgent', label: 'مهم و فوری' },
+  { key: 'today', label: 'روزهای من' },
+  { key: 'urgent', label: 'مهم' },
   { key: 'planned', label: 'برنامه‌ریزی‌شده' },
   { key: 'all', label: 'همه‌ی کارها' },
 ];
+
+/* ---------------- فاز ۳ — نمای‌های هوشمند ---------------- */
+
+/** کارهای ناتمام با ستاره — نمای «مهم» */
+export function starredPending(tasks: TaskEntity[]): TaskEntity[] {
+  return tasks
+    .filter((t) => !t.deletedAt && t.starred && !t.completedAt)
+    .sort(
+      (a, b) =>
+        (a.dueDate ?? DUE_FAR).localeCompare(b.dueDate ?? DUE_FAR) ||
+        (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.id.localeCompare(b.id),
+    );
+}
+
+/** گروه‌های نمای «برنامه‌ریزی‌شده» — معوقه / امروز / آینده (همه با سررسید) */
+export function plannedSections(tasks: TaskEntity[], today: Date): { overdue: TaskEntity[]; today: TaskEntity[]; upcoming: TaskEntity[] } {
+  const todayIso = toIsoDate(today);
+  const dated = tasks.filter((t) => !t.deletedAt && !t.completedAt && t.dueDate !== null);
+  const cmp = (a: TaskEntity, b: TaskEntity) =>
+    (a.dueDate ?? '').localeCompare(b.dueDate ?? '') ||
+    (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+    a.createdAt.localeCompare(b.createdAt) ||
+    a.id.localeCompare(b.id);
+  const sortC = (arr: TaskEntity[]) => [...arr].sort(cmp);
+  return {
+    overdue: sortC(dated.filter((t) => t.dueDate! < todayIso)),
+    today: sortC(dated.filter((t) => t.dueDate === todayIso)),
+    upcoming: sortC(dated.filter((t) => t.dueDate! > todayIso)),
+  };
+}
+
+/** همه‌ی کارهای ناتمام گروه‌بندی‌شده بر اساس لیست (ترتیب قطعی لیست‌ها) */
+export function allPendingByList(tasks: TaskEntity[], lists: ListEntity[]): { list: ListEntity; tasks: TaskEntity[] }[] {
+  return sortedLists(lists.filter((l) => !l.deletedAt))
+    .map((list) => ({
+      list,
+      tasks: tasks.filter(
+        (t) => !t.deletedAt && !t.completedAt && t.listId === list.id,
+      ).sort(
+        (a, b) =>
+          (a.dueDate ?? DUE_FAR).localeCompare(b.dueDate ?? DUE_FAR) ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id),
+      ),
+    }))
+    .filter((g) => g.tasks.length > 0);
+}
+
+/**
+ * کارهای «روزهای من» = (سررسید امروز) + (افزوده‌های دستی هرس‌شده) — بدون دوبار نمایش.
+ * ترتیب: اول داشتیم ساعت، بعد ستاره، بعد عنوان‌گذاری قطعی.
+ */
+export function myDayTasks(tasks: TaskEntity[], myDayIds: string[], today: Date): TaskEntity[] {
+  const todayIso = toIsoDate(today);
+  const live = tasks.filter((t) => !t.deletedAt);
+  const dueToday = live.filter((t) => t.dueDate === todayIso);
+  const kept = pruneMyDay(myDayIds, live, today);
+  const keptSet = new Set(kept);
+  const manual = live.filter((t) => keptSet.has(t.id) && t.dueDate !== todayIso);
+  return [...dueToday, ...manual]
+    .sort(
+      (a, b) =>
+        (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+        Number(b.starred) - Number(a.starred) ||
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.id.localeCompare(b.id),
+    );
+}
 
 export const GREETING_TEXT = (hour: number): string =>
   hour < 5 ? 'شب بخیر' : hour < 12 ? 'صبح بخیر' : hour < 17 ? 'ظهر بخیر' : hour < 20 ? 'عصر بخیر' : 'شب بخیر';

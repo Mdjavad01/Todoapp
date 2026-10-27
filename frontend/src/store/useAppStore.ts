@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureDefaultData } from '@/db/seed';
-import { toIsoDate } from '@/lib/format';
+import { toIsoDate, faShort } from '@/lib/format';
 import { defaultListId, sortedLists } from '@/lib/selectors';
+import { pruneMyDay, type RepeatMeta } from '@/lib/repeat';
 import { applySectionOrder } from '@/lib/dragSort';
 import { uuid } from '@/lib/uuid';
 import { queueSync, runSync, setSyncConfig, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
@@ -15,7 +16,8 @@ import * as payments from '@/sync/payments';
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type FontScale = 'small' | 'medium' | 'large';
 export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | 'editList' | 'manageLists' | null;
-export type CalendarTarget = 'quickAdd' | 'hub' | null;
+/** هدف تقویم: افزودن سریع / کارت هوشمند خانه / جزئیات کار (فاز ۳) */
+export type CalendarTarget = 'quickAdd' | 'hub' | 'detail' | null;
 
 /** توست با اقدام اختیاری (واگرد) — فاز ۲ */
 export interface ToastState {
@@ -109,6 +111,12 @@ interface AppState {
   /** لیستِ در حال ویرایش (شیت ویرایش لیست) */
   editListId: string | null;
 
+  /* ---- فاز ۳ — فلوی افزودن و جزئیات کار ---- */
+  /** «روزهای من» — افزوده‌های دستی (سطح دستگاه؛ قاعده هرس در lib/repeat.ts) */
+  myDayIds: string[];
+  /** پیش‌نویس نوار افزودن سریع — برای انتقال به شیت کامل */
+  quickDraft: string;
+
   init(): Promise<void>;
   refresh(): Promise<void>;
   setView(v: ViewName): void;
@@ -148,13 +156,27 @@ interface AppState {
   setSearch(q: string, filter?: string): void;
 
   toggleTask(id: string): Promise<void>;
-  addQuickTask(input: { title: string; listId: string; dueDate: string | null; dueTime?: string | null; titleText?: string; priority?: TaskEntity['priority'] }): Promise<void>;
+  addQuickTask(input: { title: string; listId: string; dueDate: string | null; dueTime?: string | null; titleText?: string; priority?: TaskEntity['priority']; repeat?: TaskEntity['repeat']; repeatMeta?: RepeatMeta | null }): Promise<string | null>;
   addInlineTask(listId: string, title: string): Promise<void>;
-  updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat'>>): Promise<void>;
+  updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat' | 'repeatMeta' | 'starred' | 'listId'>>): Promise<void>;
   deleteTask(id: string): Promise<void>;
   moveOverdueToToday(): Promise<void>;
   toggleSubtask(id: string): Promise<void>;
   addSubtask(taskId: string, title: string): Promise<void>;
+  /** فاز ۳ — حذف زیرکار (نرم) */
+  deleteSubtask(id: string): Promise<void>;
+  /** فاز ۳ — تغییر نام زیرکار */
+  renameSubtask(id: string, title: string): Promise<void>;
+  /** فاز ۳ — ستاره‌ی «مهم» */
+  toggleStar(id: string): Promise<void>;
+  /** فاز ۳ — افزودن/برداشتن از «روزهای من» */
+  toggleMyDay(id: string): Promise<void>;
+  /** فاز ۳ — ذخیره‌ی فهرست روزهای من (داخلی) */
+  persistMyDay(ids: string[]): Promise<void>;
+  /** فاز ۳ — افزودن سریع از «روزهای من» (کار بی‌تاریخ در لیست پیش‌فرض + عضویت روزهای من) */
+  addMyDayTask(title: string): Promise<void>;
+  /** فاز ۳ — پیش‌نویس نوار افزودن سریع */
+  setQuickDraft(text: string): void;
   createList(name: string, emoji: string): Promise<void>;
   applyTemplate(tpl: TemplateDef): Promise<void>;
   applyJobKit(kit: JobKitDef): Promise<void>;
@@ -250,6 +272,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   taskOrders: {},
   editListId: null,
 
+  myDayIds: [],
+  quickDraft: '',
+
   async init() {
     await ensureDefaultData();
     await get().refresh();
@@ -274,12 +299,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (p.key.startsWith('list-sort:')) listSorts[p.key.slice('list-sort:'.length)] = p.value as ListSortKey;
       else if (p.key.startsWith('task-order:')) taskOrders[p.key.slice('task-order:'.length)] = (p.value as string[]) ?? [];
     }
+    // فاز ۳ — «روزهای من»: هرس قاعده‌مند (انجام‌شده‌های روزهای قبل و کارهای حذف‌شده بیرون می‌روند)
+    const rawMyDay = (prefs.find((p) => p.key === 'myday-ids')?.value as string[] | undefined) ?? [];
+    const myDayIds = pruneMyDay(rawMyDay, get().tasks, new Date());
+    if (myDayIds.length !== rawMyDay.length) {
+      void repo.prefsSet('myday-ids', myDayIds);
+    }
     // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
     const userName = savedName === 'علی' ? '' : savedName;
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, hubHidden, listSorts, taskOrders });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, hubHidden, listSorts, taskOrders, myDayIds });
     applyDark(dark);
     applyAccent(accent);
     applyFontScale(fontScale);
@@ -425,6 +456,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       syncState: { status: 'idle', lastSyncAt: null, error: null },
       premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
       paymentResult: null,
+      myDayIds: [],
+      quickDraft: '',
     });
   },
 
@@ -515,7 +548,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   confirmCalendar(dateIso) {
     const target = get().calendarTarget;
     if (target === 'quickAdd') set({ pendingDate: dateIso, modal: 'quickAdd', calendarTarget: null });
-    else set({ modal: null, calendarTarget: null });
+    else if (target === 'detail') {
+      // فاز ۳ — تغییر سررسید از جزئیات کار
+      const taskId = get().detailTaskId;
+      set({ modal: 'taskDetail', calendarTarget: null });
+      if (taskId) void get().updateTask(taskId, { dueDate: dateIso });
+    } else set({ modal: null, calendarTarget: null });
   },
 
   showToast(text, action) {
@@ -548,15 +586,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refresh();
     queueSync();
     // جشن اولین تکمیل واقعی کاربر (v10) — مستقل از داده‌ی دمو، با pref کنترل می‌شود
+    // (اول اجرا می‌شود تا توست مهم‌ترِ «نوبت بعدی» زیرش گم نشود)
     if (completing && !(await repo.prefsGet<boolean>('first-done-celebrated', false))) {
       await repo.prefsSet('first-done-celebrated', true);
       get().showToast('🎯 آفرین! اولین کارت انجام شد؛ همین‌طور ادامه بده');
     }
+    // فاز ۳ — کارِ تکرارشونده: نوبت بعدی ساخته می‌شود (کارِ اصلی انجام‌شده می‌ماند)
+    if (completing && task.repeat !== 'none') {
+      const next = await repo.completeRecurring(id);
+      if (next) {
+        await get().refresh();
+        queueSync();
+        const when = next.dueDate ? ` برای ${faShort(new Date(next.dueDate + 'T00:00:00'))}` : '';
+        get().showToast(`نوبت بعدی این کارِ تکراری${when} ساخته شد`);
+      }
+    }
   },
 
+  /** @returns شناسه‌ی کار ساخته‌شده (برای پیوست‌های پس از افزودن مثل «روزهای من») */
   async addQuickTask(input) {
     const { title, listId, dueDate, priority } = input;
-    if (!title.trim()) return;
+    if (!title.trim()) return null;
     // پایه‌ی عنوان: اگر تشخیص هوشمند عبارت تاریخ را پاک کرده باشد همان استفاده می‌شود (v16)
     const base = (input.titleText ?? '').trim() || title;
     // تشخیص ساده‌ی ساعت از متن (وقتی تشخیص هوشمند قبلاً ساعت نداده باشد)
@@ -568,17 +618,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       dueTime = dueTime ?? `${lat(timeMatch[1]).padStart(2, '0')}:${lat(timeMatch[2])}`;
       cleanTitle = base.replace(timeMatch[0], '').trim();
     }
-    await repo.tasksCreate({
+    const created = await repo.tasksCreate({
       listId,
       title: cleanTitle || title,
       dueDate,
       dueTime,
       priority: priority ?? 'normal',
+      repeat: input.repeat ?? 'none',
+      repeatMeta: input.repeatMeta ?? null,
     });
     await get().refresh();
     queueSync();
     set({ modal: null, pendingDate: null });
     get().showToast(`کار «${cleanTitle || title}» افزوده شد`);
+    return created.id;
   },
 
   async addInlineTask(listId, title) {
@@ -629,6 +682,66 @@ export const useAppStore = create<AppState>((set, get) => ({
     await repo.subtasksCreate(taskId, title.trim());
     await get().refresh();
     queueSync();
+  },
+
+  /* ================= فاز ۳ — فلوی افزودن و جزئیات کار ================= */
+
+  async deleteSubtask(id) {
+    await repo.subtasksSoftDelete(id);
+    await get().refresh();
+    queueSync();
+  },
+
+  async renameSubtask(id, title) {
+    const clean = title.trim().replace(/\s+/g, ' ').slice(0, 255);
+    if (!clean) return;
+    await repo.subtasksUpdate(id, { title: clean });
+    await get().refresh();
+    queueSync();
+  },
+
+  async toggleStar(id) {
+    const task = get().tasks.find((t) => t.id === id);
+    if (!task) return;
+    await repo.tasksUpdate(id, { starred: !task.starred });
+    await get().refresh();
+    queueSync();
+    if (!task.starred) get().showToast('به «مهم» اضافه شد ⭐');
+  },
+
+  /** هرس و ذخیره‌ی فهرست «روزهای من» */
+  async persistMyDay(ids) {
+    set({ myDayIds: ids });
+    await repo.prefsSet('myday-ids', ids);
+  },
+
+  async toggleMyDay(id) {
+    const task = get().tasks.find((t) => t.id === id);
+    if (!task) return;
+    const has = get().myDayIds.includes(id);
+    const next = has ? get().myDayIds.filter((x) => x !== id) : [...get().myDayIds, id];
+    await get().persistMyDay(next);
+    get().showToast(has ? 'از «روزهای من» برداشته شد' : 'به «روزهای من» اضافه شد ☀️');
+  },
+
+  async addMyDayTask(title) {
+    const clean = title.trim();
+    if (!clean) return;
+    const lists = get().lists;
+    const target = defaultListId(lists) ?? lists[0]?.id;
+    if (!target) {
+      get().showToast('اول یک لیست بسازید');
+      return;
+    }
+    const created = await repo.tasksCreate({ listId: target, title: clean });
+    await get().persistMyDay([...get().myDayIds, created.id]);
+    await get().refresh();
+    queueSync();
+    get().showToast('به «روزهای من» اضافه شد ☀️');
+  },
+
+  setQuickDraft(text) {
+    set({ quickDraft: text });
   },
 
   async applyTemplate(tpl) {

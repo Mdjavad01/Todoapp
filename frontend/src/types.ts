@@ -4,8 +4,12 @@
  */
 
 export type Priority = 'urgent' | 'high' | 'normal' | 'low';
-export type Repeat = 'none' | 'daily' | 'weekly' | 'monthly';
+/** فاز ۳ — انواع تکرار؛ ماهانه/سالانه شمسی است (lib/repeat.ts) و «سفارشی» تنظیمش در repeatMeta */
+export type Repeat = 'none' | 'daily' | 'workdays' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 export type ListColor = 'teal' | 'amber' | 'indigo' | 'emerald' | 'rose' | 'purple';
+
+/** تنظیم تکرار سفارشی — هم‌شکل lib/repeat.ts RepeatMeta؛ سمت سرور JSON معتبر نگهداری می‌شود */
+export type RepeatMeta = import('./lib/repeat').RepeatMeta;
 
 /** موجودیت پایه — قانون سینک: UUID + updated_at + deleted_at */
 export interface SyncBase {
@@ -49,6 +53,10 @@ export interface TaskEntity extends SyncBase {
   dueTime: string | null; // «HH:mm»
   reminderMinutes: number | null; // چند دقیقه قبل
   repeat: Repeat;
+  /** فاز ۳ — ستاره‌ی «مهم» (سینک کامل؛ در APKهای قدیمی = false) */
+  starred: boolean;
+  /** فاز ۳ — تنظیم تکرار سفارشی (فقط با repeat='custom')؛ سمت سرور JSON معتبر */
+  repeatMeta: import('./lib/repeat').RepeatMeta | null;
   completedAt: string | null;
 }
 
@@ -80,7 +88,12 @@ export type ViewName =
   | 'paywall'
   | 'emptyState'
   | 'settings'
-  | 'search';
+  | 'search'
+  /** فاز ۳ — نمای‌های هوشمند */
+  | 'myday'
+  | 'important'
+  | 'planned'
+  | 'all';
 
 /** قالب آماده — در فاز ۴ از سرور می‌آید؛ فعلاً کاتالوگ محلی برای حالت مهمان */
 export interface TemplateDef {

@@ -5,6 +5,7 @@ import { BottomNav, Fab, Toast } from '@/components/BottomNav';
 import { HomeView } from '@/views/HomeView';
 import { ListView } from '@/views/ListView';
 import { TodayView, AnalyticsView } from '@/views/TodayView';
+import { MyDayView, ImportantView, PlannedView, AllView } from '@/views/SmartViews';
 import { TemplatesView, JobKitsView } from '@/views/TemplatesView';
 import { PaywallView } from '@/views/PaywallView';
 import { SettingsView, EmptyStateView } from '@/views/SettingsView';
@@ -12,6 +13,7 @@ import { SearchView } from '@/views/SearchView';
 import { QuickAddSheet } from '@/modals/QuickAddSheet';
 import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
 import { CalendarSheet } from '@/modals/CalendarSheet';
+import { QuickBar } from '@/components/QuickBar';
 import { NewListSheet } from '@/modals/NewListSheet';
 import { EditListSheet } from '@/modals/EditListSheet';
 import { ManageListsSheet } from '@/modals/ManageListsSheet';
@@ -66,7 +68,7 @@ export default function App() {
         <TopBar />
         <SectionChips />
 
-        <main className="flex-1 overflow-y-auto no-scrollbar relative pb-24" id="appContent" ref={mainRef}>
+        <main className="flex-1 overflow-y-auto no-scrollbar relative pb-36" id="appContent" ref={mainRef}>
           {!ready ? (
             <SplashScreen />
           ) : (
@@ -74,6 +76,11 @@ export default function App() {
               {view === 'home' ? <HomeView /> : null}
               {view === 'listView' ? <ListView /> : null}
               {view === 'todayView' ? <TodayView /> : null}
+              {/* فاز ۳ — نمای‌های هوشمند */}
+              {view === 'myday' ? <MyDayView /> : null}
+              {view === 'important' ? <ImportantView /> : null}
+              {view === 'planned' ? <PlannedView /> : null}
+              {view === 'all' ? <AllView /> : null}
               {view === 'analytics' ? <AnalyticsView /> : null}
               {view === 'templates' ? <TemplatesView /> : null}
               {view === 'jobkits' ? <JobKitsView /> : null}
@@ -85,6 +92,7 @@ export default function App() {
           )}
         </main>
 
+        {ready ? <QuickBar /> : null}
         {ready ? <Fab /> : null}
         <CoachAdd />
         <BottomNav />

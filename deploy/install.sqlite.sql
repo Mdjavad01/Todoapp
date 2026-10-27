@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_time         TEXT(8),
   reminder_minutes INTEGER,
   repeat           TEXT(8) NOT NULL DEFAULT 'none',
+  starred          INTEGER NOT NULL DEFAULT 0,
+  repeat_meta      TEXT,
   completed_at     TEXT(19),
   created_at       TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   updated_at       TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
