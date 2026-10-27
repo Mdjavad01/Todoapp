@@ -56,18 +56,30 @@ export function Fab() {
   );
 }
 
-/** توست کوچک بازخورد اقدامات */
+/** توست کوچک بازخورد اقدامات — با اقدام اختیاری (واگرد — فاز ۲) */
 export function Toast() {
   const toast = useAppStore((s) => s.toast);
   const clearToast = useAppStore((s) => s.clearToast);
   if (!toast) return null;
   return (
     <div
-      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] bg-inverse-surface dark:bg-slate-600 text-inverse-on-surface dark:text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl fade-in max-w-[85%] text-center"
+      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] bg-inverse-surface dark:bg-slate-600 text-inverse-on-surface dark:text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl fade-in max-w-[85%] text-center flex items-center gap-3"
       role="status"
       onClick={clearToast}
     >
-      {toast.text}
+      <span>{toast.text}</span>
+      {toast.action ? (
+        <button
+          className="shrink-0 text-primary-fixed font-black underline underline-offset-2 px-1 active:scale-95 transition-transform"
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.action!.run();
+            clearToast();
+          }}
+        >
+          {toast.action.label}
+        </button>
+      ) : null}
     </div>
   );
 }

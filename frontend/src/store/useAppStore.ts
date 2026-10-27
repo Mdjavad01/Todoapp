@@ -1,8 +1,11 @@
 import { create } from 'zustand';
-import type { ListEntity, TaskEntity, SubtaskEntity, ViewName, ListColor, TemplateDef, JobKitDef } from '@/types';
+import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureDefaultData } from '@/db/seed';
 import { toIsoDate } from '@/lib/format';
+import { defaultListId, sortedLists } from '@/lib/selectors';
+import { applySectionOrder } from '@/lib/dragSort';
+import { uuid } from '@/lib/uuid';
 import { queueSync, runSync, setSyncConfig, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
 import { getSession, type SyncSession } from '@/sync/session';
 import { refreshSession } from '@/sync/api';
@@ -11,8 +14,15 @@ import * as payments from '@/sync/payments';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type FontScale = 'small' | 'medium' | 'large';
-export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | null;
+export type ModalName = 'quickAdd' | 'taskDetail' | 'calendar' | 'newList' | 'editList' | 'manageLists' | null;
 export type CalendarTarget = 'quickAdd' | 'hub' | null;
+
+/** توست با اقدام اختیاری (واگرد) — فاز ۲ */
+export interface ToastState {
+  id: number;
+  text: string;
+  action?: { label: string; run(): void };
+}
 
 /** تنظیمات عمومی سرور (از /api/v1/bootstrap) — آفلاین با پیش‌فرض‌ها */
 export interface AppSettings {
@@ -64,7 +74,7 @@ interface AppState {
   detailTaskId: string | null;
   calendarTarget: CalendarTarget;
   pendingDate: string | null; // تاریخ انتخابی برای کار جدید
-  toast: { id: number; text: string } | null;
+  toast: { id: number; text: string; action?: { label: string; run(): void } } | null;
   completedExpanded: boolean;
   searchQuery: string;
   searchFilter: string;
@@ -86,6 +96,18 @@ interface AppState {
   premium: PremiumState;
   /** سفارشی که بعد از بازگشت از درگاه باید نتیجه‌اش نشان داده شود (فاز ۵) */
   paymentResult: string | null;
+
+  /* ---- فاز ۲ — قابلیت کامل لیست‌ها ---- */
+  /** گروه‌های لیست‌ها (سطح دستگاه؛ با خروج پاک می‌شود) */
+  groups: ListGroup[];
+  /** کارت‌های هوشمند پنهان‌شده‌ی خانه */
+  hubHidden: HubKey[];
+  /** ترتیب به‌یادماندنی هر لیست — کلید: شناسه‌ی لیست */
+  listSorts: Record<string, ListSortKey>;
+  /** ترتیب دستی کارهای هر لیست — کلید: شناسه‌ی لیست */
+  taskOrders: Record<string, string[]>;
+  /** لیستِ در حال ویرایش (شیت ویرایش لیست) */
+  editListId: string | null;
 
   init(): Promise<void>;
   refresh(): Promise<void>;
@@ -120,7 +142,7 @@ interface AppState {
   openModal(m: ModalName, taskId?: string | null): void;
   openCalendar(target: CalendarTarget): void;
   confirmCalendar(dateIso: string): void;
-  showToast(text: string): void;
+  showToast(text: string, action?: { label: string; run(): void }): void;
   clearToast(): void;
   toggleCompletedAccordion(): void;
   setSearch(q: string, filter?: string): void;
@@ -136,6 +158,28 @@ interface AppState {
   createList(name: string, emoji: string): Promise<void>;
   applyTemplate(tpl: TemplateDef): Promise<void>;
   applyJobKit(kit: JobKitDef): Promise<void>;
+
+  /* ---- فاز ۲ — قابلیت کامل لیست‌ها ---- */
+  openEditList(id: string): void;
+  /** ویرایش لیست (نام/ایموجی/رنگ) — سینک با فیلدهای موجود */
+  updateList(id: string, patch: { name?: string; emoji?: string; color?: ListColor }): Promise<void>;
+  /** حذف لیست با تأیید (در UI) + توست واگرد — لیست پیش‌فرض (اولین لیست) حذف نمی‌شود */
+  deleteList(id: string): Promise<void>;
+  /** کپی لیست با همه‌ی کارها و زیرکارها (شناسه‌های نو) */
+  copyList(id: string): Promise<void>;
+  /** جابه‌جایی یک پله بالا/پایین (دسترس‌پذیری) */
+  moveList(id: string, dir: -1 | 1): void;
+  /** نوشتن ترتیب کامل سراسری (sortOrder = اندیس) — فقط ردیف‌های تغییرکرده */
+  reorderAll(ids: string[]): Promise<void>;
+  /** اعمال ترتیب تازه‌ی یک بخش (بدون گروه/گروه) داخل ترتیب سراسری */
+  reorderWithin(sectionIds: string[], nextOrder: string[]): Promise<void>;
+  setListSort(listId: string, key: ListSortKey): void;
+  setTaskOrder(listId: string, ids: string[]): void;
+  setHubHidden(key: HubKey, hidden: boolean): void;
+  addGroup(name: string): string;
+  renameGroup(groupId: string, name: string): void;
+  deleteGroup(groupId: string): void;
+  setListGroup(listId: string, groupId: string | null): void;
 }
 
 function applyAccent(a: AccentColor): void {
@@ -200,6 +244,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
   paymentResult: null,
 
+  groups: [],
+  hubHidden: [],
+  listSorts: {},
+  taskOrders: {},
+  editListId: null,
+
   async init() {
     await ensureDefaultData();
     await get().refresh();
@@ -214,12 +264,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       repo.prefsGet<boolean>('coach-add-seen', false),
       repo.prefsGet<string>('welcome-done', 'none'),
     ]);
+    // فاز ۲ — گروه‌ها/هوشمندهای پنهان/مرتب‌سازی هر لیست/ترتیب دستی کارها (سطح دستگاه، با خروج پاک می‌شوند)
+    const prefs = await repo.prefsAll();
+    const groups = (prefs.find((p) => p.key === 'list-groups')?.value as ListGroup[] | undefined) ?? [];
+    const hubHidden = (prefs.find((p) => p.key === 'hubs-hidden')?.value as HubKey[] | undefined) ?? [];
+    const listSorts: Record<string, ListSortKey> = {};
+    const taskOrders: Record<string, string[]> = {};
+    for (const p of prefs) {
+      if (p.key.startsWith('list-sort:')) listSorts[p.key.slice('list-sort:'.length)] = p.value as ListSortKey;
+      else if (p.key.startsWith('task-order:')) taskOrders[p.key.slice('task-order:'.length)] = (p.value as string[]) ?? [];
+    }
     // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
     const userName = savedName === 'علی' ? '' : savedName;
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, hubHidden, listSorts, taskOrders });
     applyDark(dark);
     applyAccent(accent);
     applyFontScale(fontScale);
@@ -458,12 +518,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     else set({ modal: null, calendarTarget: null });
   },
 
-  showToast(text) {
+  showToast(text, action) {
     const id = Date.now();
-    set({ toast: { id, text } });
+    set({ toast: { id, text, action } });
+    // توست دارای اقدام (واگرد) زمان بیشتری می‌گیرد
     window.setTimeout(() => {
       if (get().toast?.id === id) set({ toast: null });
-    }, 3200);
+    }, action ? 6000 : 3200);
   },
 
   clearToast() {
@@ -599,4 +660,167 @@ export const useAppStore = create<AppState>((set, get) => ({
     queueSync();
     get().showToast(`بسته‌ی «${kit.title}» فعال شد و روتین‌هایش به لیست‌ها اضافه شد!`);
   },
+
+  /* ================= فاز ۲ — قابلیت کامل لیست‌ها ================= */
+
+  openEditList(id) {
+    set({ modal: 'editList', editListId: id });
+  },
+
+  async updateList(id, patch) {
+    const clean: { name?: string; emoji?: string; color?: ListColor } = {};
+    if (patch.name !== undefined) {
+      const n = patch.name.trim().replace(/\s+/g, ' ').slice(0, 120);
+      if (!n) return;
+      clean.name = n;
+    }
+    if (patch.emoji !== undefined) {
+      const e = patch.emoji.trim().slice(0, 16);
+      if (!e) return;
+      clean.emoji = e;
+    }
+    if (patch.color !== undefined) clean.color = patch.color;
+    if (Object.keys(clean).length === 0) return;
+    await repo.listsUpdate(id, clean);
+    await get().refresh();
+    queueSync();
+  },
+
+  async deleteList(id) {
+    const lists = get().lists;
+    const target = lists.find((l) => l.id === id);
+    if (!target) return;
+    // محافظت لیست پیش‌فرض: اولین لیستِ ترتیب = هدف پیش‌فرض افزودن سریع؛ حذف آن همیشه یک لیست باقی می‌گذارد
+    if (defaultListId(lists) === id) {
+      get().showToast('اولین لیست، پیش‌فرضِ افزودن کارهاست و حذف نمی‌شود — ابتدا ترتیب را تغییر دهید');
+      return;
+    }
+    const snap = await repo.snapshotListForUndo(id);
+    if (!snap) return;
+    await repo.listsSoftDelete(id);
+    lastListUndo = snap;
+    await get().refresh();
+    queueSync();
+    // گروه‌بندی: لیست حذف‌شده از گروه‌هایش بیرون می‌آید
+    const groups = get().groups.map((g) => ({ ...g, listIds: g.listIds.filter((x) => x !== id) }));
+    if (groups.some((g, i) => g.listIds.length !== get().groups[i].listIds.length)) {
+      set({ groups });
+      void repo.prefsSet('list-groups', groups);
+    }
+    set({ modal: null, editListId: null });
+    get().showToast(`لیست «${target.name}» حذف شد`, {
+      label: 'واگرد',
+      run: () => void undoLastListDelete(),
+    });
+  },
+
+  async copyList(id) {
+    const src = get().lists.find((l) => l.id === id);
+    if (!src) return;
+    const name = `${src.name} (کپی)`.slice(0, 120);
+    const created = await repo.listsCreate({ name, emoji: src.emoji, color: src.color });
+    for (const t of get().tasks.filter((x) => x.listId === id)) {
+      const copy = await repo.tasksCopyRow(t.id, created.id);
+      if (copy) await repo.subtasksCopyRow(t.id, copy.id);
+    }
+    await get().refresh();
+    queueSync();
+    set({ modal: null, editListId: null, activeListId: created.id, view: 'listView' });
+    get().showToast(`لیست «${name}» ساخته شد (${get().tasks.filter((x) => x.listId === created.id).length} کار)`);
+  },
+
+  moveList(id, dir) {
+    const ids = sortedLists(get().lists).map((l) => l.id);
+    const i = ids.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    void get().reorderAll(ids);
+  },
+
+  async reorderAll(ids) {
+    const current = new Map(get().lists.map((l) => [l.id, l.sortOrder]));
+    let changed = false;
+    for (let i = 0; i < ids.length; i++) {
+      if (current.get(ids[i]) !== i) {
+        await repo.listsUpdate(ids[i], { sortOrder: i });
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await get().refresh();
+    queueSync();
+  },
+
+  async reorderWithin(sectionIds, nextOrder) {
+    await get().reorderAll(applySectionOrder(sortedLists(get().lists).map((l) => l.id), sectionIds, nextOrder));
+  },
+
+  setListSort(listId, key) {
+    set({ listSorts: { ...get().listSorts, [listId]: key } });
+    void repo.prefsSet(`list-sort:${listId}`, key);
+  },
+
+  setTaskOrder(listId, ids) {
+    set({ taskOrders: { ...get().taskOrders, [listId]: ids } });
+    void repo.prefsSet(`task-order:${listId}`, ids);
+  },
+
+  setHubHidden(key, hidden) {
+    const cur = new Set(get().hubHidden);
+    if (hidden) cur.add(key);
+    else cur.delete(key);
+    const arr = [...cur];
+    set({ hubHidden: arr });
+    void repo.prefsSet('hubs-hidden', arr);
+  },
+
+  addGroup(name) {
+    const clean = name.trim().replace(/\s+/g, ' ').slice(0, 60);
+    const id = uuid();
+    if (!clean) return id;
+    const groups = [...get().groups, { id, name: clean, listIds: [] }];
+    set({ groups });
+    void repo.prefsSet('list-groups', groups);
+    return id;
+  },
+
+  renameGroup(groupId, name) {
+    const clean = name.trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (!clean) return;
+    const groups = get().groups.map((g) => (g.id === groupId ? { ...g, name: clean } : g));
+    set({ groups });
+    void repo.prefsSet('list-groups', groups);
+  },
+
+  deleteGroup(groupId) {
+    const groups = get().groups.filter((g) => g.id !== groupId);
+    set({ groups });
+    void repo.prefsSet('list-groups', groups);
+  },
+
+  setListGroup(listId, groupId) {
+    // اول از همه‌ی گروه‌ها بیرون می‌آید؛ سپس در گروه هدف (اگر باشد) قرار می‌گیرد
+    const groups = get().groups.map((g) => ({ ...g, listIds: g.listIds.filter((x) => x !== listId) }));
+    if (groupId) {
+      const target = groups.find((g) => g.id === groupId);
+      if (target) target.listIds.push(listId);
+    }
+    set({ groups });
+    void repo.prefsSet('list-groups', groups);
+  },
 }));
+
+/* ---------- واگرد حذف لیست (پشت صحنه‌ی توست — فاز ۲) ---------- */
+
+let lastListUndo: repo.ListUndoSnapshot | null = null;
+
+async function undoLastListDelete(): Promise<void> {
+  const snap = lastListUndo;
+  if (!snap) return;
+  lastListUndo = null;
+  await repo.restoreListSnapshot(snap);
+  await useAppStore.getState().refresh();
+  queueSync();
+  useAppStore.getState().showToast(`لیست «${snap.list.name}» بازگردانده شد`);
+}

@@ -4,8 +4,31 @@ import { relativeDayLabel, faShort, faTime, parseIsoDate, toFa } from '@/lib/for
 import { PRIORITY_BADGE, REPEAT_LABEL } from '@/lib/selectors';
 import type { TaskEntity } from '@/types';
 
+/** ویژگی‌های دستگیره‌ی کشیدن (مرتب‌سازی دستی — فاز ۲) */
+export interface DragHandleProps {
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onPointerCancel: (e: React.PointerEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  style: { touchAction: 'none' };
+  role: 'button';
+  'aria-label': string;
+}
+
 /** کارت کار — دقیقاً مطابق طرح (بخش ۳) */
-export function TaskCard({ task, subtaskCount, subtaskDone }: { task: TaskEntity; subtaskCount: number; subtaskDone: number }) {
+export function TaskCard({
+  task,
+  subtaskCount,
+  subtaskDone,
+  dragHandle,
+}: {
+  task: TaskEntity;
+  subtaskCount: number;
+  subtaskDone: number;
+  /** اگر داده شود، دستگیره‌ی کشیدن برای مرتب‌سازی دستی نمایش داده می‌شود */
+  dragHandle?: DragHandleProps;
+}) {
   const toggleTask = useAppStore((s) => s.toggleTask);
   const openModal = useAppStore((s) => s.openModal);
   const done = task.completedAt !== null;
@@ -74,6 +97,15 @@ export function TaskCard({ task, subtaskCount, subtaskDone }: { task: TaskEntity
       >
         <Icon name="more_vert" size={20} />
       </button>
+      {dragHandle ? (
+        <button
+          {...dragHandle}
+          className="mt-1 text-outline hover:text-on-surface-variant cursor-grab active:cursor-grabbing touch-none"
+          title="کشیدن برای تغییر ترتیب"
+        >
+          <Icon name="drag_indicator" size={18} />
+        </button>
+      ) : null}
     </div>
   );
 }

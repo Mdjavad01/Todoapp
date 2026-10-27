@@ -13,12 +13,12 @@ const outDir = join(__dirname, '..', 'src', 'assets', 'icons');
 mkdirSync(outDir, { recursive: true });
 
 const ICON_NAMES = [
-  'add', 'arrow_back', 'arrow_back_ios', 'arrow_forward', 'auto_awesome', 'bar_chart',
+  'add', 'arrow_back', 'arrow_back_ios', 'arrow_forward', 'arrow_downward', 'arrow_upward', 'auto_awesome', 'bar_chart',
   'battery_full', 'calendar_month', 'calendar_today', 'check', 'check_circle', 'checklist',
-  'close', 'cloud_sync', 'dark_mode', 'delete', 'event_note', 'expand_more', 'filter_list',
+  'close', 'cloud_sync', 'dark_mode', 'delete', 'drag_indicator', 'edit', 'event_note', 'expand_more', 'filter_list',
   'fingerprint', 'flag', 'folder', 'home', 'light_mode', 'lock', 'mic', 'more_vert',
   'notifications', 'notifications_active', 'priority_high', 'psychology', 'replay', 'search',
-  'settings', 'shop', 'signal_cellular_4_bar', 'star', 'today', 'verified', 'warning',
+  'settings', 'shop', 'signal_cellular_4_bar', 'sort', 'star', 'today', 'verified', 'warning',
   'wifi', 'workspace_premium',
 ];
 

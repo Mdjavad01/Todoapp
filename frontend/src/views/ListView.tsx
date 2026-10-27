@@ -3,15 +3,14 @@ import { Icon } from '@/components/Icon';
 import { MicButton } from '@/components/Sheet';
 import { TaskCard, CompletedRow } from '@/components/TaskCard';
 import { useAppStore } from '@/store/useAppStore';
-import { listProgress } from '@/lib/selectors';
+import { listProgress, sortTasks, LIST_SORTS } from '@/lib/selectors';
+import { useDragSort } from '@/lib/dragSort';
 import { toFa, relativeDayLabel } from '@/lib/format';
 import type { TaskEntity } from '@/types';
 
 type ListFilter = 'all' | 'urgent' | 'done';
 
-const PRIORITY_ORDER: Record<TaskEntity['priority'], number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-
-/** بخش ۳: نمای لیست با فیلتر، آکاردئون انجام‌شده‌ها و افزودن سریع */
+/** بخش ۳: نمای لیست — با فیلتر، مرتب‌سازی پنج‌حالته‌ی به‌یادماندنی (فاز ۲)، آکاردئون انجام‌شده‌ها و افزودن سریع */
 export function ListView() {
   const lists = useAppStore((s) => s.lists);
   const tasks = useAppStore((s) => s.tasks);
@@ -23,31 +22,45 @@ export function ListView() {
   const openCalendar = useAppStore((s) => s.openCalendar);
   const completedExpanded = useAppStore((s) => s.completedExpanded);
   const toggleCompletedAccordion = useAppStore((s) => s.toggleCompletedAccordion);
+  const openEditList = useAppStore((s) => s.openEditList);
+  // فاز ۲ — ترتیب به‌یادماندنی هر لیست + ترتیب دستی کارها
+  const listSorts = useAppStore((s) => s.listSorts);
+  const setListSort = useAppStore((s) => s.setListSort);
+  const taskOrders = useAppStore((s) => s.taskOrders);
+  const setTaskOrder = useAppStore((s) => s.setTaskOrder);
 
   const [quickValue, setQuickValue] = useState('');
   const [filter, setFilter] = useState<ListFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
 
   const list = lists.find((l) => l.id === activeListId) ?? lists[0];
+  const sortKey = list ? (listSorts[list.id] ?? 'importance') : 'importance';
 
   const listTasks = useMemo(() => tasks.filter((t) => t.listId === list?.id), [tasks, list]);
   const pending = useMemo(
     () =>
-      listTasks
-        .filter((t) => !t.completedAt)
-        .filter((t) => (filter === 'urgent' ? t.priority === 'urgent' || t.priority === 'high' : true))
-        .sort((a, b) => {
-          const p = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-          if (p !== 0) return p;
-          return (a.dueDate ?? '9') .localeCompare(b.dueDate ?? '9');
-        }),
-    [listTasks, filter],
+      sortTasks(
+        listTasks
+          .filter((t) => !t.completedAt)
+          .filter((t) => (filter === 'urgent' ? t.priority === 'urgent' || t.priority === 'high' : true)),
+        sortKey,
+        list ? (taskOrders[list.id] ?? []) : [],
+      ),
+    [listTasks, filter, sortKey, list, taskOrders],
   );
   const completed = useMemo(
     () => listTasks.filter((t) => t.completedAt).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
     [listTasks],
   );
   const progress = listProgress(tasks, list?.id ?? '');
+
+  /* مرتب‌سازی دستی — کشیدنی فقط در حالت «دستی» (فاز ۲) */
+  const manualIds = useMemo(() => pending.map((t) => t.id), [pending]);
+  const drag = useDragSort(manualIds, (next) => {
+    if (list) setTaskOrder(list.id, next);
+  });
+  const manual = sortKey === 'manual' && pending.length > 1;
 
   if (!list) {
     return (
@@ -62,6 +75,8 @@ export function ListView() {
     addInlineTask(list.id, quickValue);
     setQuickValue('');
   };
+
+  const pendingSorted: TaskEntity[] = manual ? (drag.order.map((id) => pending.find((t) => t.id === id)!).filter(Boolean) as TaskEntity[]) : pending;
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-listView">
@@ -81,15 +96,42 @@ export function ListView() {
             </h2>
           </div>
           <div className="flex items-center gap-1 text-on-surface-variant">
+            {/* مرتب‌سازی (فاز ۲) */}
+            <button
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                sortOpen ? 'bg-primary/20 text-primary' : 'hover:bg-white/50 dark:hover:bg-white/10'
+              }`}
+              onClick={() => {
+                setSortOpen(!sortOpen);
+                setFilterOpen(false);
+              }}
+              title="مرتب‌سازی"
+              aria-label="مرتب‌سازی کارها"
+              aria-expanded={sortOpen}
+            >
+              <Icon name="sort" size={20} />
+            </button>
             <button
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                 filterOpen ? 'bg-primary/20 text-primary' : 'hover:bg-white/50 dark:hover:bg-white/10'
               }`}
-              onClick={() => setFilterOpen(!filterOpen)}
+              onClick={() => {
+                setFilterOpen(!filterOpen);
+                setSortOpen(false);
+              }}
               title="فیلتر"
               aria-label="فیلتر"
+              aria-expanded={filterOpen}
             >
               <Icon name="filter_list" size={20} />
+            </button>
+            <button
+              className="w-8 h-8 rounded-full hover:bg-white/50 dark:hover:bg-white/10 flex items-center justify-center"
+              onClick={() => openEditList(list.id)}
+              title="ویرایش لیست"
+              aria-label="ویرایش لیست"
+            >
+              <Icon name="edit" size={19} />
             </button>
             <button
               className="w-8 h-8 rounded-full hover:bg-white/50 dark:hover:bg-white/10 flex items-center justify-center"
@@ -101,6 +143,28 @@ export function ListView() {
             </button>
           </div>
         </div>
+        {/* منوی مرتب‌سازی (فاز ۲) — انتخاب هر لیست به‌یادماندنی است */}
+        {sortOpen ? (
+          <div className="flex gap-1.5 flex-wrap pt-1" role="radiogroup" aria-label="ترتیب نمایش کارها">
+            {LIST_SORTS.map((s) => (
+              <button
+                key={s.key}
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-colors ${
+                  sortKey === s.key ? 'bg-primary text-on-primary' : 'bg-white/60 dark:bg-slate-700 text-on-surface-variant'
+                }`}
+                onClick={() => {
+                  setListSort(list.id, s.key);
+                  setSortOpen(false);
+                }}
+                role="radio"
+                aria-checked={sortKey === s.key}
+              >
+                {s.label}
+                {s.key === 'manual' ? ' (کشیدن)' : ''}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {filterOpen ? (
           <div className="flex gap-1.5 flex-wrap pt-1">
             {(
@@ -139,21 +203,35 @@ export function ListView() {
       {/* کارهای در انتظار */}
       {filter !== 'done' ? (
         <div className="flex flex-col gap-2.5">
-          <div className="text-label-md font-bold text-on-surface-variant">کارهای در حال انتظار</div>
-          {pending.length === 0 ? (
+          <div className="text-label-md font-bold text-on-surface-variant">
+            کارهای در حال انتظار
+            {sortKey !== 'importance' ? (
+              <span className="text-[11px] font-semibold text-outline mr-1.5">
+                • مرتب‌شده بر اساس {LIST_SORTS.find((s) => s.key === sortKey)?.label}
+              </span>
+            ) : null}
+          </div>
+          {pendingSorted.length === 0 ? (
             <InlineEmpty />
           ) : (
-            pending.map((t) => {
-              const subs = subtasks.filter((s) => s.taskId === t.id);
-              return (
-                <TaskCard
-                  key={t.id}
-                  task={t}
-                  subtaskCount={subs.length}
-                  subtaskDone={subs.filter((s) => s.done).length}
-                />
-              );
-            })
+            <div
+              className="flex flex-col gap-2.5"
+              ref={manual ? (drag.containerRef as (el: HTMLDivElement | null) => void) : undefined}
+            >
+              {pendingSorted.map((t) => {
+                const subs = subtasks.filter((s) => s.taskId === t.id);
+                return (
+                  <div key={t.id} data-drag-item={manual ? '' : undefined} className={manual ? drag.itemClass(t.id) : ''}>
+                    <TaskCard
+                      task={t}
+                      subtaskCount={subs.length}
+                      subtaskDone={subs.filter((s) => s.done).length}
+                      dragHandle={manual ? drag.handleProps(t.id) : undefined}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       ) : null}

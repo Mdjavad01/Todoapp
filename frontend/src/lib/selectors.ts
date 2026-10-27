@@ -1,4 +1,4 @@
-import type { ListEntity, ListColor, TaskEntity } from '@/types';
+import type { ListEntity, ListColor, ListSortKey, HubKey, TaskEntity } from '@/types';
 import { startOfDay, toIsoDate } from './format';
 
 /** توابع محاسباتی آمار — همه از داده‌ی واقعی IndexedDB */
@@ -136,10 +136,93 @@ export function currentStreak(tasks: TaskEntity[], today: Date): number {
   return streak;
 }
 
+/* ---------------- فاز ۲ — قابلیت کامل لیست‌ها ---------------- */
+
+/** ترتیب اولویت — مرجع واحد برای همه‌ی مرتب‌سازی‌ها */
+export const PRIORITY_ORDER: Record<TaskEntity['priority'], number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+const DUE_FAR = '9999-99-99';
+
+/** مقایسه‌ی قطعی لیست‌ها: sortOrder سپس createdAt سپس id — پایدار و یکسان بین دستگاه‌ها پس از سینک */
+export function compareLists(a: ListEntity, b: ListEntity): number {
+  return a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+}
+
 /** ترتیب لیست‌ها برای نمایش در خانه */
 export function sortedLists(lists: ListEntity[]): ListEntity[] {
-  return [...lists].sort((a, b) => a.sortOrder - b.sortOrder);
+  return [...lists].sort(compareLists);
 }
+
+/**
+ * لیست پیش‌فرض = اولین لیست زنده در ترتیب قطعی (فاز ۲).
+ * تصمیم: بدون ستون/flag جدید — چون sortOrder سینک می‌شود، «اولین لیست» روی همه‌ی دستگاه‌ها یکسان است؛
+ * کاربر با کشیدن می‌تواند هر لیستی را به جای اول ببرد، پس حذفِ لیست‌های دیگر همیشه آزاد است
+ * و فقط جای اول (هدف پیش‌فرض افزودن سریع) محافظت می‌شود — یعنی همیشه حداقل یک لیست باقی می‌ماند.
+ */
+export function defaultListId(lists: ListEntity[]): string | null {
+  const live = lists.filter((l) => !l.deletedAt);
+  if (live.length === 0) return null;
+  return sortedLists(live)[0].id;
+}
+
+/** گزینه‌های مرتب‌سازی هر لیست (به‌یادماندنی با pref «list-sort:<id>») */
+export const LIST_SORTS: { key: ListSortKey; label: string }[] = [
+  { key: 'importance', label: 'اهمیت' },
+  { key: 'due', label: 'سررسید' },
+  { key: 'alpha', label: 'الفبا' },
+  { key: 'created', label: 'تاریخ ایجاد' },
+  { key: 'manual', label: 'دستی' },
+];
+
+/**
+ * مرتب‌سازی کارهای یک لیست — پنج حالت (فاز ۲).
+ * همه‌ی حالت‌ها در تساوی با (createdAt, id) به پایان می‌رسند تا ترتیب قطعی و بی‌لرزش باشد.
+ * حالت «دستی»: شناسه‌های موجود در manualOrder اول (به همان ترتیب)، بقیه با اهمیت.
+ */
+export function sortTasks(tasks: TaskEntity[], key: ListSortKey, manualOrder: string[] = []): TaskEntity[] {
+  const arr = [...tasks];
+  const byCreated = (a: TaskEntity, b: TaskEntity) =>
+    a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+  const byImportance = (a: TaskEntity, b: TaskEntity) =>
+    PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+    (a.dueDate ?? DUE_FAR).localeCompare(b.dueDate ?? DUE_FAR) ||
+    (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+    byCreated(a, b);
+  switch (key) {
+    case 'due':
+      return arr.sort(
+        (a, b) =>
+          (a.dueDate ?? DUE_FAR).localeCompare(b.dueDate ?? DUE_FAR) ||
+          (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+          PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+          byCreated(a, b),
+      );
+    case 'alpha':
+      return arr.sort((a, b) => a.title.localeCompare(b.title, 'fa') || byCreated(a, b));
+    case 'created':
+      return arr.sort(byCreated);
+    case 'manual': {
+      const idx = new Map(manualOrder.map((id, i) => [id, i]));
+      const UNRANKED = Number.MAX_SAFE_INTEGER;
+      return arr.sort(
+        (a, b) =>
+          (idx.get(a.id) ?? UNRANKED) - (idx.get(b.id) ?? UNRANKED) ||
+          byImportance(a, b),
+      );
+    }
+    case 'importance':
+    default:
+      return arr.sort(byImportance);
+  }
+}
+
+/** کارت‌های هوشمند خانه — مرجع واحد برای HomeView و شیت مدیریت (فاز ۲) */
+export const HUB_CARDS: { key: HubKey; label: string }[] = [
+  { key: 'today', label: 'امروز' },
+  { key: 'urgent', label: 'مهم و فوری' },
+  { key: 'planned', label: 'برنامه‌ریزی‌شده' },
+  { key: 'all', label: 'همه‌ی کارها' },
+];
 
 export const GREETING_TEXT = (hour: number): string =>
   hour < 5 ? 'شب بخیر' : hour < 12 ? 'صبح بخیر' : hour < 17 ? 'ظهر بخیر' : hour < 20 ? 'عصر بخیر' : 'شب بخیر';

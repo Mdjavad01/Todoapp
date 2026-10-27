@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Sheet, SheetHeader } from '@/components/Sheet';
 import { useAppStore } from '@/store/useAppStore';
 
-const EMOJIS = ['🏠', '🛒', '📚', '📈', '💼', '💳', '🏋️', '✈️', '🎨', '🌸', '🍳', '🔧'];
+/** آیکن‌های پیشنهادی لیست — مشترک با شیت ویرایش لیست (فاز ۲) */
+export const LIST_EMOJIS = ['🏠', '🛒', '📚', '📈', '💼', '💳', '🏋️', '✈️', '🎨', '🌸', '🍳', '🔧'];
 
 /** مودال ساخت لیست جدید (دکمه‌ی «لیست جدید» در خانه) */
 export function NewListSheet() {
@@ -33,7 +34,7 @@ export function NewListSheet() {
         autoFocus
       />
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="آیکن لیست">
-        {EMOJIS.map((e) => (
+        {LIST_EMOJIS.map((e) => (
           <button
             key={e}
             className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-colors ${

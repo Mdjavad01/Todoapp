@@ -13,6 +13,8 @@ import { QuickAddSheet } from '@/modals/QuickAddSheet';
 import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
 import { CalendarSheet } from '@/modals/CalendarSheet';
 import { NewListSheet } from '@/modals/NewListSheet';
+import { EditListSheet } from '@/modals/EditListSheet';
+import { ManageListsSheet } from '@/modals/ManageListsSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
 import { GuideSheet } from '@/modals/GuideSheet';
 import { TermsSheet } from '@/modals/TermsSheet';
@@ -92,6 +94,8 @@ export default function App() {
         <TaskDetailSheet />
         <CalendarSheet />
         <NewListSheet />
+        <EditListSheet />
+        <ManageListsSheet />
         <AccountSheet />
         <GuideSheet />
         <TermsSheet />

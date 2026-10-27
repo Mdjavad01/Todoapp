@@ -1,10 +1,14 @@
 /**
  * پوشش سبک IndexedDB — بدون هیچ وابستگی خارجی.
  * پایگاه‌داده‌ی محلی حالت مهمان؛ کاملاً آفلاین.
+ * مهاجرت نسخه‌دار (فاز ۲): هر گام نسخه در MIGRATIONS ثبت و در onupgradeneeded به‌ترتیب اجرا می‌شود.
  */
 
+import { normalizeListRow } from './listRow';
+import type { ListEntity } from '@/types';
+
 const DB_NAME = 'karam-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   lists: 'lists',
@@ -19,12 +23,36 @@ export type StoreName = (typeof STORES)[keyof typeof STORES];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/**
+ * مهاجرت‌های نسخه‌دار — گام n از نسخه‌ی n−1 به n.
+ * هر گام با همان تراکنش ارتقا اجرا می‌شود؛ نصب تازه (oldVersion=0) انبارها را می‌سازد و گام‌ها را روی داده‌ی خالی اجرا می‌کند.
+ */
+type Migration = (db: IDBDatabase, tx: IDBTransaction) => void;
+const MIGRATIONS: Record<number, Migration> = {
+  // v2 (فاز ۲ — قابلیت کامل لیست‌ها): ترمیم ردیف‌های آسیب‌دیده/قدیمی لیست
+  // (رنگ/ترتیب/ایموجی نامعتبر به مقدار پیش‌فرض قطعی) — پایه‌ی امکانات فاز ۲
+  2: (_db, tx) => {
+    const store = tx.objectStore(STORES.lists);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const fixed = normalizeListRow(cursor.value as Record<string, unknown>);
+      if (fixed === null) cursor.delete();
+      else cursor.update(fixed as unknown as ListEntity);
+      cursor.continue();
+    };
+  },
+};
+
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (ev) => {
       const db = req.result;
+      const upTx = req.transaction as IDBTransaction;
+      const oldVersion = (ev as IDBVersionChangeEvent).oldVersion;
       // lists
       if (!db.objectStoreNames.contains(STORES.lists)) {
         const s = db.createObjectStore(STORES.lists, { keyPath: 'id' });
@@ -60,6 +88,10 @@ export function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORES.meta)) {
         db.createObjectStore(STORES.meta, { keyPath: 'key' });
+      }
+      // اجرای مهاجرت‌های نسخه‌دار به‌ترتیب (نصب تازه: oldVersion=0 → فقط گام‌های تعریف‌شده روی داده‌ی خالی)
+      for (let v = oldVersion + 1; v <= DB_VERSION; v++) {
+        MIGRATIONS[v]?.(db, upTx);
       }
     };
     req.onsuccess = () => resolve(req.result);

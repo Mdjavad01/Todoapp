@@ -5,10 +5,10 @@ import { useAppStore } from '@/store/useAppStore';
 import { detectSmartDate } from '@/lib/smartDate';
 import { faShort } from '@/lib/format';
 import { parseIsoDate } from '@/lib/format';
-import { PRIORITY_BADGE } from '@/lib/selectors';
+import { PRIORITY_BADGE, defaultListId } from '@/lib/selectors';
 import type { TaskEntity } from '@/types';
 
-/** مودال ۴: افزودن سریع کار (بات‌شیت پایین) */
+/** مودال ۴: افزودن سریع کار (بات‌شیت پایین) — هدف پیش‌فرض: لیست پیش‌فرض (اولین لیست — فاز ۲) */
 export function QuickAddSheet() {
   const modal = useAppStore((s) => s.modal);
   const openModal = useAppStore((s) => s.openModal);
@@ -23,7 +23,8 @@ export function QuickAddSheet() {
   const [priority, setPriority] = useState<TaskEntity['priority']>('normal');
 
   const effectiveList = useMemo(() => {
-    const target = listId ?? activeListId ?? lists[0]?.id ?? null;
+    // فاز ۲: بدون انتخاب کاربر، اول لیستِ در حال نمایش و بعد «لیست پیش‌فرض» (اولین لیست ترتیب) هدف است
+    const target = listId ?? activeListId ?? defaultListId(lists) ?? lists[0]?.id ?? null;
     return lists.find((l) => l.id === target) ?? lists[0] ?? null;
   }, [listId, activeListId, lists]);
 

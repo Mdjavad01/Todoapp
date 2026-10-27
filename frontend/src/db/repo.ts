@@ -1,5 +1,6 @@
 import { idbGetAll, idbGet, idbPut, idbDelete, STORES } from './idb';
 import { uuid, nowIso } from '@/lib/uuid';
+import { compareLists } from '@/lib/selectors';
 import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity } from '@/types';
 
 /**
@@ -11,18 +12,21 @@ import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity 
 
 export async function listsAll(): Promise<ListEntity[]> {
   const rows = await idbGetAll<ListEntity>(STORES.lists);
-  return rows.filter((r) => !r.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder);
+  // ترتیب قطعی: sortOrder سپس createdAt سپس id (فاز ۲ — پایدار بین دستگاه‌ها پس از سینک)
+  return rows.filter((r) => !r.deletedAt).sort(compareLists);
 }
 
 export async function listsCreate(input: { name: string; emoji: string; color: ListEntity['color'] }): Promise<ListEntity> {
   const now = nowIso();
-  const existing = await idbGetAll<ListEntity>(STORES.lists);
+  // انتهای ترتیب = بزرگ‌ترین sortOrder زنده + ۱ (تومب‌استون‌ها شمرده نمی‌شوند — فاز ۲)
+  const live = (await idbGetAll<ListEntity>(STORES.lists)).filter((r) => !r.deletedAt);
+  const sortOrder = live.length === 0 ? 0 : Math.max(...live.map((l) => l.sortOrder)) + 1;
   const entity: ListEntity = {
     id: uuid(),
     name: input.name,
     emoji: input.emoji,
     color: input.color,
-    sortOrder: existing.length,
+    sortOrder,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -46,6 +50,55 @@ export async function listsSoftDelete(id: string): Promise<void> {
   const tasks = await idbGetAll<TaskEntity>(STORES.tasks);
   for (const t of tasks.filter((x) => x.listId === id && !x.deletedAt)) {
     await tasksSoftDelete(t.id);
+  }
+}
+
+/* ---------------- واگرد حذف لیست (فاز ۲) ---------------- */
+
+/** عکسِ لحظه‌ای حالت زنده‌ی لیست قبل از حذف — برای «واگرد» توست حذف */
+export interface ListUndoSnapshot {
+  list: ListEntity;
+  tasks: TaskEntity[];
+  subtasks: SubtaskEntity[];
+}
+
+export async function snapshotListForUndo(listId: string): Promise<ListUndoSnapshot | null> {
+  const list = await idbGet<ListEntity>(STORES.lists, listId);
+  if (!list || list.deletedAt) return null;
+  const tasks = (await idbGetAll<TaskEntity>(STORES.tasks)).filter((t) => t.listId === listId && !t.deletedAt);
+  const taskIds = new Set(tasks.map((t) => t.id));
+  const subtasks = (await idbGetAll<SubtaskEntity>(STORES.subtasks)).filter(
+    (s) => taskIds.has(s.taskId) && !s.deletedAt,
+  );
+  return { list, tasks, subtasks };
+}
+
+/** بازگردانی دقیق عکسِ قبل از حذف — فقط ردیف‌هایی که همین حذف تومب‌استون کرده (حذف‌های قدیمی‌تر دست نمی‌خورند) */
+export async function restoreListSnapshot(snap: ListUndoSnapshot): Promise<void> {
+  const now = nowIso();
+  await idbPut(STORES.lists, { ...snap.list, deletedAt: null, updatedAt: now });
+  for (const t of snap.tasks) await idbPut(STORES.tasks, { ...t, deletedAt: null, updatedAt: now });
+  for (const s of snap.subtasks) await idbPut(STORES.subtasks, { ...s, deletedAt: null, updatedAt: now });
+}
+
+/* ---------------- کپی لیست (فاز ۲) ---------------- */
+
+/** کپی یک کار به لیست دیگر با شناسه‌ی نو — همه‌ی فیلدها (حتی completedAt) عیناً حفظ می‌شود */
+export async function tasksCopyRow(taskId: string, newListId: string): Promise<TaskEntity | null> {
+  const row = await idbGet<TaskEntity>(STORES.tasks, taskId);
+  if (!row || row.deletedAt) return null;
+  const now = nowIso();
+  const copy: TaskEntity = { ...row, id: uuid(), listId: newListId, createdAt: now, updatedAt: now };
+  await idbPut(STORES.tasks, copy);
+  return copy;
+}
+
+/** کپی زیرکارهای یک کار برای نسخه‌ی کپی‌شده‌ی آن */
+export async function subtasksCopyRow(taskId: string, newTaskId: string): Promise<void> {
+  const rows = await idbGetAll<SubtaskEntity>(STORES.subtasks);
+  const now = nowIso();
+  for (const s of rows.filter((x) => x.taskId === taskId && !x.deletedAt)) {
+    await idbPut(STORES.subtasks, { ...s, id: uuid(), taskId: newTaskId, createdAt: now, updatedAt: now });
   }
 }
 
@@ -195,6 +248,11 @@ export async function remindersUpsert(taskId: string, fireAt: string | null): Pr
 export async function prefsGet<T>(key: string, fallback: T): Promise<T> {
   const row = await idbGet<PrefEntity>(STORES.prefs, key);
   return row ? (row.value as T) : fallback;
+}
+
+/** همه‌ی prefها — برای خواندن یک‌جای کلیدهای «list-sort:*» و «task-order:*» در init (فاز ۲) */
+export async function prefsAll(): Promise<PrefEntity[]> {
+  return idbGetAll<PrefEntity>(STORES.prefs);
 }
 
 export async function prefsSet(key: string, value: unknown): Promise<void> {

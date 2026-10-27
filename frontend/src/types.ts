@@ -26,6 +26,19 @@ export interface ListEntity extends SyncBase {
   sortOrder: number;
 }
 
+/** گروه لیست‌ها (فاز ۲) — ترجیح نمایش سطح دستگاه؛ با خروج از حساب پاک می‌شود (wipe) */
+export interface ListGroup {
+  id: string;
+  name: string;
+  listIds: string[];
+}
+
+/** ترتیب نمایش کارهای یک لیست (فاز ۲ — به‌یادماندنی هر لیست با pref «list-sort:» */
+export type ListSortKey = 'importance' | 'due' | 'alpha' | 'created' | 'manual';
+
+/** کارت‌های هوشمند خانه (فاز ۲ — هر کدام قابل پنهان‌سازی با pref «hubs-hidden») */
+export type HubKey = 'today' | 'urgent' | 'planned' | 'all';
+
 export interface TaskEntity extends SyncBase {
   listId: string;
   title: string;
