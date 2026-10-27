@@ -14,6 +14,7 @@ import {
   type RepeatUnit,
 } from '@/lib/repeat';
 import { faShort, parseIsoDate, faTime } from '@/lib/format';
+import { ensureRemindersPermissionNow } from '@/lib/reminderScheduler';
 import type { TaskEntity } from '@/types';
 
 const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
@@ -147,6 +148,8 @@ export function TaskDetailSheet() {
     if (!task) return;
     setReminder(value);
     void updateTask(task.id, { reminderMinutes: value });
+    // فاز ۴ — درخواست مجوز اعلان همان‌جا که کاربر یادآور می‌گذارد (فقط در اپ اندروید؛ یک‌بار در نشست)
+    if (value !== null) void ensureRemindersPermissionNow();
   };
 
   const applyRepeat = (value: TaskEntity['repeat']) => {
@@ -417,20 +420,25 @@ export function TaskDetailSheet() {
           </div>
 
           {/* یادآور */}
-          <div className="bg-surface-container dark:bg-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-1 text-body-sm">
-            <span className="text-outline text-xs shrink-0">یادآور:</span>
-            <select
-              className="bg-transparent text-xs font-bold text-primary outline-none border-0 focus:ring-0 cursor-pointer"
-              value={reminder === null ? '' : String(reminder)}
-              onChange={(e) => applyReminder(e.target.value === '' ? null : Number(e.target.value))}
-              aria-label="یادآور"
-            >
-              {REMINDER_OPTIONS.map((o) => (
-                <option key={String(o.value)} value={o.value === null ? '' : String(o.value)}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-1">
+            <div className="bg-surface-container dark:bg-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-1 text-body-sm">
+              <span className="text-outline text-xs shrink-0">یادآور:</span>
+              <select
+                className="bg-transparent text-xs font-bold text-primary outline-none border-0 focus:ring-0 cursor-pointer"
+                value={reminder === null ? '' : String(reminder)}
+                onChange={(e) => applyReminder(e.target.value === '' ? null : Number(e.target.value))}
+                aria-label="یادآور"
+              >
+                {REMINDER_OPTIONS.map((o) => (
+                  <option key={String(o.value)} value={o.value === null ? '' : String(o.value)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {reminder !== null && !task?.dueDate ? (
+              <p className="text-[11px] text-outline px-1">یادآور پس از تعیین سررسید فعال می‌شود</p>
+            ) : null}
           </div>
 
           {/* تکرار — فاز ۳: هفت نوع + ویرایشگر سفارشی */}

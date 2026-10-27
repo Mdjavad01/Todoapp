@@ -12,6 +12,8 @@ import { getSession, type SyncSession } from '@/sync/session';
 import { refreshSession } from '@/sync/api';
 import * as auth from '@/sync/auth';
 import * as payments from '@/sync/payments';
+// فاز ۴ — یادآور بومی: فقط در اپ اندروید فعال می‌شود (وب بی‌عمل)
+import { syncReminders, clearReminders } from '@/lib/reminderScheduler';
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type FontScale = 'small' | 'medium' | 'large';
@@ -311,6 +313,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       void repo.prefsSet('userName', '');
     }
     set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, hubHidden, listSorts, taskOrders, myDayIds });
+    // فاز ۴ — ترجیح واقعی اعلان‌ها خوانده شد؛ بازبینی اجباری (اگر خاموش باشد زنگ‌های اولیه پاک می‌شوند)
+    void syncReminders(get().tasks, alerts, true);
     applyDark(dark);
     applyAccent(accent);
     applyFontScale(fontScale);
@@ -381,6 +385,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   async refresh() {
     const [lists, tasks, subtasks] = await Promise.all([repo.listsAll(), repo.tasksAll(), repo.subtasksAll()]);
     set({ lists, tasks, subtasks });
+    // فاز ۴ — همگام‌سازی زنگ‌های یادآور دستگاه با داده‌ی فعلی (هر مسیر تغییر داده از همین‌جا رد می‌شود:
+    // افزودن/ویرایش/انجام/حذف کار، نوبت بعدی تکرار و اعمال رکوردهای سرور). اثر انگشت جلوی تماس اضافی را می‌گیرد.
+    void syncReminders(tasks, get().alerts);
   },
 
   setView(v) {
@@ -446,6 +453,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async signOut() {
     await auth.logout();
+    // فاز ۴ — زنگ‌های یادآور دستگاه هم پاک می‌شوند (داده‌ی کاربر دیگر نباید زنگ بزند)
+    await clearReminders();
     // حریم خصوصی: حافظه‌ی درون‌برنامه‌ای هم خالی می‌شود (داده‌ی IndexedDB در logout پاک شده)
     await ensureDefaultData();
     await get().refresh();
@@ -521,6 +530,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   async setPref(key, value) {
     set({ [key]: value } as Partial<AppState>);
     await repo.prefsSet(key === 'biometricLock' ? 'biometricLock' : 'alerts', value);
+    // فاز ۴ — کلید اعلان‌ها فوراً روی زنگ‌های دستگاه اثر می‌گذارد
+    if (key === 'alerts') {
+      if (value) void syncReminders(get().tasks, true, true);
+      else void clearReminders();
+    }
   },
 
   openModal(modal, taskId = null) {

@@ -3,6 +3,7 @@ import { Icon } from '@/components/Icon';
 import { useAppStore, ACCENTS, type AccentColor, type FontScale } from '@/store/useAppStore';
 import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
+import { isNativeApp } from '@/lib/native';
 import { queueSync } from '@/sync/engine';
 
 const APP_VERSION = '۳.۹.۰';
@@ -305,6 +306,11 @@ export function SettingsView() {
             aria-label="اعلان‌ها"
           />
         </div>
+        {isNativeApp() ? (
+          <p className="px-3.5 pb-3 -mt-1 text-[11px] leading-5 text-on-surface-variant">
+            یادآور سررسید با اعلان بومی اندروید زده می‌شود. اگر یادآور نیامد: مجوز اعلان برنامه را بدهید، «آلارم‌ها و یادآورها» (زمان‌بندی دقیق) را فعال کنید و در گوشی‌های شیائومی/سامسونگ «شروع خودکار» و «بدون محدودیت باتری» را برای کارام روشن کنید.
+          </p>
+        ) : null}
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
           onClick={openAccountSheet}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- فاز ۴ — آیکن سینی اعلان یادآور (سفید مونوکروم، مطابق دستورالعمل اندروید برای smallIcon)
+     همان گلیف چک‌لیست هویت بصری کارام (Material Symbols / checklist) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M222,-214 80,-356l42,-42 100,99 179,-179 42,43 -221,221Zm0,-320L80,-676l42,-42 100,99 179,-179 42,43 -221,221Zm298,244v-60h360v60H520Zm0,-320v-60h360v60H520Z" />
+</vector>

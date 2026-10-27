@@ -17,6 +17,13 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     webContentsDebuggingEnabled: false,
   },
+  plugins: {
+    // فاز ۴ — یادآور بومی: آیکن سفید مونوکروم سینی اعلان + رنگ هویت کارام
+    LocalNotifications: {
+      smallIcon: 'ic_stat_karam',
+      iconColor: '#00685F',
+    },
+  },
 };
 
 export default config;

@@ -27,6 +27,7 @@ import { CoachAdd } from '@/components/CoachAdd';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
 import { onAppResume } from '@/lib/native';
+import { syncReminders } from '@/lib/reminderScheduler';
 
 /** پوسته‌ی اپ — قاب موبایل مطابق طرح (فول‌اسکرین در موبایل، قاب ۴۱۰px در دسکتاپ) */
 export default function App() {
@@ -54,6 +55,9 @@ export default function App() {
       if (!st.ready) return;
       void st.syncNow();
       void st.reloadPremium();
+      // فاز ۴ — یادآور: بازبینی اجباری زنگ‌ها (زمان گذشته ممکن است زنگ‌ها را عوض کند؛
+      // کاربر شاید مجوز را از تنظیمات سیستم داده باشد)
+      void syncReminders(st.tasks, st.alerts, true);
     });
     return off;
   }, []);
