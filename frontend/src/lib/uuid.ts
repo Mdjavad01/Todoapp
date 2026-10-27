@@ -1,3 +1,5 @@
+import { getClockOffsetMs } from './clock';
+
 /** تولید شناسه‌ی UUID سمت کلاینت (برای سینک ابری آینده) */
 export function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -11,6 +13,11 @@ export function uuid(): string {
   });
 }
 
+/**
+ * زمان فعلی هم‌ترازِ سرور (ترمیم جریان — فاز ۱):
+ * اگر از پاسخ سینک اختلاف ساعت معنادار دیده شده باشد، جبران می‌شود
+ * تا updatedAtها در LWW قابل‌اعتماد باشند (lib/clock.ts).
+ */
 export function nowIso(): string {
-  return new Date().toISOString();
+  return new Date(Date.now() + getClockOffsetMs()).toISOString();
 }

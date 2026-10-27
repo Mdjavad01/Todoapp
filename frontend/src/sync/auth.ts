@@ -5,6 +5,8 @@
 
 import { apiFetch, authedFetch } from './api';
 import { clearSession, getDeviceUuid, getSession, setSession, type AuthChannel, type SyncSession } from './session';
+import { wipeUserData } from '@/db/wipe';
+import { pruneEmptyDefaultList } from '@/db/dedupe';
 
 export interface AuthChannels {
   email: boolean;
@@ -98,10 +100,16 @@ export async function verifyOtp(params: {
     deviceName: 'مرورگر وب',
   };
   await setSession(session);
+  // حریم خصوصی/شستشویی: اگر مهمان فقط لیست پیش‌فرضِ خالی داشته، با ورود به حساب پوش نشود
+  try {
+    await pruneEmptyDefaultList();
+  } catch {
+    /* محیط بدون IndexedDB — نادیده */
+  }
   return { isNew: res.isNew, user: res.user };
 }
 
-/** خروج: ابطال refresh token سمت سرور + پاک‌سازی محلی */
+/** خروج: ابطال refresh token سمت سرور + پاک‌سازی نشست + پاک‌سازی کامل داده‌ی محلی کاربر */
 export async function logout(): Promise<void> {
   const s = await getSession();
   if (s) {
@@ -112,6 +120,9 @@ export async function logout(): Promise<void> {
     }
   }
   await clearSession();
+  // حریم خصوصی (ترمیم جریان — فاز ۱): داده‌ی این حساب هرگز نباید به حساب بعدی روی
+  // همین دستگاه برسد — همه‌ی لیست‌ها/کارها/زیرکارها/یادآورها/meta پاک می‌شوند.
+  await wipeUserData();
 }
 
 export async function updateProfile(displayName: string): Promise<{ displayName: string }> {
@@ -147,6 +158,8 @@ export interface BootstrapPayload {
   update?: { latest: string | null; url: string | null; notes: string | null } | null;
   /** v17 — اطلاعات پشتیبانی در شیت قوانین و صفحه ورود */
   support?: { email: string | null; telegram: string | null } | null;
+  /** ترمیم جریان — سقف آیتم سینک برای push تکه‌تکه (سرورهای قدیمی بدون این فیلد) */
+  sync?: { maxItems?: number } | null;
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {

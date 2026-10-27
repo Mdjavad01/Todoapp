@@ -101,7 +101,13 @@ export async function idbDelete(store: StoreName, key: string): Promise<void> {
 
 export async function idbCount(store: StoreName): Promise<number> {
   const s = await tx(store, 'readonly');
-  return wrap(s.count());
+  return wrap(s.count() as IDBRequest<number>);
+}
+
+/** پاک‌کردن کامل یک انبار — برای پاک‌سازی داده‌ی کاربر هنگام خروج از حساب */
+export async function idbClear(store: StoreName): Promise<void> {
+  const s = await tx(store, 'readwrite');
+  await wrap(s.clear() as IDBRequest<undefined>);
 }
 
 /** تراکنش چند-انبارشی برای seeding اتمی */

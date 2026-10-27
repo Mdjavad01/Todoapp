@@ -196,7 +196,8 @@ final class Entities
                 return $cols;
             }
             $listUuid = Validator::uuid($in, 'listId');
-            $stmt = $pdo->prepare('SELECT id FROM lists WHERE uuid = :uuid AND user_id = :uid LIMIT 1');
+            // والدِ حذف‌شده (تومب‌استون) والد نیست — جلوگیری از پنهان‌شدن کار زیر لیست مرده
+            $stmt = $pdo->prepare('SELECT id FROM lists WHERE uuid = :uuid AND user_id = :uid AND deleted_at IS NULL LIMIT 1');
             $stmt->execute([':uuid' => $listUuid, ':uid' => $userId]);
             $row = $stmt->fetch();
             if ($row === false) {
@@ -212,7 +213,7 @@ final class Entities
                 return $cols;
             }
             $taskUuid = Validator::uuid($in, 'taskId');
-            $stmt = $pdo->prepare('SELECT id FROM tasks WHERE uuid = :uuid AND user_id = :uid LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id FROM tasks WHERE uuid = :uuid AND user_id = :uid AND deleted_at IS NULL LIMIT 1');
             $stmt->execute([':uuid' => $taskUuid, ':uid' => $userId]);
             $row = $stmt->fetch();
             if ($row === false) {
@@ -296,9 +297,10 @@ final class Entities
     /**
      * رکوردهای اعمال‌شده روی سرور از یک نقطه (شامل حذف‌شده‌های نرم) — برای pull سینک.
      * کرسر بر اساس applied_at است (ترتیب اعمال سرور) تا هیچ تغییری حتی با تاریخِ عقب‌ترِ کلاینت از دست نرود.
+     * $limit برای صفحه‌بندی (SyncService::PULL_LIMIT + 1 برای تشخیص incomplete).
      * @return array<int,array>
      */
-    public static function pullSince(string $entity, int $userId, ?string $cursorSql): array
+    public static function pullSince(string $entity, int $userId, ?string $cursorSql, ?int $limit = null): array
     {
         $table = self::$tables[$entity];
         $join = '';
@@ -318,6 +320,9 @@ final class Entities
             $params[':cursor'] = $cursorSql;
         }
         $sql .= ' ORDER BY t.applied_at ASC, t.id ASC';
+        if ($limit !== null && $limit > 0) {
+            $sql .= ' LIMIT ' . (int) $limit;
+        }
 
         $stmt = Database::pdo()->prepare($sql);
         foreach ($params as $k => $v) {
@@ -342,6 +347,9 @@ final class Entities
             'createdAt' => self::sqlToIso($row['created_at']),
             'updatedAt' => self::sqlToIso($row['updated_at']),
             'deletedAt' => self::sqlToIso($row['deleted_at'] ?? null),
+            // شکستن تساوی LWW — نسخه‌ی سرور روی همه‌ی کلاینت‌ها یکسان مصرف می‌شود
+            'rev' => (int) ($row['rev'] ?? 0),
+            'revDevice' => (string) ($row['rev_device'] ?? ''),
         ];
 
         switch ($entity) {

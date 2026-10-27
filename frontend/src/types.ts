@@ -13,6 +13,10 @@ export interface SyncBase {
   createdAt: string; // ISO UTC
   updatedAt: string; // ISO UTC — برای مقایسه در سینک
   deletedAt: string | null; // حذف نرم
+  /** شکستن تساوی LWW (ترمیم جریان) — نسخه‌ی سرور؛ رکورد قدیمی/محلی ندارند = ۰ */
+  rev?: number;
+  /** شناسه‌ی دستگاه آخرین نویسنده برای شکستن تساوی کامل */
+  revDevice?: string;
 }
 
 export interface ListEntity extends SyncBase {

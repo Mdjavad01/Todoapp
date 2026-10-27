@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { ListEntity, TaskEntity, SubtaskEntity, ViewName, ListColor, TemplateDef, JobKitDef } from '@/types';
 import * as repo from '@/db/repo';
-import { ensureSeeded } from '@/db/seed';
+import { ensureDefaultData } from '@/db/seed';
 import { toIsoDate } from '@/lib/format';
-import { queueSync, runSync, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
+import { queueSync, runSync, setSyncConfig, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
 import { getSession, type SyncSession } from '@/sync/session';
 import { refreshSession } from '@/sync/api';
 import * as auth from '@/sync/auth';
@@ -104,7 +104,7 @@ interface AppState {
   saveDisplayName(name: string): Promise<void>;
   /** بستن حباب راهنمای اولین کار — دیگر نمایش داده نمی‌شود */
   dismissCoachAdd(): void;
-  reloadSession(): Promise<void>;
+  reloadSession(autoSync?: boolean): Promise<void>;
   signOut(): Promise<void>;
   syncNow(): Promise<void>;
   reloadPremium(): Promise<void>;
@@ -201,7 +201,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   paymentResult: null,
 
   async init() {
-    await ensureSeeded();
+    await ensureDefaultData();
     await get().refresh();
     const [dark, accent, biometric, alerts, savedName, fontScale, coachSeen, welcomeDone] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
@@ -224,17 +224,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     applyAccent(accent);
     applyFontScale(fontScale);
 
-    // اتصال موتور سینک به store (فاز ۲)
+    // اتصال موتور سینک به store (فاز ۲) — پیام‌های موقت مثل جبران ساعت هم از همین مسیر
     setSyncListeners({
       onState: (syncState) => useAppStore.setState({ syncState }),
       onApplied: () => {
         void useAppStore.getState().refresh();
       },
+      onNotice: (text) => {
+        useAppStore.getState().showToast(text);
+      },
     });
     startSyncLoop();
-    await get().reloadSession();
-    // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳)
-    if (get().session) void refreshSession().then(() => get().reloadSession());
+    await get().reloadSession(false);
+    // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳) — و فقط «یک» سینک در init
+    if (get().session) {
+      await refreshSession();
+      await get().reloadSession(false);
+      void runSync();
+    }
 
     // آنبوردینگ کامل (v10) — نشست فعال بدون نام و بدون تکمیل آنبوردینگ قبلی
     {
@@ -249,6 +256,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // دفاع v10: اگر پاسخ JSON معتبرِ بوت‌استرپ نبود (مثلاً صفحه‌ی HTML با کد 200)، پیش‌فرض‌ها می‌مانند
       if (bs && bs.voice && typeof bs.voice.enabled === 'boolean') {
         useAppStore.setState({ appSettings: bs });
+      }
+      // ترمیم جریان — اندازه‌ی چانک push از سقف سرور (کلاینت هرگز ۴۲۲ سقف نمی‌گیرد)
+      if (bs?.sync?.maxItems) {
+        setSyncConfig({ chunkSize: bs.sync.maxItems });
       }
     } catch {
       /* آفلاین — پیش‌فرض‌ها */
@@ -335,16 +346,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     void repo.prefsSet('coach-add-seen', true);
   },
 
-  async reloadSession() {
+  async reloadSession(autoSync = true) {
     const session = await getSession();
     set({ session });
-    if (session) void runSync();
+    // autoSync=false فقط برای init — تا هر راه‌اندازی دقیقاً یک سینک داشته باشد
+    if (session && autoSync) void runSync();
   },
 
   async signOut() {
     await auth.logout();
+    // حریم خصوصی: حافظه‌ی درون‌برنامه‌ای هم خالی می‌شود (داده‌ی IndexedDB در logout پاک شده)
+    await ensureDefaultData();
+    await get().refresh();
     set({
       session: null,
+      detailTaskId: null,
+      modal: null,
       syncState: { status: 'idle', lastSyncAt: null, error: null },
       premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
       paymentResult: null,

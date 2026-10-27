@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS lists (
   created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   deleted_at TEXT(19),
-  applied_at TEXT(19)
+  applied_at TEXT(19),
+  rev          INTEGER NOT NULL DEFAULT 0,
+  rev_device   TEXT(64) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_lists_user ON lists (user_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_lists_applied ON lists (user_id, applied_at);
@@ -94,7 +96,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at       TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   updated_at       TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   deleted_at       TEXT(19),
-  applied_at       TEXT(19)
+  applied_at       TEXT(19),
+  rev          INTEGER NOT NULL DEFAULT 0,
+  rev_device   TEXT(64) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks (user_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_list ON tasks (list_id);
@@ -112,7 +116,9 @@ CREATE TABLE IF NOT EXISTS subtasks (
   created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   deleted_at TEXT(19),
-  applied_at TEXT(19)
+  applied_at TEXT(19),
+  rev          INTEGER NOT NULL DEFAULT 0,
+  rev_device   TEXT(64) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks (task_id);
 CREATE INDEX IF NOT EXISTS idx_subtasks_user ON subtasks (user_id, deleted_at);

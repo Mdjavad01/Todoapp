@@ -260,7 +260,7 @@ export function AccountSheet() {
     setSessions([]);
     // کانال‌های ورود ممکن است از آخرین خواندن تغییر کرده باشند (مثلاً فعال‌شدن تلگرام از پنل) — تازه بگیر
     void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
-    showToast('از حساب خارج شدید؛ داده‌ها روی همین دستگاه باقی می‌مانند');
+    showToast('از حساب خارج شدید؛ داده‌های این حساب از دستگاه پاک شد');
   };
 
   const saveName = async () => {

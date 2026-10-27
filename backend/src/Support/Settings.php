@@ -87,6 +87,10 @@ final class Settings
                 'pitch' => self::int('voice_pitch', 100, 50, 150) / 100,
                 'lang' => self::get('voice_lang', 'fa-IR'),
             ],
+            // ترمیم جریان — سقف آیتم سینک برای push تکه‌تکه‌ی کلاینت (chunk زیر این سقف فرستاده می‌شود)
+            'sync' => [
+                'maxItems' => self::int('api_max_sync_items', 2000, 100, 5000),
+            ],
         ];
     }
 
