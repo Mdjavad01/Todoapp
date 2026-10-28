@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, hasPerm, type AdminGiftCode, type AdminSession } from '../api';
-import { faMoney, faDateTime, faNum } from '../format';
+import { faDateTime, faNum, formatToman } from '../format';
 import { Spinner, Badge, EmptyState, Modal } from '../ui';
 import { IconPlus, IconRefresh, IconGift, IconCheck, IconClose } from '../icons';
 
@@ -49,13 +49,19 @@ export default function GiftCodes({
   }, []);
 
   const doCreate = async () => {
-    const valueNum = Number(value.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
+    const valueNum = Number(
+      value.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^\d]/g, ''),
+    );
     if (!valueNum || valueNum < 1) {
-      onToast('error', kind === 'percent' ? 'درصد تخفیف را وارد کنید (۱ تا ۱۰۰)' : 'مبلغ تخفیف (ریال) را وارد کنید');
+      onToast('error', kind === 'percent' ? 'درصد تخفیف را وارد کنید (۱ تا ۱۰۰)' : 'مبلغ تخفیف (تومان) را وارد کنید');
       return;
     }
     if (kind === 'percent' && valueNum > 100) {
       onToast('error', 'درصد تخفیف حداکثر ۱۰۰ است');
+      return;
+    }
+    if (kind === 'amount' && valueNum > 99_999_999) {
+      onToast('error', 'مبلغ تخفیف حداکثر ۹۹٬۹۹۹٬۹۹۹ تومان است');
       return;
     }
     setCreating(true);
@@ -97,7 +103,7 @@ export default function GiftCodes({
   };
 
   const valueLabel = (r: AdminGiftCode): string =>
-    r.kind === 'percent' ? `${faNum(r.value)}٪ تخفیف` : `${faMoney(r.value)} ریال تخفیف`;
+    r.kind === 'percent' ? `${faNum(r.value)}٪ تخفیف` : `${formatToman(r.value)} تخفیف`;
 
   return (
     <div className="space-y-4">
@@ -199,16 +205,16 @@ export default function GiftCodes({
                 onChange={(e) => setKind(e.target.value === 'amount' ? 'amount' : 'percent')}
               >
                 <option value="percent">درصد</option>
-                <option value="amount">مبلغ ثابت (ریال)</option>
+                <option value="amount">مبلغ ثابت (تومان)</option>
               </select>
             </label>
             <label className="block text-xs font-medium text-slate-600">
-              {kind === 'percent' ? 'مقدار (۱ تا ۱۰۰)' : 'مبلغ (ریال)'}
+              {kind === 'percent' ? 'مقدار (۱ تا ۱۰۰)' : 'مبلغ (تومان)'}
               <input
                 dir="ltr"
                 inputMode="numeric"
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm focus:border-brand-500 focus:outline-none"
-                placeholder={kind === 'percent' ? '20' : '490000'}
+                placeholder={kind === 'percent' ? '20' : '100000'}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 maxLength={12}
@@ -237,7 +243,7 @@ export default function GiftCodes({
             </label>
           </div>
           <p className="rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-500">
-            نمونه: کد «NOWRUZ1404» با ۲۰٪ تخفیف و سقف ۵۰ بار — پلن سالانه ۱٬۹۰۰٬۰۰۰ ریال → ۱٬۵۲۰٬۰۰۰ ریال
+            نمونه: کد «NOWRUZ1404» با ۲۰٪ تخفیف و سقف ۵۰ بار — پلن سالانه ۱۹۰٬۰۰۰ تومان → ۱۵۲٬۰۰۰ تومان
             قابل پرداخت.
           </p>
           <div className="flex justify-end gap-2">

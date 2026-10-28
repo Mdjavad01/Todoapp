@@ -285,23 +285,23 @@ $found = false;
 foreach ($j['items'] ?? [] as $p) {
     if ($p['code'] === 'monthly') {
         $monthlyId = $p['id'];
-        $found = $p['priceRials'] === 490000;
+        $found = $p['priceTomans'] === 49000;
     }
 }
 check('سه پلن با قیمت seed', $st === 200 && count($j['items'] ?? []) === 3 && $found);
 
-[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceRials' => 500000, 'title' => 'اشتراک ماهانه ویژه'], $tok, $csrf);
+[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceTomans' => 50000, 'title' => 'اشتراک ماهانه ویژه'], $tok, $csrf);
 check('ویرایش پلن → 200', $st === 200);
 [$st, $j] = http('GET', '/api/admin/plans', null, $tok);
 $ok = false;
 foreach ($j['items'] ?? [] as $p) {
     if ($p['code'] === 'monthly') {
-        $ok = $p['priceRials'] === 500000 && $p['title'] === 'اشتراک ماهانه ویژه';
+        $ok = $p['priceTomans'] === 50000 && $p['title'] === 'اشتراک ماهانه ویژه';
     }
 }
 check('قیمت/عنوان جدید اعمال شد', $ok);
 
-[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceRials' => -5], $tok, $csrf);
+[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceTomans' => -5], $tok, $csrf);
 check('قیمت منفی → 422', $st === 422);
 
 /* ================= ۹) اطلاعیه‌ها ================= */
@@ -381,7 +381,7 @@ check('users.view → مجاز', $st === 200);
 [$st] = http('PATCH', '/api/admin/settings', ['app_name' => 'هک'], $htok, $hcsrf);
 check('settings.manage → ممنوع (403)', $st === 403);
 
-[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceRials' => 1], $htok, $hcsrf);
+[$st] = http('PATCH', "/api/admin/plans/{$monthlyId}", ['priceTomans' => 1], $htok, $hcsrf);
 check('plans.manage → ممنوع (403)', $st === 403);
 
 [$st] = http('POST', "/api/admin/users/{$u2}/premium", ['lifetime' => true], $htok, $hcsrf);

@@ -164,10 +164,10 @@ final class AdminController
         $monthStart = gmdate('Y-m-01 00:00:00');
         $sixMonthsStart = gmdate('Y-m-01 00:00:00', strtotime('-5 months', strtotime($monthStart)));
         $totalUsers = $one('SELECT COUNT(*) FROM users');
-        $monthOrderRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]);
-        $monthDepositRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :ms", [':ms' => $monthStart]);
-        $lifeOrderRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved')");
-        $lifeDepositRials = $sum("SELECT COALESCE(SUM(amount_rials),0) FROM deposit_requests WHERE status = 'approved'");
+        $monthOrderTomans = $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]);
+        $monthDepositTomans = $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :ms", [':ms' => $monthStart]);
+        $lifeOrderTomans = $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM orders WHERE status IN ('paid','approved')");
+        $lifeDepositTomans = $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM deposit_requests WHERE status = 'approved'");
         // نرخ تبدیل ثبت‌نام ← پرداخت واقعی: هر کاربری که حداقل یک اشتراک غیرآزمایشی دارد
         $paidUsers = $one("SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE source <> 'trial'");
 
@@ -177,14 +177,14 @@ final class AdminController
         $orderMonth = sprintf($monthExpr, 'created_at');
         $reviewMonth = sprintf($monthExpr, 'reviewed_at');
         $revMap = [];
-        $st = $pdo->prepare("SELECT {$orderMonth} AS m, SUM(amount_rials) AS s
+        $st = $pdo->prepare("SELECT {$orderMonth} AS m, SUM(amount_tomans) AS s
                              FROM orders WHERE status IN ('paid','approved') AND created_at >= :f
                              GROUP BY {$orderMonth}");
         $st->execute([':f' => $sixMonthsStart]);
         foreach ($st->fetchAll() as $r) {
             $revMap[(string) $r['m']] = (int) $r['s'];
         }
-        $st = $pdo->prepare("SELECT {$reviewMonth} AS m, SUM(amount_rials) AS s
+        $st = $pdo->prepare("SELECT {$reviewMonth} AS m, SUM(amount_tomans) AS s
                              FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :f
                              GROUP BY {$reviewMonth}");
         $st->execute([':f' => $sixMonthsStart]);
@@ -194,7 +194,7 @@ final class AdminController
         $salesSeries = [];
         for ($i = 5; $i >= 0; $i--) {
             $m = gmdate('Y-m', strtotime("-{$i} months", strtotime(gmdate('Y-m-01'))));
-            $salesSeries[] = ['month' => $m, 'revenueRials' => $revMap[$m] ?? 0];
+            $salesSeries[] = ['month' => $m, 'revenueTomans' => $revMap[$m] ?? 0];
         }
 
         // سری ثبت‌نام ۷ روز اخیر (روزهای بی‌داده = صفر)
@@ -236,18 +236,18 @@ final class AdminController
                 'sessions' => $one('SELECT COUNT(*) FROM refresh_tokens WHERE revoked_at IS NULL AND expires_at > :n', [':n' => $now]),
                 'orders' => [
                     'paidCount' => $one("SELECT COUNT(*) FROM orders WHERE status IN ('paid','approved')"),
-                    'paidAmountRials' => $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved')"),
+                    'paidAmountTomans' => $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM orders WHERE status IN ('paid','approved')"),
                     'pendingReview' => $one("SELECT COUNT(*) FROM orders WHERE status = 'pending_review'"),
                     'monthPaidCount' => $one("SELECT COUNT(*) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]),
-                    'monthPaidRials' => $sum("SELECT COALESCE(SUM(amount_rials),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]),
+                    'monthPaidTomans' => $sum("SELECT COALESCE(SUM(amount_tomans),0) FROM orders WHERE status IN ('paid','approved') AND created_at >= :ms", [':ms' => $monthStart]),
                 ],
-                // v19 (گام ۱۹) — فروش واقعی: درگاه + کارت‌به‌کارت + نرخ تبدیل
+                // v19 (گام ۱۹) — فروش واقعی: درگاه + کارت‌به‌کارت + نرخ تبدیل (مبالغ: تومان)
                 'sales' => [
-                    'monthOrderRials' => $monthOrderRials,
-                    'monthDepositRials' => $monthDepositRials,
-                    'monthTotalRials' => $monthOrderRials + $monthDepositRials,
+                    'monthOrderTomans' => $monthOrderTomans,
+                    'monthDepositTomans' => $monthDepositTomans,
+                    'monthTotalTomans' => $monthOrderTomans + $monthDepositTomans,
                     'monthDeposits' => $one("SELECT COUNT(*) FROM deposit_requests WHERE status = 'approved' AND reviewed_at >= :ms", [':ms' => $monthStart]),
-                    'lifetimeTotalRials' => $lifeOrderRials + $lifeDepositRials,
+                    'lifetimeTotalTomans' => $lifeOrderTomans + $lifeDepositTomans,
                     'paidUsers' => $paidUsers,
                     'activePremium' => $one('SELECT COUNT(*) FROM users WHERE premium_until IS NOT NULL AND premium_until > :n', [':n' => $now]),
                     'conversionPercent' => $totalUsers > 0 ? round($paidUsers / $totalUsers * 100, 1) : 0.0,
@@ -632,7 +632,7 @@ final class AdminController
     {
         $ctx = AdminGuard::requireAdmin();
         AdminGuard::requirePermission($ctx, 'plans.manage');
-        $rows = Database::pdo()->query('SELECT id, uuid, code, title, months, price_rials, description, is_active, sort_order, updated_at FROM plans ORDER BY sort_order ASC, id ASC')->fetchAll();
+        $rows = Database::pdo()->query('SELECT id, uuid, code, title, months, price_tomans, description, is_active, sort_order, updated_at FROM plans ORDER BY sort_order ASC, id ASC')->fetchAll();
         $items = [];
         foreach ($rows as $r) {
             $items[] = [
@@ -641,7 +641,8 @@ final class AdminController
                 'code' => (string) $r['code'],
                 'title' => (string) $r['title'],
                 'months' => (int) $r['months'],
-                'priceRials' => (int) $r['price_rials'],
+                // واحد اصلی: تومان صحیح (فاز تومان)
+                'priceTomans' => (int) $r['price_tomans'],
                 'description' => $r['description'],
                 'isActive' => (bool) $r['is_active'],
                 'sortOrder' => (int) $r['sort_order'],
@@ -679,10 +680,11 @@ final class AdminController
             $args[':t'] = Validator::str($body, 'title', 2, 120);
             $changed['title'] = $args[':t'];
         }
-        if (array_key_exists('priceRials', $body)) {
-            $sets[] = 'price_rials = :p';
-            $args[':p'] = Validator::int($body, 'priceRials', 0, 99999999999);
-            $changed['priceRials'] = $args[':p'];
+        if (array_key_exists('priceTomans', $body)) {
+            $sets[] = 'price_tomans = :p';
+            // تومان صحیح — سقف ۹۹٬۹۹۹٬۹۹۹ تومان (پنل ورودی را «هزار تومان» می‌دهد)
+            $args[':p'] = Validator::int($body, 'priceTomans', 0, 99999999);
+            $changed['priceTomans'] = $args[':p'];
         }
         if (array_key_exists('description', $body)) {
             $sets[] = 'description = :d';
@@ -1378,7 +1380,7 @@ final class AdminController
 
         $offset = ($page - 1) * $perPage;
         $stmt = $pdo->prepare(
-            "SELECT d.id, d.uuid, d.plan_code, d.amount_rials, d.discount_rials, cp.code AS coupon_code, d.reference, d.note, d.status,
+            "SELECT d.id, d.uuid, d.plan_code, d.amount_tomans, d.discount_tomans, cp.code AS coupon_code, d.reference, d.note, d.status,
                     d.review_note, d.reviewed_at, d.created_at,
                     u.uuid AS user_uuid, u.display_name,
                     p.title AS plan_title
@@ -1402,8 +1404,9 @@ final class AdminController
                 ],
                 'planCode' => (string) $r['plan_code'],
                 'planTitle' => $r['plan_title'] !== null ? (string) $r['plan_title'] : null,
-                'amountRials' => (int) $r['amount_rials'],
-                'discountRials' => (int) ($r['discount_rials'] ?? 0),
+                // واحد اصلی: تومان (فاز تومان)
+                'amountTomans' => (int) $r['amount_tomans'],
+                'discountTomans' => (int) ($r['discount_tomans'] ?? 0),
                 'couponCode' => $r['coupon_code'] !== null ? (string) $r['coupon_code'] : null,
                 'reference' => (string) $r['reference'],
                 'note' => $r['note'] !== null ? (string) $r['note'] : null,
@@ -1436,7 +1439,7 @@ final class AdminController
         $pdo->beginTransaction();
         try {
             $lock = Database::driver() === 'mysql' ? ' FOR UPDATE' : '';
-            $stmt = $pdo->prepare('SELECT id, uuid, user_id, plan_id, plan_code, status, coupon_id, discount_rials FROM deposit_requests WHERE id = :id' . $lock);
+            $stmt = $pdo->prepare('SELECT id, uuid, user_id, plan_id, plan_code, status, coupon_id, discount_tomans FROM deposit_requests WHERE id = :id' . $lock);
             $stmt->execute([':id' => $id]);
             $dep = $stmt->fetch();
             if ($dep === false) {
@@ -1497,7 +1500,7 @@ final class AdminController
             (int) $dep['user_id'],
             'deposit',
             (int) $dep['id'],
-            (int) ($dep['discount_rials'] ?? 0)
+            (int) ($dep['discount_tomans'] ?? 0)
         );
 
         Response::ok([

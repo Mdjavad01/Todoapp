@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS `plans` (
   `code`        VARCHAR(50) NOT NULL COMMENT 'monthly / annual / lifetime',
   `title`       VARCHAR(120) NOT NULL,
   `months`      INT         NOT NULL DEFAULT 1 COMMENT 'مدت اشتراک؛ 0=دائمی',
-  `price_rials` BIGINT      NOT NULL DEFAULT 0 COMMENT 'مبلغ به ریال — فقط از سرور',
+  `price_tomans` BIGINT     NOT NULL DEFAULT 0 COMMENT 'مبلغ به تومان — فقط از سرور (فاز تومان)',
   `description` VARCHAR(255) NULL,
   `is_active`   TINYINT(1)  NOT NULL DEFAULT 1,
   `sort_order`  INT         NOT NULL DEFAULT 0,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS `coupons` (
   `uuid`       CHAR(36)    NOT NULL,
   `code`       VARCHAR(50) NOT NULL,
   `type`       ENUM('percent','amount') NOT NULL,
-  `value`      INT         NOT NULL COMMENT 'درصد یا مبلغ به ریال',
+  `value`      INT         NOT NULL COMMENT 'درصد یا مبلغ ثابت به تومان (فاز تومان)',
   `expires_at` DATETIME    NULL DEFAULT NULL,
   `max_uses`   INT         NULL DEFAULT NULL,
   `used_count` INT         NOT NULL DEFAULT 0,
@@ -217,8 +217,8 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `user_id`         BIGINT UNSIGNED NOT NULL,
   `plan_id`         BIGINT UNSIGNED NOT NULL,
   `coupon_id`       BIGINT UNSIGNED NULL DEFAULT NULL,
-  `amount_rials`    BIGINT    NOT NULL COMMENT 'مبلغ نهایی پس از تخفیف',
-  `discount_rials`  BIGINT    NOT NULL DEFAULT 0,
+  `amount_tomans`   BIGINT    NOT NULL COMMENT 'مبلغ نهایی پس از تخفیف (تومان)',
+  `discount_tomans` BIGINT    NOT NULL DEFAULT 0 COMMENT 'تخفیف کد هدیه (تومان)',
   `status`          ENUM('created','redirected','paid','failed','pending_review','approved','rejected','refunded') NOT NULL DEFAULT 'created',
   `description`     VARCHAR(255) NULL,
   `created_at`      DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   `order_id`      BIGINT UNSIGNED NOT NULL,
   `gateway`       ENUM('zibal','aqayepardakht') NOT NULL,
   `status`        ENUM('created','redirected','paid','failed','pending_review','approved','rejected','refunded') NOT NULL DEFAULT 'created',
-  `amount_rials`  BIGINT    NOT NULL,
+  `amount_tomans` BIGINT    NOT NULL COMMENT 'مبلغ (تومان)',
   `gateway_ref`   VARCHAR(190) NULL COMMENT 'ref/track درگاه',
   `verified_at`   DATETIME  NULL DEFAULT NULL,
   `verify_payload` TEXT    NULL,
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS `deposit_requests` (
   `user_id`         BIGINT UNSIGNED NOT NULL,
   `plan_id`         BIGINT UNSIGNED NULL DEFAULT NULL,
   `plan_code`       VARCHAR(50) NOT NULL,
-  `amount_rials`    BIGINT    NOT NULL DEFAULT 0,
+  `amount_tomans`   BIGINT    NOT NULL DEFAULT 0 COMMENT 'مبلغ قابل واریز (تومان)',
   `reference`       VARCHAR(64) NOT NULL COMMENT 'شماره پیگیری/مرجع حواله کاربر',
   `note`            VARCHAR(500) NULL,
   `status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
@@ -442,10 +442,10 @@ INSERT INTO `admin_roles` (`code`, `title`, `permissions`) VALUES
   ('support', 'پشتیبان', '{"users.view":true,"orders.view":true,"orders.review":true}')
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
-INSERT INTO `plans` (`uuid`, `code`, `title`, `months`, `price_rials`, `description`, `is_active`, `sort_order`) VALUES
-  (UUID(), 'monthly',  'اشتراک ماهانه',  1, 490000,  'یک ماه دسترسی کامل به کارام پرو', 1, 1),
-  (UUID(), 'annual',   'اشتراک سالانه', 12, 1900000, 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
-  (UUID(), 'lifetime', 'دائمی',          0, 4900000, 'یکبار پرداخت، همیشه پرو', 1, 3)
+INSERT INTO `plans` (`uuid`, `code`, `title`, `months`, `price_tomans`, `description`, `is_active`, `sort_order`) VALUES
+  (UUID(), 'monthly',  'اشتراک ماهانه',  1, 49000,   'یک ماه دسترسی کامل به کارام پرو', 1, 1),
+  (UUID(), 'annual',   'اشتراک سالانه', 12, 190000,  'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
+  (UUID(), 'lifetime', 'دائمی',          0, 490000,  'یکبار پرداخت، همیشه پرو', 1, 3)
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
 INSERT INTO `settings` (`key`, `value`) VALUES

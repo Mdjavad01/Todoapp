@@ -95,9 +95,40 @@ export function weekdayName(d: Date): string {
   return WEEKDAYS[d.getDay()];
 }
 
-/** ریال → «هزار تومان» با ارقام فارسی — قیمت‌های سمت سرور ریال هستند (۱۰٫۰۰۰ ریال = ۱ هزار تومان) */
-export function hezarToman(priceRials: number): string {
-  return toFa(String(Math.round(priceRials / 10000)));
+const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+
+function faInt(n: number | string): string {
+  return String(n).replace(/[0-9]/g, (d) => FA_DIGITS[Number(d)]);
+}
+
+/** گروه‌بندی هزارگان با جداکننده‌ی فارسی: 49500 → «۴۹٬۵۰۰» */
+function faGroup(n: number): string {
+  return faInt(new Intl.NumberFormat('en-US').format(n)).replace(/,/g, '٬');
+}
+
+/**
+ * تومان صحیح → متن فارسی — قرارداد واحد در سه سمت (اپ/پنل/سرور، تست مشترک):
+ *   ۹۹۰       → «۹۹۰ تومان»
+ *   ۴۹٬۰۰۰    → «۴۹ هزار تومان»
+ *   ۴۹۰٬۰۰۰   → «۴۹۰ هزار تومان»
+ *   ۴۹٬۵۰۰    → «۴۹٬۵۰۰ تومان»
+ *   ۱٬۰۰۰٬۰۰۰ → «۱ میلیون تومان»
+ *   ۱٬۲۰۰٬۰۰۰ → «۱٫۲ میلیون تومان»
+ * واحد پول سامانه از فاز تومان «تومان صحیح» است؛ تبدیل واحد درگاه فقط داخل درایور زیبال انجام می‌شود.
+ */
+export function formatToman(tomans: number): string {
+  const t = Math.max(0, Math.round(Number.isFinite(tomans) ? tomans : 0));
+  if (t < 1000) return `${faInt(t)} تومان`;
+  if (t % 1_000_000 === 0) return `${faInt(t / 1_000_000)} میلیون تومان`;
+  if (t >= 1_000_000 && t % 100_000 === 0) {
+    const m = Math.round((t / 1_000_000) * 10) / 10;
+    const whole = Math.floor(m);
+    const frac = Math.round((m - whole) * 10);
+    const num = frac === 0 ? faInt(whole) : `${faInt(whole)}٫${faInt(frac)}`;
+    return `${num} میلیون تومان`;
+  }
+  if (t % 1000 === 0) return `${faInt(t / 1000)} هزار تومان`;
+  return `${faGroup(t)} تومان`;
 }
 
 /** گروه‌بندی شماره کارت چهاررقمی: «6037991122334455» → «6037 9911 2233 4455» */

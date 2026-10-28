@@ -76,15 +76,15 @@ final class DepositController
 
         $pdo = Database::pdo();
 
-        $stmt = $pdo->prepare('SELECT id, code, title, months, price_rials FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, code, title, months, price_tomans FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
         $stmt->execute([':c' => $planCode]);
         $plan = $stmt->fetch();
         if ($plan === false) {
             Response::error('پلن یافت نشد یا غیرفعال است', 404, ['code' => 'plan_not_found']);
             return;
         }
-        $amount = (int) $plan['price_rials'];
-        if ($amount < 100) {
+        $amount = (int) $plan['price_tomans']; // تومان
+        if ($amount < 100) { // کف امن = ۱۰۰ تومان (۱٬۰۰۰ ریال)
             Response::error('قیمت این پلن هنوز تنظیم نشده است؛ با پشتیبانی تماس بگیرید', 422, ['code' => 'plan_price_missing']);
             return;
         }
@@ -99,11 +99,11 @@ final class DepositController
                 Response::error($q['error'], 422, ['code' => 'gift_invalid']);
                 return;
             }
-            $discount = $q['discountRials'];
+            $discount = $q['discountTomans'];
             $couponId = $q['couponId'];
             $couponCode = $q['code'];
         }
-        $payable = max(1000, $amount - $discount);
+        $payable = max(100, $amount - $discount); // تومان
 
         // ضد اسپم — سقف درخواستِ در انتظار
         $p = $pdo->prepare("SELECT COUNT(*) FROM deposit_requests WHERE user_id = :uid AND status = 'pending'");
@@ -124,7 +124,7 @@ final class DepositController
         $now = gmdate('Y-m-d H:i:s');
         $uuid = Uuid::v4();
         $pdo->prepare(
-            "INSERT INTO deposit_requests (uuid, user_id, plan_id, plan_code, amount_rials, discount_rials, coupon_id, reference, note, status, created_at, updated_at)
+            "INSERT INTO deposit_requests (uuid, user_id, plan_id, plan_code, amount_tomans, discount_tomans, coupon_id, reference, note, status, created_at, updated_at)
              VALUES (:uuid, :uid, :pid, :pcode, :amount, :discount, :coupon, :ref, :note, 'pending', :created, :updated)"
         )->execute([
             ':uuid' => $uuid,
@@ -142,8 +142,8 @@ final class DepositController
 
         Audit::log('user', (int) $user['id'], 'deposit.request_create', 'deposit_request', $uuid, [
             'planCode' => (string) $plan['code'],
-            'amountRials' => $payable,
-            'discountRials' => $discount,
+            'amountTomans' => $payable,
+            'discountTomans' => $discount,
             'couponCode' => $couponCode,
         ]);
 
@@ -155,10 +155,15 @@ final class DepositController
                 'uuid' => $uuid,
                 'planCode' => (string) $plan['code'],
                 'planTitle' => (string) $plan['title'],
-                'amountRials' => $payable,
-                'originalPriceRials' => $amount,
-                'discountRials' => $discount,
+                // واحد اصلی از فاز تومان:
+                'amountTomans' => $payable,
+                'originalPriceTomans' => $amount,
+                'discountTomans' => $discount,
                 'couponCode' => $couponCode,
+                // آینه‌ی قدیمی ریالی فقط برای APKهای قبل از فاز تومان — منسوخ
+                'amountRials' => $payable * 10,
+                'originalPriceRials' => $amount * 10,
+                'discountRials' => $discount * 10,
                 'reference' => $reference,
                 'status' => 'pending',
                 'createdAt' => $now,
@@ -173,7 +178,7 @@ final class DepositController
         DepositSchema::ensure();
 
         $stmt = Database::pdo()->prepare(
-            'SELECT d.uuid, d.plan_code, d.amount_rials, d.discount_rials, cp.code AS coupon_code, d.reference, d.status, d.review_note, d.created_at, d.reviewed_at,
+            'SELECT d.uuid, d.plan_code, d.amount_tomans, d.discount_tomans, cp.code AS coupon_code, d.reference, d.status, d.review_note, d.created_at, d.reviewed_at,
                     p.title AS plan_title
              FROM deposit_requests d
              LEFT JOIN plans p ON p.id = d.plan_id
@@ -190,8 +195,11 @@ final class DepositController
                 'uuid' => (string) $r['uuid'],
                 'planCode' => (string) $r['plan_code'],
                 'planTitle' => $r['plan_title'] !== null ? (string) $r['plan_title'] : null,
-                'amountRials' => (int) $r['amount_rials'],
-                'discountRials' => (int) ($r['discount_rials'] ?? 0),
+                // واحد اصلی از فاز تومان + آینه‌ی قدیمی ریالی (منسوخ — فقط APKهای قبل از فاز تومان)
+                'amountTomans' => (int) $r['amount_tomans'],
+                'discountTomans' => (int) ($r['discount_tomans'] ?? 0),
+                'amountRials' => (int) $r['amount_tomans'] * 10,
+                'discountRials' => (int) ($r['discount_tomans'] ?? 0) * 10,
                 'couponCode' => $r['coupon_code'] !== null ? (string) $r['coupon_code'] : null,
                 'reference' => (string) $r['reference'],
                 'status' => (string) $r['status'],

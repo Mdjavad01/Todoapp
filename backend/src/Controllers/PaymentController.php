@@ -20,19 +20,23 @@ declare(strict_types=1);
  */
 final class PaymentController
 {
-    /** GET /api/v1/plans — پلن‌های فعال برای صفحه‌ی پرو */
+    /** GET /api/v1/plans — پلن‌های فعال برای صفحه‌ی پرو (مبالغ: تومان + آینه‌ی قدیمی ریالی برای APKهای قبل از فاز تومان) */
     public function plans(): void
     {
         $rows = Database::pdo()
-            ->query('SELECT code, title, months, price_rials, description FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, id ASC')
+            ->query('SELECT code, title, months, price_tomans, description FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, id ASC')
             ->fetchAll();
         $plans = [];
         foreach ($rows as $r) {
+            $priceTomans = (int) $r['price_tomans'];
             $plans[] = [
                 'code' => (string) $r['code'],
                 'title' => (string) $r['title'],
                 'months' => (int) $r['months'],
-                'priceRials' => (int) $r['price_rials'],
+                // واحد اصلی از فاز تومان:
+                'priceTomans' => $priceTomans,
+                // فقط برای APKهای قدیمی (قبل از فاز تومان) — منسوخ؛ در نسخه‌ی بعدی حذف می‌شود
+                'priceRials' => $priceTomans * 10,
                 'description' => $r['description'],
             ];
         }
@@ -116,7 +120,7 @@ final class PaymentController
         $giftRaw = Validator::str($body, 'giftCode', 3, 32, false); // v20 — کد هدیه اختیاری
         $pdo = Database::pdo();
 
-        $stmt = $pdo->prepare('SELECT id, code, title, months, price_rials FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, code, title, months, price_tomans FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
         $stmt->execute([':c' => $planCode]);
         $plan = $stmt->fetch();
         if ($plan === false) {
@@ -124,13 +128,13 @@ final class PaymentController
             return;
         }
 
-        $amount = (int) $plan['price_rials'];
-        if ($amount < 100) {
+        $amount = (int) $plan['price_tomans']; // تومان
+        if ($amount < 100) { // کف امن درگاه = ۱۰۰ تومان (۱٬۰۰۰ ریال)
             Response::error('قیمت این پلن هنوز تنظیم نشده است؛ با پشتیبانی تماس بگیرید', 422, ['code' => 'plan_price_missing']);
             return;
         }
 
-        // v20 — اعمال کد هدیه: مبلغ درگاه = مبلغ پلن − تخفیف (کف امن ۱۰۰۰ ریال)
+        // v20 — اعمال کد هدیه: مبلغ درگاه = مبلغ پلن − تخفیف (کف امن ۱۰۰ تومان)
         $discount = 0;
         $couponId = null;
         $couponCode = null;
@@ -140,11 +144,11 @@ final class PaymentController
                 Response::error($q['error'], 422, ['code' => 'gift_invalid']);
                 return;
             }
-            $discount = $q['discountRials'];
+            $discount = $q['discountTomans'];
             $couponId = $q['couponId'];
             $couponCode = $q['code'];
         }
-        $payable = max(100, $amount - $discount);
+        $payable = max(100, $amount - $discount); // تومان
 
         $orderUuid = Uuid::v4();
         $now = gmdate('Y-m-d H:i:s');
@@ -153,7 +157,7 @@ final class PaymentController
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
-                "INSERT INTO orders (uuid, user_id, plan_id, coupon_id, amount_rials, discount_rials, status, description, created_at, updated_at)
+                "INSERT INTO orders (uuid, user_id, plan_id, coupon_id, amount_tomans, discount_tomans, status, description, created_at, updated_at)
                  VALUES (:uuid, :uid, :pid, :coupon, :amount, :discount, 'created', :desc, :created, :updated)"
             )->execute([
                 ':uuid' => $orderUuid,
@@ -169,7 +173,7 @@ final class PaymentController
             $orderId = (int) $pdo->lastInsertId();
 
             $pdo->prepare(
-                "INSERT INTO payments (uuid, order_id, gateway, status, amount_rials, created_at, updated_at)
+                "INSERT INTO payments (uuid, order_id, gateway, status, amount_tomans, created_at, updated_at)
                  VALUES (:uuid, :oid, 'zibal', 'created', :amount, :created, :updated)"
             )->execute([
                 ':uuid' => Uuid::v4(),
@@ -222,10 +226,15 @@ final class PaymentController
             'orderUuid' => $orderUuid,
             'trackId' => $trackId,
             'payUrl' => (string) $req['payUrl'],
-            'amountRials' => $payable,
-            'originalPriceRials' => $amount,
-            'discountRials' => $discount,
+            // واحد اصلی از فاز تومان:
+            'amountTomans' => $payable,
+            'originalPriceTomans' => $amount,
+            'discountTomans' => $discount,
             'couponCode' => $couponCode,
+            // آینه‌ی قدیمی ریالی فقط برای APKهای قبل از فاز تومان — منسوخ
+            'amountRials' => $payable * 10,
+            'originalPriceRials' => $amount * 10,
+            'discountRials' => $discount * 10,
         ]);
     }
 
@@ -242,7 +251,7 @@ final class PaymentController
             throw new ValidationError('پلن مشخص نشده است');
         }
         $pdo = Database::pdo();
-        $stmt = $pdo->prepare('SELECT price_rials FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
+        $stmt = $pdo->prepare('SELECT price_tomans FROM plans WHERE code = :c AND is_active = 1 LIMIT 1');
         $stmt->execute([':c' => $planCode]);
         $price = $stmt->fetchColumn();
         if ($price === false) {
@@ -257,8 +266,12 @@ final class PaymentController
         Response::ok([
             'valid' => true,
             'code' => $q['code'],
-            'discountRials' => $q['discountRials'],
-            'payableRials' => $q['payableRials'],
+            // واحد اصلی از فاز تومان:
+            'discountTomans' => $q['discountTomans'],
+            'payableTomans' => $q['payableTomans'],
+            // آینه‌ی قدیمی ریالی فقط برای APKهای قبل از فاز تومان — منسوخ
+            'discountRials' => $q['discountTomans'] * 10,
+            'payableRials' => $q['payableTomans'] * 10,
         ]);
     }
 
@@ -290,7 +303,7 @@ final class PaymentController
 
         $pdo = Database::pdo();
         $stmt = $pdo->prepare(
-            'SELECT o.id, o.uuid, o.user_id, o.amount_rials, o.status AS order_status, o.plan_id, o.coupon_id, o.discount_rials,
+            'SELECT o.id, o.uuid, o.user_id, o.amount_tomans, o.status AS order_status, o.plan_id, o.coupon_id, o.discount_tomans,
                     p.id AS payment_id, p.status AS payment_status, p.gateway_ref
              FROM orders o JOIN payments p ON p.order_id = o.id
              WHERE o.uuid = :u ORDER BY p.id DESC LIMIT 1'
@@ -329,13 +342,11 @@ final class PaymentController
         if ($verify['ok'] && $verify['paid']) {
             // تطبیق trackId ثبت‌شده هنگام ساخت تراکنش (ضد جعل بین سفارش‌ها)
             $refMatches = (string) $row['gateway_ref'] === $trackId;
-            // گام ۱ — fail-closed: مبلغ فقط وقتی پذیرفته می‌شود که در پاسخ verify
-            // موجود، عددی و دقیقاً برابر مبلغ سفارش باشد (نبودن amount = رد تأیید)
-            $payload = is_string($verify['raw']) ? json_decode($verify['raw'], true) : null;
-            $amountOk = is_array($payload)
-                && array_key_exists('amount', $payload)
-                && is_numeric($payload['amount'])
-                && (int) $payload['amount'] === (int) $row['amount_rials'];
+            // گام ۱ — fail-closed هم‌واحد: مبلغ فقط وقتی پذیرفته می‌شود که در پاسخ verify
+            // موجود، عددی و دقیقاً برابر مبلغ سفارش (تومان) باشد — درگاه ریال می‌دهد،
+            // ZibalProvider آن را ÷۱۰ به تومان نرمال کرده؛ نبود مبلغ = رد تأیید.
+            $amountOk = $verify['amountTomans'] !== null
+                && (int) $verify['amountTomans'] === (int) $row['amount_tomans'];
 
             if ($refMatches && $amountOk) {
                 $pdo->beginTransaction();
@@ -367,7 +378,7 @@ final class PaymentController
                     return;
                 }
                 // v20 — ژورنال استفاده از کد هدیه (بعد از commit — اگر خطا خورد، پرداخت سالم می‌ماند)
-                GiftCode::registerRedemption($pdo, $row['coupon_id'] !== null ? (int) $row['coupon_id'] : null, (int) $row['user_id'], 'order', (int) $row['id'], (int) ($row['discount_rials'] ?? 0));
+                GiftCode::registerRedemption($pdo, $row['coupon_id'] !== null ? (int) $row['coupon_id'] : null, (int) $row['user_id'], 'order', (int) $row['id'], (int) ($row['discount_tomans'] ?? 0));
                 $back($orderUuid, 'succeeded');
                 return;
             }
@@ -392,7 +403,7 @@ final class PaymentController
         }
 
         $stmt = Database::pdo()->prepare(
-            'SELECT o.uuid, o.status, o.amount_rials, o.created_at, o.updated_at, pl.code AS plan_code, pl.title AS plan_title
+            'SELECT o.uuid, o.status, o.amount_tomans, o.created_at, o.updated_at, pl.code AS plan_code, pl.title AS plan_title
              FROM orders o JOIN plans pl ON pl.id = o.plan_id
              WHERE o.uuid = :u AND o.user_id = :uid LIMIT 1'
         );
@@ -407,7 +418,10 @@ final class PaymentController
             'order' => [
                 'uuid' => (string) $row['uuid'],
                 'status' => (string) $row['status'],
-                'amountRials' => (int) $row['amount_rials'],
+                // واحد اصلی از فاز تومان:
+                'amountTomans' => (int) $row['amount_tomans'],
+                // آینه‌ی قدیمی ریالی فقط برای APKهای قبل از فاز تومان — منسوخ
+                'amountRials' => (int) $row['amount_tomans'] * 10,
                 'planCode' => (string) $row['plan_code'],
                 'planTitle' => (string) $row['plan_title'],
                 'createdAt' => (string) $row['created_at'],

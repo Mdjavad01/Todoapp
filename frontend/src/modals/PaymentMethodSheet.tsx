@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Sheet, SheetHeader } from '@/components/Sheet';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
-import { toFa, faDateTimeUtc, hezarToman, groupCardNumber } from '@/lib/format';
+import { toFa, faDateTimeUtc, formatToman, groupCardNumber } from '@/lib/format';
 import {
   createDepositRequest,
   fetchGiftQuote,
@@ -178,7 +178,7 @@ export function PaymentMethodSheet({
               <span className="text-xs text-on-surface-variant">
                 پلن انتخابی: <span className="font-black text-on-surface dark:text-inverse-on-surface">{plan.title}</span>
               </span>
-              <span className="text-sm font-black text-primary shrink-0">{hezarToman(giftQuote?.valid ? giftQuote.payableRials! : plan.priceRials)} هزار تومان</span>
+              <span className="text-sm font-black text-primary shrink-0">{formatToman(giftQuote?.valid ? giftQuote.payableTomans! : plan.priceTomans)}</span>
             </div>
           ) : null}
 
@@ -214,8 +214,8 @@ export function PaymentMethodSheet({
             </div>
             {giftQuote?.valid ? (
               <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
-                کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> اعمال شد: {hezarToman(giftQuote.discountRials ?? 0)} هزار تومان تخفیف — قابل پرداخت{' '}
-                <b>{hezarToman(giftQuote.payableRials ?? 0)}</b> هزار تومان
+                کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> اعمال شد: {formatToman(giftQuote.discountTomans ?? 0)} تخفیف — قابل پرداخت{' '}
+                <b>{formatToman(giftQuote.payableTomans ?? 0)}</b>
               </p>
             ) : null}
             {giftError ? (
@@ -359,14 +359,13 @@ export function PaymentMethodSheet({
               مبلغ دقیق برای پلن «<span className="font-black text-on-surface dark:text-inverse-on-surface">{plan.title}</span>»:{' '}
               {giftQuote?.valid ? (
                 <>
-                  <s className="text-slate-400">{hezarToman(plan.priceRials)}</s>{' '}
-                  <span className="font-black text-primary">{hezarToman(giftQuote.payableRials ?? plan.priceRials)}</span> هزار تومان
+                  <s className="text-slate-400">{formatToman(plan.priceTomans)}</s>{' '}
+                  <span className="font-black text-primary">{formatToman(giftQuote.payableTomans ?? plan.priceTomans)}</span>
                   {' '}(با کد هدیه <span dir="ltr" className="font-mono">{giftQuote.code}</span>)
                 </>
               ) : (
-                <span className="font-black text-primary">{hezarToman(plan.priceRials)}</span>
+                <span className="font-black text-primary">{formatToman(plan.priceTomans)}</span>
               )}
-              {' '}هزار تومان
             </p>
           ) : null}
 
@@ -435,7 +434,7 @@ export function PaymentMethodSheet({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-bold truncate">
-                        {r.planTitle ?? r.planCode} · {hezarToman(r.amountRials)} هزار تومان
+                        {r.planTitle ?? r.planCode} · {formatToman(r.amountTomans)}
                       </p>
                       <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${statusClass[r.status]}`}>
                         {statusLabel[r.status]}

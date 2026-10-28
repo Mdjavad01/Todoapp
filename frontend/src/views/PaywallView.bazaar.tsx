@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
-import { toFa, hezarToman } from '@/lib/format';
+import { toFa, formatToman } from '@/lib/format';
 import { fetchGiftQuote, fetchPlans, type GiftQuote } from '@/sync/payments';
 
 /**
@@ -171,7 +171,7 @@ export function PaywallView() {
           </div>
           {giftQuote?.valid ? (
             <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
-              کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {hezarToman(giftQuote.discountRials ?? 0)} هزار تومان تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
+              کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {formatToman(giftQuote.discountTomans ?? 0)} تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
             </p>
           ) : null}
           {giftError ? (

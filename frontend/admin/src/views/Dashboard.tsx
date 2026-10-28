@@ -3,7 +3,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { faNum, faMoney, faDayShort, faMonthShort } from '../format';
+import { faNum, faDayShort, faMonthShort } from '../format';
+import { priceText, usePriceDisplay } from '../usePriceDisplay';
 import { Spinner, Bar } from '../ui';
 import { IconUsers, IconVerified, IconBlock, IconRefresh, IconCard, IconCrown, IconChart, IconWarning } from '../icons';
 
@@ -16,6 +17,7 @@ interface HealthWarning {
 
 export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'error', text: string) => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [priceMode] = usePriceDisplay();
   const [busy, setBusy] = useState(false);
   const [warnings, setWarnings] = useState<HealthWarning[]>([]);
 
@@ -137,7 +139,7 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
           <StatCard
             icon={<IconCard size={20} />}
             label="درآمد این ماه (تومان)"
-            value={faMoney(Math.round(stats.sales.monthTotalRials / 10))}
+            value={priceText(stats.sales.monthTotalTomans, priceMode)}
             tone="brand"
           />
           <StatCard
@@ -158,7 +160,7 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
           />
         </div>
         <p className="mt-2 text-[11px] leading-5 text-slate-400">
-          درآمد = درگاه بانکی ({faMoney(Math.round(stats.sales.monthOrderRials / 10))} تومان) + کارت‌به‌کارت تأییدشده ({faMoney(Math.round(stats.sales.monthDepositRials / 10))} تومان) · درآمد کل تا امروز: {faMoney(Math.round(stats.sales.lifetimeTotalRials / 10))} تومان
+          درآمد = درگاه بانکی ({priceText(stats.sales.monthOrderTomans, priceMode)}) + کارت‌به‌کارت تأییدشده ({priceText(stats.sales.monthDepositTomans, priceMode)}) · درآمد کل تا امروز: {priceText(stats.sales.lifetimeTotalTomans, priceMode)}
         </p>
 
         {/* نمودار ۶ماهه درآمد */}
@@ -166,13 +168,13 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
           <h3 className="mb-3 text-xs font-bold text-slate-500">روند درآمد ۶ ماه اخیر (تومان)</h3>
           <div className="flex h-36 items-end justify-between gap-2" dir="ltr">
             {[...stats.salesSeries].reverse().map((s) => {
-              const maxRev = Math.max(1, ...stats.salesSeries.map((x) => x.revenueRials));
+              const maxRev = Math.max(1, ...stats.salesSeries.map((x) => x.revenueTomans));
               return (
                 <div key={s.month} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5" dir="rtl">
                   <span className="text-[11px] font-semibold text-slate-500">
-                    {s.revenueRials > 0 ? faNum(new Intl.NumberFormat('en-US').format(Math.round(s.revenueRials / 10))) : ''}
+                    {s.revenueTomans > 0 ? priceText(s.revenueTomans, priceMode) : ''}
                   </span>
-                  <SignupBar pct={(s.revenueRials / maxRev) * 100} />
+                  <SignupBar pct={(s.revenueTomans / maxRev) * 100} />
                   <span className="max-w-full truncate text-[10px] text-slate-400">{faMonthShort(s.month)}</span>
                 </div>
               );
@@ -186,7 +188,7 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
         <h2 className="mb-4 text-sm font-bold text-slate-700">سفارش‌ها و درآمد (پیش‌درآمد فاز ۵)</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCard label="سفارش‌های پرداخت‌شده" value={faNum(stats.orders.paidCount)} />
-          <StatCard label="درآمد ثبت‌شده" value={`${faMoney(stats.orders.paidAmountRials)} ریال`} tone="brand" />
+          <StatCard label="درآمد ثبت‌شده" value={priceText(stats.orders.paidAmountTomans, priceMode)} tone="brand" />
           <StatCard
             label="در انتظار بررسی"
             value={faNum(stats.orders.pendingReview)}

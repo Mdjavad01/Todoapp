@@ -12,7 +12,8 @@ export interface Plan {
   code: string;
   title: string;
   months: number; // 0 = دائمی
-  priceRials: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  priceTomans: number;
   description: string | null;
 }
 
@@ -30,17 +31,19 @@ export interface CreateOrderResult {
   orderUuid: string;
   trackId: string;
   payUrl: string;
-  amountRials: number;
-  /** v20 — اگر کد هدیه اعمال شده باشد */
-  originalPriceRials?: number;
-  discountRials?: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  amountTomans: number;
+  /** v20 — اگر کد هدیه اعمال شده باشد (تومان) */
+  originalPriceTomans?: number;
+  discountTomans?: number;
   couponCode?: string | null;
 }
 
 export interface OrderStatus {
   uuid: string;
   status: 'created' | 'redirected' | 'paid' | 'failed' | 'pending_review' | 'approved' | 'rejected' | 'refunded';
-  amountRials: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  amountTomans: number;
   planCode: string;
   planTitle: string;
   createdAt: string;
@@ -90,9 +93,10 @@ export interface DepositRequest {
   uuid: string;
   planCode: string;
   planTitle: string | null;
-  amountRials: number;
-  /** v20 — اگر کد هدیه روی واریز اعمال شده باشد */
-  discountRials?: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  amountTomans: number;
+  /** v20 — اگر کد هدیه روی واریز اعمال شده باشد (تومان) */
+  discountTomans?: number;
   couponCode?: string | null;
   reference: string;
   status: DepositStatus;
@@ -126,8 +130,9 @@ export interface GiftQuote {
   valid: boolean;
   error?: string;
   code?: string;
-  discountRials?: number;
-  payableRials?: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  discountTomans?: number;
+  payableTomans?: number;
 }
 
 /** استعلام زنده‌ی کد هدیه برای پلن — نمایش تخفیف قبل از پرداخت */

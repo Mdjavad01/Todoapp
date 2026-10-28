@@ -9,10 +9,35 @@ export function faNum(value: number | string): string {
   return String(value).replace(/\d/g, (d) => FA_DIGITS[Number(d)]);
 }
 
-/** 4900000 → «۴۹۰,۰۰۰» (بدون واحد؛ واحد در UI می‌آید) */
-export function faMoney(rials: number): string {
-  const grouped = new Intl.NumberFormat('en-US').format(Math.round(rials));
-  return faNum(grouped);
+/** 490000 → «۴۹۰٬۰۰۰» (بدون واحد؛ واحد در UI می‌آید — جداکننده‌ی فارسی «٬») */
+export function faMoney(n: number): string {
+  return faNum(new Intl.NumberFormat('en-US').format(Math.round(n))).replace(/,/g, '٬');
+}
+
+/**
+ * تومان صحیح → متن فارسی — قرارداد واحد در سه سمت (اپ/پنل/سرور، تست مشترک):
+ *   ۹۹۰ → «۹۹۰ تومان» · ۴۹٬۰۰۰ → «۴۹ هزار تومان» · ۴۹۰٬۰۰۰ → «۴۹۰ هزار تومان»
+ *   ۴۹٬۵۰۰ → «۴۹٬۵۰۰ تومان» · ۱٬۰۰۰٬۰۰۰ → «۱ میلیون تومان» · ۱٬۲۰۰٬۰۰۰ → «۱٫۲ میلیون تومان»
+ * واحد پول سامانه از فاز تومان «تومان صحیح» است؛ تبدیل واحد درگاه فقط داخل درایور زیبال انجام می‌شود.
+ */
+export function formatToman(tomans: number): string {
+  const t = Math.max(0, Math.round(Number.isFinite(tomans) ? tomans : 0));
+  if (t < 1000) return `${faNum(t)} تومان`;
+  if (t % 1_000_000 === 0) return `${faNum(t / 1_000_000)} میلیون تومان`;
+  if (t >= 1_000_000 && t % 100_000 === 0) {
+    const m = Math.round((t / 1_000_000) * 10) / 10;
+    const whole = Math.floor(m);
+    const frac = Math.round((m - whole) * 10);
+    const num = frac === 0 ? faNum(whole) : `${faNum(whole)}٫${faNum(frac)}`;
+    return `${num} میلیون تومان`;
+  }
+  if (t % 1000 === 0) return `${faNum(t / 1000)} هزار تومان`;
+  return `${faMoney(t)} تومان`;
+}
+
+/** حالت «عدد کامل» پنل: همیشه گروه‌بندی کامل + واحد — 490000 → «۴۹۰٬۰۰۰ تومان» */
+export function priceFull(tomans: number): string {
+  return `${faMoney(Math.max(0, Math.round(tomans)))} تومان`;
 }
 
 /* ---------------- جلالی ---------------- */

@@ -211,7 +211,7 @@ foreach ($plans as $p) {
         $annual = $p;
     }
 }
-check('پلن سالانه با قیمت ۱٫۹۰۰٫۰۰۰ ریال', $annual !== null && (int) $annual['priceRials'] === 1900000 && (int) $annual['months'] === 12);
+check('پلن سالانه با قیمت ۱۹۰٬۰۰۰ تومان', $annual !== null && (int) $annual['priceTomans'] === 190000 && (int) $annual['months'] === 12);
 
 /* ================= ۲) ورود کاربر خریدار ================= */
 echo "\n۲) ورود کاربر\n";
@@ -417,7 +417,7 @@ $redemptionCount = static function () use ($pdoGift): int {
 };
 $pdoGift->prepare(
     "INSERT INTO coupons (uuid, code, type, value, expires_at, max_uses, used_count, is_active, created_at, updated_at)
-     VALUES (lower(hex(randomblob(16))), 'KARAMTEST', 'amount', 100000, NULL, NULL, 0, 1,
+     VALUES (lower(hex(randomblob(16))), 'KARAMTEST', 'amount', 10000, NULL, NULL, 0, 1,
              strftime('%Y-%m-%d %H:%M:%S','now'), strftime('%Y-%m-%d %H:%M:%S','now'))"
 )->execute();
 
@@ -437,9 +437,9 @@ setSetting('gift_codes_enabled', '1');
 [$st, $j] = http('POST', '/api/v1/payments/orders', ['planCode' => 'monthly', 'giftCode' => 'KARAMTEST'], $tok);
 $orderG = (string) ($j['orderUuid'] ?? '');
 $trackG = (string) ($j['trackId'] ?? '');
-check('G2: سفارش با کد هدیه → تخفیف ۱۰۰٬۰۰۰ ریال (۴۹۰ هزار → ۳۹۰ هزار)', $st === 200 && $orderG !== ''
-    && (int) ($j['amountRials'] ?? 0) === 390000
-    && (int) ($j['discountRials'] ?? 0) === 100000
+check('G2: سفارش با کد هدیه → تخفیف ۱۰٬۰۰۰ تومان (۴۹ هزار → ۳۹ هزار)', $st === 200 && $orderG !== ''
+    && (int) ($j['amountTomans'] ?? 0) === 39000
+    && (int) ($j['discountTomans'] ?? 0) === 10000
     && ($j['couponCode'] ?? '') === 'KARAMTEST', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
 
 setSetting('gift_codes_enabled', '0');

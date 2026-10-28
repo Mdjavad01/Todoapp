@@ -148,19 +148,19 @@ export const api = {
         users: { total: number; today: number; last7d: number; blocked: number; premium: number };
         content: { lists: number; tasks: number; subtasks: number; tasksCompleted: number };
         sessions: number;
-        orders: { paidCount: number; paidAmountRials: number; pendingReview: number; monthPaidCount: number; monthPaidRials: number };
+        orders: { paidCount: number; paidAmountTomans: number; pendingReview: number; monthPaidCount: number; monthPaidTomans: number };
         sales: {
-          monthOrderRials: number;
-          monthDepositRials: number;
-          monthTotalRials: number;
+          monthOrderTomans: number;
+          monthDepositTomans: number;
+          monthTotalTomans: number;
           monthDeposits: number;
-          lifetimeTotalRials: number;
+          lifetimeTotalTomans: number;
           paidUsers: number;
           activePremium: number;
           conversionPercent: number;
         };
         signupsSeries: { date: string; count: number }[];
-        salesSeries: { month: string; revenueRials: number }[];
+        salesSeries: { month: string; revenueTomans: number }[];
         /** گام ۲ — وضعیت کلید خاموش‌کردن پرداخت‌ها (بنر داشبورد) */
         payments: {
           masterEnabled: boolean;
@@ -303,7 +303,8 @@ export interface AdminPlan {
   code: string;
   title: string;
   months: number;
-  priceRials: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  priceTomans: number;
   description: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -343,8 +344,9 @@ export interface AdminDepositRow {
   user: { uuid: string | null; displayName: string | null };
   planCode: string;
   planTitle: string | null;
-  amountRials: number;
-  discountRials?: number;
+  /** تومان صحیح (فاز تومان) — واحد اصلی */
+  amountTomans: number;
+  discountTomans?: number;
   couponCode?: string | null;
   reference: string;
   note: string | null;

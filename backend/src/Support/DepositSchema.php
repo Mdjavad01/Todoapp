@@ -14,6 +14,10 @@ declare(strict_types=1);
  *
  * همیشه try/catch — اگر دیتابیس آماده نبود، هیچ مسیری نباید بخوابد؛
  * خطا در لاگ سرور ثبت و درخواست به‌صورت عادی ادامه می‌یابد.
+ *
+ * واحد پول (فاز تومان): ستون مبلغ «تومان» است؛ روی نصب‌های قدیمیِ ریالی،
+ * amount_rials خودکار (÷۱۰) به amount_tomans تبدیل و حذف می‌شود —
+ * مسیر دستی معادل: deploy/upgrade-v1.8.sql
  */
 final class DepositSchema
 {
@@ -40,7 +44,7 @@ final class DepositSchema
                         `user_id`         BIGINT UNSIGNED NOT NULL,
                         `plan_id`         BIGINT UNSIGNED NULL DEFAULT NULL,
                         `plan_code`       VARCHAR(50) NOT NULL,
-                        `amount_rials`    BIGINT    NOT NULL DEFAULT 0,
+                        `amount_tomans`   BIGINT    NOT NULL DEFAULT 0 COMMENT 'مبلغ قابل واریز (تومان — فاز تومان)',
                         `reference`       VARCHAR(64) NOT NULL COMMENT 'شماره پیگیری/مرجع حواله کاربر',
                         `note`            VARCHAR(500) NULL,
                         `status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
@@ -66,7 +70,7 @@ final class DepositSchema
                         user_id INTEGER NOT NULL,
                         plan_id INTEGER NULL,
                         plan_code TEXT(50) NOT NULL,
-                        amount_rials INTEGER NOT NULL DEFAULT 0,
+                        amount_tomans INTEGER NOT NULL DEFAULT 0,
                         reference TEXT(64) NOT NULL,
                         note TEXT(500) NULL,
                         status TEXT(16) NOT NULL DEFAULT 'pending',
@@ -81,6 +85,31 @@ final class DepositSchema
                 $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS uq_deposit_uuid ON deposit_requests (uuid)');
                 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_deposit_user ON deposit_requests (user_id, status)');
                 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_deposit_status ON deposit_requests (status, created_at)');
+            }
+
+            // ۱.۵) مهاجرت واحد پول: amount_rials قدیمی → amount_tomans (÷۱۰) و حذف ستون قدیمی
+            if ($mysql) {
+                $hasRials = is_array($pdo->query("SHOW COLUMNS FROM `deposit_requests` LIKE 'amount_rials'")->fetch());
+                $hasTomans = is_array($pdo->query("SHOW COLUMNS FROM `deposit_requests` LIKE 'amount_tomans'")->fetch());
+                if ($hasRials && !$hasTomans) {
+                    $pdo->exec("ALTER TABLE `deposit_requests` ADD COLUMN `amount_tomans` BIGINT NOT NULL DEFAULT 0 COMMENT 'مبلغ قابل واریز (تومان)'");
+                    $pdo->exec('UPDATE `deposit_requests` SET `amount_tomans` = ROUND(`amount_rials` / 10)');
+                    $pdo->exec('ALTER TABLE `deposit_requests` DROP COLUMN `amount_rials`');
+                } elseif (!$hasRials && !$hasTomans) {
+                    $pdo->exec("ALTER TABLE `deposit_requests` ADD COLUMN `amount_tomans` BIGINT NOT NULL DEFAULT 0 COMMENT 'مبلغ قابل واریز (تومان)'");
+                }
+            } else {
+                $dcols = [];
+                foreach ($pdo->query('PRAGMA table_info(deposit_requests)')->fetchAll() as $c) {
+                    $dcols[] = (string) $c['name'];
+                }
+                if (in_array('amount_rials', $dcols, true) && !in_array('amount_tomans', $dcols, true)) {
+                    $pdo->exec('ALTER TABLE deposit_requests ADD COLUMN amount_tomans INTEGER NOT NULL DEFAULT 0');
+                    $pdo->exec('UPDATE deposit_requests SET amount_tomans = CAST(ROUND(amount_rials / 10) AS INTEGER)');
+                    $pdo->exec('ALTER TABLE deposit_requests DROP COLUMN amount_rials');
+                } elseif (!in_array('amount_tomans', $dcols, true)) {
+                    $pdo->exec('ALTER TABLE deposit_requests ADD COLUMN amount_tomans INTEGER NOT NULL DEFAULT 0');
+                }
             }
 
             // ۲) MySQL: مقدار 'card_deposit' به ENUM source جدول subscriptions

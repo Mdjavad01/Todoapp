@@ -6,7 +6,8 @@
  */
 import { useEffect, useState } from 'react';
 import { api, hasPerm, type AdminDepositRow, type AdminSession } from '../api';
-import { faMoney, faDateTime } from '../format';
+import { faDateTime } from '../format';
+import { priceText, usePriceDisplay } from '../usePriceDisplay';
 import { Spinner, Badge, Pagination, EmptyState, Modal } from '../ui';
 import { IconCheck, IconWarning, IconRefresh } from '../icons';
 
@@ -31,6 +32,7 @@ export default function Deposits({
   onToast: (kind: 'success' | 'error', text: string) => void;
 }) {
   const [status, setStatus] = useState<'pending' | 'approved' | 'rejected' | ''>('pending');
+  const [priceMode] = usePriceDisplay();
   const [rows, setRows] = useState<AdminDepositRow[] | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -137,18 +139,17 @@ export default function Deposits({
                       {d.user.displayName ?? 'بدون نام'}
                     </h3>
                     <Badge tone={STATUS_BADGE[d.status].tone}>{STATUS_BADGE[d.status].label}</Badge>
-                    {d.discountRials && d.discountRials > 0 ? (
+                    {d.discountTomans && d.discountTomans > 0 ? (
                       <Badge tone="amber">کد هدیه {d.couponCode ?? ''}</Badge>
                     ) : null}
                     <span className="text-xs text-slate-500">
                       {d.planTitle ?? d.planCode} ·{' '}
-                      {d.discountRials && d.discountRials > 0 ? (
+                      {d.discountTomans && d.discountTomans > 0 ? (
                         <>
-                          <s className="text-slate-400">{faMoney(d.amountRials + d.discountRials)}</s>{' '}
-                          {faMoney(d.amountRials)} تومان
+                          <s className="text-slate-400">{priceText(d.amountTomans + d.discountTomans, priceMode)}</s>{' '}
                         </>
                       ) : (
-                        <>{faMoney(d.amountRials)} تومان</>
+                        <>{priceText(d.amountTomans, priceMode)}</>
                       )}
                     </span>
                   </div>
@@ -210,13 +211,13 @@ export default function Deposits({
               </p>
               <p>
                 پلن: <b>{approveRow.planTitle ?? approveRow.planCode}</b> · مبلغ:{' '}
-                {approveRow.discountRials && approveRow.discountRials > 0 ? (
+                {approveRow.discountTomans && approveRow.discountTomans > 0 ? (
                   <>
-                    <s className="text-slate-400">{faMoney(approveRow.amountRials + approveRow.discountRials)}</s>{' '}
-                    <b>{faMoney(approveRow.amountRials)} تومان</b> (با کد هدیه {approveRow.couponCode})
+                    <s className="text-slate-400">{priceText(approveRow.amountTomans + approveRow.discountTomans, priceMode)}</s>{' '}
+                    <b>{priceText(approveRow.amountTomans, priceMode)}</b> (با کد هدیه {approveRow.couponCode})
                   </>
                 ) : (
-                  <b>{faMoney(approveRow.amountRials)} تومان</b>
+                  <b>{priceText(approveRow.amountTomans, priceMode)}</b>
                 )}
               </p>
               <p>

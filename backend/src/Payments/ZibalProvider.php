@@ -13,6 +13,12 @@ declare(strict_types=1);
  *  ۳) POST /v1/verify  {merchant, trackId}
  *        ← result:100=تأیید شد، 201=قبلاً تأیید شده، 202/203=ناموفق
  *
+ * واحد پول: از فاز تومان، کل سامانه با «تومان صحیح» کار می‌کند؛ API زیبال فقط ریال می‌پذیرد.
+ * این کلاس تنها نقطه‌ی تبدیل در کل مخزن است:
+ *   request() → تومان × ۱۰ = ریال (به سمت درگاه)
+ *   verify()  → ریالِ پاسخ درگاه ÷ ۱۰ = تومان (مقایسه‌ی هم‌واحد سمت PaymentController)
+ * هیچ جای دیگری اجازه‌ی ضرب/تقسیم مبلغ را ندارد.
+ *
  * امنیت: مبلغ و وضعیت هرگز از کوئریِ برگشتی درگاه باور نمی‌شود؛
  * همیشه با verify سمت‌سرور و تطبیق مبلغِ ثبت‌شده در payments تأیید می‌شود.
  * مرچنت از پنل مدیریت (settings.zibal_merchant) یا .env (ZIBAL_MERCHANT).
@@ -45,11 +51,11 @@ final class ZibalProvider
     }
 
     /**
-     * درخواست پرداخت جدید.
+     * درخواست پرداخت جدید — مبلغ ورودی «تومان» است؛ تبدیل به ریال فقط همین‌جا.
      * @return array{ok:bool, trackId?:string, payUrl?:string, error?:string, raw:?string}
      */
     public static function request(
-        int $amountRials,
+        int $amountTomans,
         string $callbackUrl,
         string $orderUuid,
         string $description,
@@ -59,6 +65,9 @@ final class ZibalProvider
         if ($merchant === '') {
             return ['ok' => false, 'error' => 'مرچنت زیبال تنظیم نشده است (پنل ← تنظیمات ← پرداخت)', 'raw' => null];
         }
+
+        // ★ نقطه‌ی یکتای تبدیل واحد در کل مخزن: تومان × ۱۰ = ریال (API زیبال ریالی است)
+        $amountRials = $amountTomans * 10;
 
         $payload = [
             'merchant' => $merchant,
@@ -91,14 +100,15 @@ final class ZibalProvider
     }
 
     /**
-     * تأیید پرداخت سمت سرور.
-     * @return array{ok:bool, refNumber:?string, cardPan:?string, paid:bool, message:string, raw:?string}
+     * تأیید پرداخت سمت سرور — مبلغِ پاسخ درگاه (ریال) به «تومان» نرمال می‌شود
+     * تا مقایسه با سفارش هم‌واحد باشد؛ نبود/ناعدد بودن amount → null (fail-closed).
+     * @return array{ok:bool, refNumber:?string, cardPan:?string, paid:bool, message:string, amountTomans:?int, raw:?string}
      */
     public static function verify(string $trackId): array
     {
         $merchant = self::merchant();
         if ($merchant === '') {
-            return ['ok' => false, 'refNumber' => null, 'cardPan' => null, 'paid' => false, 'message' => 'مرچنت زیبال تنظیم نشده است', 'raw' => null];
+            return ['ok' => false, 'refNumber' => null, 'cardPan' => null, 'paid' => false, 'message' => 'مرچنت زیبال تنظیم نشده است', 'amountTomans' => null, 'raw' => null];
         }
 
         [$status, $body] = self::httpJson(self::apiBase() . '/v1/verify', [
@@ -109,7 +119,7 @@ final class ZibalProvider
 
         if ($status !== 200 || !is_array($json)) {
             self::log('error', $trackId, 'verify', "HTTP {$status}", $body);
-            return ['ok' => false, 'refNumber' => null, 'cardPan' => null, 'paid' => false, 'message' => 'ارتباط با درگاه برای تأیید برقرار نشد', 'raw' => $body];
+            return ['ok' => false, 'refNumber' => null, 'cardPan' => null, 'paid' => false, 'message' => 'ارتباط با درگاه برای تأیید برقرار نشد', 'amountTomans' => null, 'raw' => $body];
         }
 
         $result = (int) ($json['result'] ?? 0);
@@ -118,12 +128,19 @@ final class ZibalProvider
 
         self::log($paid ? 'success' : 'error', $trackId, 'verify', self::verifyMessage($result), $body);
 
+        // ★ نقطه‌ی یکتای تبدیل معکوس: ریالِ درگاه ÷ ۱۰ = تومان — نبود amount = null (fail-closed)
+        $amountTomans = null;
+        if (array_key_exists('amount', $json) && is_numeric($json['amount'])) {
+            $amountTomans = intdiv((int) $json['amount'], 10);
+        }
+
         return [
             'ok' => $paid,
             'refNumber' => isset($json['refNumber']) ? (string) $json['refNumber'] : null,
             'cardPan' => isset($json['cardNumber']) ? (string) $json['cardNumber'] : null,
             'paid' => $paid,
             'message' => self::verifyMessage($result),
+            'amountTomans' => $amountTomans,
             'raw' => $body,
         ];
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
-import { toFa, faDateTimeUtc, hezarToman } from '@/lib/format';
+import { toFa, faDateTimeUtc, formatToman } from '@/lib/format';
 import { isNativeApp, onBrowserFinished, openExternal } from '@/lib/native';
 import { PaymentMethodSheet } from '@/modals/PaymentMethodSheet';
 import {
@@ -30,9 +30,9 @@ import {
  */
 
 const FALLBACK_PLANS: Plan[] = [
-  { code: 'monthly', title: 'اشتراک ماهانه', months: 1, priceRials: 490000, description: 'یک ماه دسترسی کامل به کارام پرو' },
-  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceRials: 1900000, description: 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف' },
-  { code: 'lifetime', title: 'دائمی', months: 0, priceRials: 4900000, description: 'یکبار پرداخت، همیشه پرو' },
+  { code: 'monthly', title: 'اشتراک ماهانه', months: 1, priceTomans: 49000, description: 'یک ماه دسترسی کامل به کارام پرو' },
+  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceTomans: 190000, description: 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف' },
+  { code: 'lifetime', title: 'دائمی', months: 0, priceTomans: 490000, description: 'یکبار پرداخت، همیشه پرو' },
 ];
 
 const PLAN_LABELS: Record<string, string> = {
@@ -53,8 +53,6 @@ const BENEFITS = [
   'همگام‌سازی ابری و بک‌آپ خودکار نامحدود',
   'قفل امنیتی بیومتریک و تم‌های اختصاصی لوکس',
 ];
-
-/** هزار تومان — قیمت‌ها سمت سرور ریال هستند؛ تبدیل در lib/format */
 
 export function PaywallView() {
   const showToast = useAppStore((s) => s.showToast);
@@ -228,8 +226,8 @@ export function PaywallView() {
     setBuying(true);
     try {
       const res = await createPaymentOrder(selected, giftCode);
-      if (res.discountRials && res.discountRials > 0) {
-        showToast(`کد هدیه ${res.couponCode ?? ''} اعمال شد — ${res.discountRials / 10} تومان کمتر`);
+      if (res.discountTomans && res.discountTomans > 0) {
+        showToast(`کد هدیه ${res.couponCode ?? ''} اعمال شد — ${formatToman(res.discountTomans)} کمتر`);
       }
       if (isNativeApp()) {
         // فاز ۶ — اپ اندروید: درگاه در تب مرورگر سیستم باز می‌شود؛ با بسته‌شدن تب
@@ -482,7 +480,7 @@ export function PaywallView() {
               </div>
               {giftQuote?.valid ? (
                 <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
-                  کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {hezarToman(giftQuote.discountRials ?? 0)} هزار تومان تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
+                  کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {formatToman(giftQuote.discountTomans ?? 0)} تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
                 </p>
               ) : null}
               {giftError ? (
@@ -527,8 +525,8 @@ export function PaywallView() {
                     {PLAN_LABELS[p.code] ?? p.title}
                   </span>
                   <div className="my-2">
-                    <span className={`font-black ${featured ? 'text-lg text-primary' : 'text-base'}`}>{hezarToman(p.priceRials)}</span>
-                    <span className={`text-[10px] block ${featured ? 'font-bold text-primary' : ''}`}>هزار تومان</span>
+                    <span className={`font-black ${featured ? 'text-lg text-primary' : 'text-base'}`}>{formatToman(p.priceTomans)}</span>
+                    <span className={`text-[10px] block ${featured ? 'font-bold text-primary' : ''}`}>تومان</span>
                   </div>
                   <span className={`text-[9px] ${featured ? 'text-emerald-600 font-bold' : 'text-outline'}`}>
                     {PLAN_NOTES[p.code] ?? p.description ?? ''}
@@ -594,7 +592,7 @@ export function PaywallView() {
               <div key={r.uuid} className="rounded-xl border border-outline-variant/30 bg-surface-container dark:bg-slate-700/60 p-3 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold truncate">
-                    {r.planTitle ?? r.planCode} · {hezarToman(r.amountRials)} هزار تومان
+                    {r.planTitle ?? r.planCode} · {formatToman(r.amountTomans)}
                   </p>
                   <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${depositStatusClass[r.status]}`}>
                     {depositStatusLabel[r.status]}

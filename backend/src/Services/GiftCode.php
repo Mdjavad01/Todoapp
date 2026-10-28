@@ -11,16 +11,16 @@ declare(strict_types=1);
  * (orders.coupon_id) هم به واریز کارت‌به‌کارت (deposit_requests.coupon_id).
  *
  * قواعد:
- *  - percent = ۱..۱۰۰٪ تخفیف؛ amount = مبلغ ثابت ریال
+ *  - percent = ۱..۱۰۰٪ تخفیف؛ amount = مبلغ ثابت «تومان» (از فاز تومان)
  *  - max_uses خالی/۰ یعنی بی‌نهایت؛ expires_at خالی یعنی بدون انقضا
  *  - هر کاربر هر کد فقط یک‌بار (UNIQUE روی coupon_redemptions)
  *  - شمارش استفاده فقط بعد از تأیید قطعی (پرداخت موفق / تأیید ادمین) بالا می‌رود
- *  - مبلغ قابل پرداخت هرگز زیر ۱٬۰۰۰ ریال نمی‌رود (کف امن درگاه/حواله)
+ *  - مبلغ قابل پرداخت هرگز زیر ۱۰۰ تومان نمی‌رود (معادل کف امن ۱٬۰۰۰ ریالی درگاه/حواله)
  */
 final class GiftCode
 {
-    /** کف مبلغ قابل پرداخت (ریال) */
-    public const MIN_PAYABLE = 1000;
+    /** کف مبلغ قابل پرداخت (تومان) — معادل ۱٬۰۰۰ ریال درگاه */
+    public const MIN_PAYABLE = 100;
 
     /** نرمال‌سازی کد: ارقام فارسی → لاتین، حذف فاصله/خط تیره، حروف بزرگ */
     public static function normalize(string $raw): string
@@ -29,10 +29,10 @@ final class GiftCode
     }
 
     /**
-     * اعتبارسنجی کد برای کاربر و قیمت مشخص + محاسبه‌ی تخفیف.
-     * @return array{ok:true, couponId:int, code:string, discountRials:int, payableRials:int}|array{ok:false, error:string}
+     * اعتبارسنجی کد برای کاربر و قیمت مشخص + محاسبه‌ی تخفیف — همه‌ی مبالغ «تومان».
+     * @return array{ok:true, couponId:int, code:string, discountTomans:int, payableTomans:int}|array{ok:false, error:string}
      */
-    public static function quote(PDO $pdo, string $rawCode, int $userId, int $priceRials): array
+    public static function quote(PDO $pdo, string $rawCode, int $userId, int $priceTomans): array
     {
         GiftSchema::ensure();
 
@@ -43,7 +43,7 @@ final class GiftCode
         if (!preg_match('/^[A-Z0-9]{3,50}$/', $code)) {
             return ['ok' => false, 'error' => 'کد هدیه نامعتبر است'];
         }
-        if ($priceRials < self::MIN_PAYABLE) {
+        if ($priceTomans < self::MIN_PAYABLE) {
             return ['ok' => false, 'error' => 'قیمت این پلن برای اعمال تخفیف معتبر نیست'];
         }
 
@@ -74,7 +74,7 @@ final class GiftCode
             return ['ok' => false, 'error' => 'شما قبلاً از این کد استفاده کرده‌اید'];
         }
 
-        $price = max(0, $priceRials);
+        $price = max(0, $priceTomans);
         $discount = (string) $row['type'] === 'percent'
             ? (int) floor($price * max(0, min(100, (int) $row['value'])) / 100)
             : min(max(0, (int) $row['value']), $price);
@@ -85,8 +85,8 @@ final class GiftCode
             'ok' => true,
             'couponId' => (int) $row['id'],
             'code' => (string) $row['code'],
-            'discountRials' => $discount,
-            'payableRials' => $payable,
+            'discountTomans' => $discount,
+            'payableTomans' => $payable,
         ];
     }
 
@@ -96,9 +96,9 @@ final class GiftCode
      * رد می‌شود) — ولی هیچ‌وقت Exception نمی‌دهد: پرداخت/واریز هرگز به‌خاطر ژورنال هدیه نمی‌شکند.
      * بی‌صدا: اگر ثبت قبلاً انجام شده بود (UNIQUE) هیچ اثر مضاعفی ندارد.
      */
-    public static function registerRedemption(PDO $pdo, ?int $couponId, int $userId, string $kind, ?int $referenceId, int $discountRials): void
+    public static function registerRedemption(PDO $pdo, ?int $couponId, int $userId, string $kind, ?int $referenceId, int $discountTomans): void
     {
-        if ($couponId === null || $couponId < 1 || $discountRials <= 0) {
+        if ($couponId === null || $couponId < 1 || $discountTomans <= 0) {
             return;
         }
         if (!in_array($kind, ['order', 'deposit'], true)) {
@@ -109,7 +109,7 @@ final class GiftCode
         }
         try {
             $ins = $pdo->prepare(
-                'INSERT INTO coupon_redemptions (uuid, coupon_id, user_id, kind, reference_id, discount_rials, created_at)
+                'INSERT INTO coupon_redemptions (uuid, coupon_id, user_id, kind, reference_id, discount_tomans, created_at)
                  VALUES (:uuid, :g, :u, :k, :r, :d, :now)'
             );
             $ins->execute([
@@ -118,7 +118,7 @@ final class GiftCode
                 ':u' => $userId,
                 ':k' => $kind,
                 ':r' => $referenceId,
-                ':d' => $discountRials,
+                ':d' => $discountTomans,
                 ':now' => gmdate('Y-m-d H:i:s'),
             ]);
             $pdo->prepare('UPDATE coupons SET used_count = used_count + 1, updated_at = :now WHERE id = :id')

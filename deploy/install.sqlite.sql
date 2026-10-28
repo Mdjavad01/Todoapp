@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS plans (
   code        TEXT(50) NOT NULL UNIQUE,
   title       TEXT(120) NOT NULL,
   months      INTEGER NOT NULL DEFAULT 1,
-  price_rials INTEGER NOT NULL DEFAULT 0,
+  price_tomans INTEGER NOT NULL DEFAULT 0,
   description TEXT(255),
   is_active   INTEGER NOT NULL DEFAULT 1,
   sort_order  INTEGER NOT NULL DEFAULT 0,
@@ -164,8 +164,8 @@ CREATE TABLE IF NOT EXISTS orders (
   user_id        INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   plan_id        INTEGER NOT NULL REFERENCES plans (id),
   coupon_id      INTEGER REFERENCES coupons (id),
-  amount_rials   INTEGER NOT NULL,
-  discount_rials INTEGER NOT NULL DEFAULT 0,
+  amount_tomans   INTEGER NOT NULL,
+  discount_tomans INTEGER NOT NULL DEFAULT 0,
   status         TEXT(16) NOT NULL DEFAULT 'created',
   description    TEXT(255),
   created_at     TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS payments (
   order_id      INTEGER NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
   gateway       TEXT(16) NOT NULL,
   status        TEXT(16) NOT NULL DEFAULT 'created',
-  amount_rials  INTEGER NOT NULL,
+  amount_tomans  INTEGER NOT NULL,
   gateway_ref   TEXT(190),
   verified_at   TEXT(19),
   verify_payload TEXT,
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS deposit_requests (
   user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   plan_id         INTEGER REFERENCES plans (id),
   plan_code       TEXT(50) NOT NULL,
-  amount_rials    INTEGER NOT NULL DEFAULT 0,
+  amount_tomans    INTEGER NOT NULL DEFAULT 0,
   reference       TEXT(64) NOT NULL,
   note            TEXT(500),
   status          TEXT(16) NOT NULL DEFAULT 'pending',
@@ -316,10 +316,10 @@ INSERT OR IGNORE INTO admin_roles (code, title, permissions) VALUES
   ('superadmin', 'مدیر کل', '{}'),
   ('support', 'پشتیبان', '{"users.view":true,"orders.view":true,"orders.review":true}');
 
-INSERT OR IGNORE INTO plans (uuid, code, title, months, price_rials, description, is_active, sort_order) VALUES
-  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'monthly',  'اشتراک ماهانه',  1, 490000,  'یک ماه دسترسی کامل به کارام پرو', 1, 1),
-  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'annual',   'اشتراک سالانه', 12, 1900000, 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
-  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'lifetime', 'دائمی',          0, 4900000, 'یکبار پرداخت، همیشه پرو', 1, 3);
+INSERT OR IGNORE INTO plans (uuid, code, title, months, price_tomans, description, is_active, sort_order) VALUES
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'monthly',  'اشتراک ماهانه',  1, 49000,   'یک ماه دسترسی کامل به کارام پرو', 1, 1),
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'annual',   'اشتراک سالانه', 12, 190000,  'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
+  (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), 'lifetime', 'دائمی',          0, 490000,  'یکبار پرداخت، همیشه پرو', 1, 3);
 
 INSERT OR IGNORE INTO settings (key, value) VALUES
   ('app_name', 'کارام'),
