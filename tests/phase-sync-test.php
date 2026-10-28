@@ -147,7 +147,7 @@ check('bootstrap.sync.maxItems موجود است', $st === 200 && isset($j['sync
 /* ---------- ۱) LWW قطعی: (updatedAt, rev, revDevice) ---------- */
 echo "۱) LWW قطعی — شکستن تساوی هم‌ثانیه\n";
 $L1 = 'bbbb1111-0000-4000-8000-000000000001';
-$T0 = gmdate('Y-m-d\T10:00:00\Z', time() - 3600); // ثابت — برای ساختن تساوی واقعی
+$T0 = '2026-01-01T10:00:00Z'; // ثابت در گذشته — برای ساختن تساوی واقعی (مستقل از ساعت اجرای تست)
 [$st, $j] = syncCall($tokA, ['cursor' => null, 'pull' => 1, 'deviceUuid' => 'device-a', 'changes' => ch([listRow($L1, 'نسخه اولیه A', $T0)])]);
 check('درج اولیه لیست', $st === 200 && ($j['applied']['lists'] ?? 0) === 1);
 
@@ -191,7 +191,7 @@ check('کماکان نسخه‌ی B در سرور', $found !== null && $found['n
 check('تساوی کامل = اعمال مجدد (idempotent)', $st === 200 && ($j['applied']['lists'] ?? 0) === 1);
 
 // updatedAt جدیدتر با rev کوچک‌تر → زمان مقدم بر rev است
-$T1 = gmdate('Y-m-d\T10:00:01\Z', time() - 3600);
+$T1 = '2026-01-01T10:00:01Z'; // یک ثانیه بعد از T0 — قطعی (اصلاح وابستگی زمانی تست)
 [$st, $j] = syncCall($tokA, ['cursor' => null, 'pull' => 1, 'deviceUuid' => 'device-c', 'changes' => ch([listRow($L1, 'زمان جدیدتر برنده است', $T1, ['rev' => 0, 'revDevice' => 'device-c'])])]);
 check('updatedAt جدیدتر مقدم بر rev', $st === 200 && ($j['applied']['lists'] ?? 0) === 1);
 [$st, $j] = syncCall($tokA, ['cursor' => null, 'pull' => 1, 'deviceUuid' => 'device-c', 'changes' => ch()]);

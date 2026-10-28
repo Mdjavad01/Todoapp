@@ -1,5 +1,14 @@
--- کارام — v1.6: ترمیم جریان سینک (فاز ۱ بازسازی)
+-- کارام — v1.6: ترمیم جریان سینک (فاز ۱ بازسازی) — ویرایش ۲ (اصلاح جدول پشتیبان)
 -- سه کار: (۱) ستون‌های نسخه‌ی LWW  (۲) دوتایی‌زدایی نرم از لیست‌های آزمایشی تکراری  (۳) پشتیبان و راه بازگشت
+--
+-- ⚠️ ویرایش ۲ — چه چیزی اصلاح شد؟
+--   نسخه‌ی قبلی جدول پشتیبان را با «CREATE TABLE ... LIKE lists» می‌ساخت که کلید یکتای
+--   uq_lists_uuid را هم به ارث می‌برد؛ درج فقطِ ستون id باعث می‌شد همه‌ی ردیف‌ها uuid خالی
+--   بگیرند و ردیف دوم با خطای #1062 (Duplicate entry '') متوقف شود.
+--   در این ویرایش جدول‌های پشتیبان با DDL صریح و بدون هیچ کلید یکتایی ساخته می‌شوند
+--   (فقط PRIMARY KEY روی id) و همه‌ی ستون‌های لازم برای بازگشت به‌صورت کامل کپی می‌شوند.
+--   اگر از اجرای خرابِ نسخه‌ی قبلی جدول پشتیبان ناقص مانده باشد، این نسخه خودش تشخیص می‌دهد،
+--   حذف و از نو می‌سازد — پس همین فایل را همان‌جا که خطا داد، دوباره اجرا کنید.
 --
 -- این مهاجرت «تکرارپذیر» است (چند بار اجرا بی‌ضرر) و «برگشت‌پذیر» (بخش ۵).
 -- اجرا: phpMyAdmin ← انتخاب دیتابیس کارام ← SQL ← پیست ← Go
@@ -71,14 +80,71 @@ PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 -- ===============================================================
 -- ۲) پشتیبان درون‌دیتابیسی (فقط کاربرانی که لیست تکراری هم‌نام سید دارند)
 --    برگشت در بخش ۵ از همین جدول‌ها انجام می‌شود.
+--
+--    ⚠️ DDL صریح بدون هیچ کلید یکتایی (اصلاح ویرایش ۲):
+--    اگر جدول پشتیبان قبلی از نوع «LIKE» با کلید یکتای به‌ارث‌رسیده باشد
+--    (عامل خطای #1062)، شناسایی و از نو ساخته می‌شود.
 -- ===============================================================
 
-CREATE TABLE IF NOT EXISTS `_karam_v16_bak_lists` LIKE `lists`;
-CREATE TABLE IF NOT EXISTS `_karam_v16_bak_tasks` LIKE `tasks`;
-CREATE TABLE IF NOT EXISTS `_karam_v16_bak_subtasks` LIKE `subtasks`;
+-- ۲-الف) اگر نسخه‌ی خراب (با کلید یکتای غیر PRIMARY) موجود است، حذف شود
+SET @bak_bad_lists = (SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = '_karam_v16_bak_lists'
+    AND INDEX_NAME <> 'PRIMARY' AND NON_UNIQUE = 0);
+SET @ddl = IF(@bak_bad_lists > 0, 'DROP TABLE `_karam_v16_bak_lists`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
-INSERT INTO `_karam_v16_bak_lists` (`id`)
-SELECT l.id FROM `lists` l
+SET @bak_bad_tasks = (SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = '_karam_v16_bak_tasks'
+    AND INDEX_NAME <> 'PRIMARY' AND NON_UNIQUE = 0);
+SET @ddl = IF(@bak_bad_tasks > 0, 'DROP TABLE `_karam_v16_bak_tasks`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @bak_bad_subtasks = (SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = '_karam_v16_bak_subtasks'
+    AND INDEX_NAME <> 'PRIMARY' AND NON_UNIQUE = 0);
+SET @ddl = IF(@bak_bad_subtasks > 0, 'DROP TABLE `_karam_v16_bak_subtasks`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
+
+-- ۲-ب) ساخت جدول‌های پشتیبان با DDL صریح (فقط ستون‌های لازم برای بازگشت — بدون کلید یکتا)
+CREATE TABLE IF NOT EXISTS `_karam_v16_bak_lists` (
+  `id`         BIGINT UNSIGNED NOT NULL,
+  `user_id`    BIGINT UNSIGNED NOT NULL,
+  `name`       VARCHAR(120) NOT NULL,
+  `emoji`      VARCHAR(16)  NULL,
+  `color`      VARCHAR(16)  NULL,
+  `sort_order` INT          NOT NULL DEFAULT 0,
+  `created_at` DATETIME     NULL,
+  `updated_at` DATETIME     NULL,
+  `deleted_at` DATETIME     NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `_karam_v16_bak_tasks` (
+  `id`           BIGINT UNSIGNED NOT NULL,
+  `user_id`      BIGINT UNSIGNED NOT NULL,
+  `list_id`      BIGINT UNSIGNED NOT NULL,
+  `title`        VARCHAR(255) NOT NULL,
+  `completed_at` DATETIME     NULL,
+  `created_at`   DATETIME     NULL,
+  `updated_at`   DATETIME     NULL,
+  `deleted_at`   DATETIME     NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `_karam_v16_bak_subtasks` (
+  `id`         BIGINT UNSIGNED NOT NULL,
+  `task_id`    BIGINT UNSIGNED NOT NULL,
+  `title`      VARCHAR(255) NOT NULL,
+  `done`       TINYINT(1)   NOT NULL DEFAULT 0,
+  `updated_at` DATETIME     NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ۲-ج) کپی کامل ستون‌های لازم (با گارد «قبلاً کپی نشده» — تکرارپذیر)
+INSERT INTO `_karam_v16_bak_lists`
+  (`id`, `user_id`, `name`, `emoji`, `color`, `sort_order`, `created_at`, `updated_at`, `deleted_at`)
+SELECT l.`id`, l.`user_id`, l.`name`, l.`emoji`, l.`color`, l.`sort_order`, l.`created_at`, l.`updated_at`, l.`deleted_at`
+FROM `lists` l
 WHERE NOT EXISTS (SELECT 1 FROM `_karam_v16_bak_lists` b WHERE b.id = l.id)
   AND l.name IN ('کارهای خانه','خرید هفتگی','کنکور و مطالعه','ترید و بازارهای مالی','مالی و قبوض','کاری')
   AND l.user_id IN (
@@ -88,14 +154,18 @@ WHERE NOT EXISTS (SELECT 1 FROM `_karam_v16_bak_lists` b WHERE b.id = l.id)
     GROUP BY user_id, name HAVING COUNT(*) > 1
   );
 
-INSERT INTO `_karam_v16_bak_tasks` (`id`)
-SELECT t.id FROM `tasks` t
+INSERT INTO `_karam_v16_bak_tasks`
+  (`id`, `user_id`, `list_id`, `title`, `completed_at`, `created_at`, `updated_at`, `deleted_at`)
+SELECT t.`id`, t.`user_id`, t.`list_id`, t.`title`, t.`completed_at`, t.`created_at`, t.`updated_at`, t.`deleted_at`
+FROM `tasks` t
 JOIN `lists` l ON l.id = t.list_id
 WHERE NOT EXISTS (SELECT 1 FROM `_karam_v16_bak_tasks` b WHERE b.id = t.id)
   AND l.id IN (SELECT id FROM `_karam_v16_bak_lists`);
 
-INSERT INTO `_karam_v16_bak_subtasks` (`id`)
-SELECT s.id FROM `subtasks` s
+INSERT INTO `_karam_v16_bak_subtasks`
+  (`id`, `task_id`, `title`, `done`, `updated_at`)
+SELECT s.`id`, s.`task_id`, s.`title`, s.`done`, s.`updated_at`
+FROM `subtasks` s
 WHERE NOT EXISTS (SELECT 1 FROM `_karam_v16_bak_subtasks` b WHERE b.id = s.id)
   AND s.task_id IN (SELECT id FROM `_karam_v16_bak_tasks`);
 
@@ -171,6 +241,7 @@ HAVING COUNT(*) > 1;
 --   SET l.name = b.name, l.emoji = b.emoji, l.color = b.color, l.sort_order = b.sort_order,
 --       l.created_at = b.created_at, l.updated_at = b.updated_at, l.deleted_at = b.deleted_at,
 --       l.applied_at = NOW(), l.rev = COALESCE(l.rev,0)+1, l.rev_device = 'server-rollback-v1.6';
+-- بازگرداندن زیرکارها:
 -- UPDATE `subtasks` s JOIN `_karam_v16_bak_subtasks` b ON b.id = s.id
---   SET s.title = b.title, s.done = b.done, s.task_id = b.task_id, s.updated_at = b.updated_at, s.applied_at = NOW();
+--   SET s.title = b.title, s.done = b.done, s.updated_at = b.updated_at, s.applied_at = NOW();
 -- (اگر میزبان شما اجازه‌ی اجرای چند دستمه‌ای نداد، هر دستور را جداگانه اجرا کنید.)

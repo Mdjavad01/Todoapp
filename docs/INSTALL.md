@@ -25,9 +25,10 @@
     ├── fonts/  icons/  manifest.webmanifest  sw.js
     ├── .htaccess             ← از deploy/.htaccess
     └── api/                  ← بک‌اند PHP
-        ├── .htaccess         ← از backend/.htaccess (بستن دسترسی)
-        ├── public/           ← محتوای backend/public (index.php + .htaccess)
-        ├── src/              ← کلاس‌های PHP
+        ├── .htaccess         ← از backend/public/.htaccess (مسیریابی + محافظت)
+        ├── index.php         ← از backend/public/index.php (نقطه‌ی ورود)
+        ├── src/              ← کلاس‌های PHP (src/.htaccess با Require all denied همراهش است)
+        ├── cron/             ← کرون‌ها (cron/.htaccess با Require all denied همراهش است)
         └── storage/logs/
 ```
 
@@ -53,9 +54,9 @@ bun run build
 1. محتویات `frontend/dist/*` را در `public_html/` آپلود کنید.
 2. فایل `deploy/.htaccess` را در `public_html/.htaccess` قرار دهید (جایگزین/ادغام با فایل فعلی).
 3. پوشه‌ی `backend/` را آپلود کنید:
-   - محتوای `backend/public/` → `public_html/api/`
-   - پوشه‌های `src/` و `storage/` → داخل `public_html/api/`
-   - فایل `backend/.htaccess` → `public_html/api/.htaccess`
+   - محتوای `backend/public/` → `public_html/api/` (شامل index.php و .htaccess)
+   - پوشه‌های `src/` و `storage/` و `cron/` → داخل `public_html/api/`
+   - ⚠️ نکته‌ی حیاتی: `.htaccess` داخل `public_html/api/` باید همان `backend/public/.htaccess` باشد (مسیریابی به index.php). هرگز فایلی با «Require all denied» در ریشه‌ی api نگذارید — کل API را 403 می‌کند. محافظت کد با `src/.htaccess` و `cron/.htaccess` داخل خود پوشه‌هاست (در ریپو همراه است).
 4. پوشه‌ی `private/` را در home اکانت بسازید (بیرون از public_html) و دسترسی `700` بدهید.
 5. محتویات `frontend/admin/dist/*` را در `public_html/panel/` آپلود کنید (پوشه را بسازید) — این همان پنل مدیریت است.
 
