@@ -6,9 +6,9 @@ import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { isNativeApp } from '@/lib/native';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۳.۹.۰';
+const APP_VERSION = '۴.۰.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '3.9.0';
+const APP_VERSION_RAW = '4.0.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {
@@ -58,6 +58,9 @@ export function SettingsView() {
   const syncState = useAppStore((s) => s.syncState);
   const appSettings = useAppStore((s) => s.appSettings);
   const openTermsSheet = useAppStore((s) => s.openTermsSheet);
+  const openModal = useAppStore((s) => s.openModal);
+  const premium = useAppStore((s) => s.premium);
+  const isPro = premium.loaded && premium.isPremium;
 
   // چک‌کننده به‌روزرسانی (v17) — «آخرین نسخه» از پنل ادمین ثبت می‌شود
   const update = appSettings.update;
@@ -121,7 +124,76 @@ export function SettingsView() {
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-settings">
-      <h2 className="text-headline-lg font-bold text-on-surface dark:text-inverse-on-surface">تنظیمات</h2>
+      <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">تنظیمات</h1>
+
+      {/* فاز الف — کارت کوچک اشتراک پرو (بالای تنظیمات). کلید خاموشی پرداخت‌ها در شیت پرداخت
+          مثل قبل مدیریت می‌شود — این کارت فقط مسیر ورود را حفظ می‌کند */}
+      <div
+        className="rounded-2xl border border-secondary/30 bg-secondary/5 dark:bg-secondary/10 p-4 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition-transform"
+        onClick={() => setView('paywall')}
+        role="button"
+        aria-label={isPro ? 'وضعیت اشتراک کارام پرو' : 'ارتقا به کارام پرو'}
+        id="settings-pro"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Icon name="workspace_premium" size={26} className="text-secondary shrink-0" />
+          <div className="min-w-0">
+            <p className="text-body-md font-bold text-on-surface dark:text-inverse-on-surface">
+              {isPro ? 'اشتراک کارام پرو فعال است' : 'ارتقا به کارام پرو'}
+            </p>
+            <p className="text-xs text-on-surface-variant truncate">
+              {isPro
+                ? premium.daysLeft !== null
+                  ? `${toFa(premium.daysLeft)} روز باقی‌مانده`
+                  : 'بدون محدودیت زمانی'
+                : 'تحلیل عمقی، بسته‌های شغلی و تم‌های اختصاصی'}
+            </p>
+          </div>
+        </div>
+        <span className="px-2.5 py-1 bg-secondary text-white text-xs font-bold rounded-lg shadow shrink-0">
+          {isPro ? 'پرو' : 'مشاهده'}
+        </span>
+      </div>
+
+      {/* فاز الف — قالب‌ها و بسته‌های شغلی (از خانه به تنظیمات منتقل شدند) + مدیریت لیست‌ها */}
+      <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20 text-body-md">
+        <div
+          className="p-3.5 flex justify-between items-center cursor-pointer"
+          onClick={() => setView('templates')}
+          role="button"
+          aria-label="قالب‌های آماده"
+        >
+          <div className="flex items-center gap-2.5">
+            <Icon name="auto_awesome" size={22} className="text-outline" />
+            <span>قالب‌های آماده</span>
+          </div>
+          <Icon name="arrow_back_ios" size={14} className="text-outline" />
+        </div>
+        <div
+          className="p-3.5 flex justify-between items-center cursor-pointer"
+          onClick={() => setView('jobkits')}
+          role="button"
+          aria-label="بسته‌های شغلی تخصصی"
+        >
+          <div className="flex items-center gap-2.5">
+            <Icon name="psychology" size={22} className="text-outline" />
+            <span>بسته‌های شغلی تخصصی</span>
+          </div>
+          <Icon name="arrow_back_ios" size={14} className="text-outline" />
+        </div>
+        <div
+          className="p-3.5 flex justify-between items-center cursor-pointer"
+          onClick={() => openModal('manageLists')}
+          role="button"
+          aria-label="مدیریت لیست‌ها و ردیف‌های خانه"
+        >
+          <div className="flex items-center gap-2.5">
+            <Icon name="folder" size={22} className="text-outline" />
+            <span>مدیریت لیست‌ها و ردیف‌های خانه</span>
+          </div>
+          <Icon name="arrow_back_ios" size={14} className="text-outline" />
+        </div>
+      </div>
 
       {/* کارت به‌روزرسانی (v17) — فقط وقتی سرور نسخه‌ی جدیدتری ثبت کرده باشد */}
       {hasUpdate ? (
@@ -325,16 +397,6 @@ export function SettingsView() {
         </div>
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
-          onClick={() => setView('paywall')}
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="star" size={22} className="text-outline" />
-            <span className="font-bold">ارتقا به نسخه پرو</span>
-          </div>
-          <Icon name="arrow_back_ios" size={16} className="text-outline" />
-        </div>
-        <div
-          className="p-3.5 flex justify-between items-center cursor-pointer"
           onClick={() => showToast('به‌زودی در کافه‌بازار منتشر می‌شود')}
         >
           <div className="flex items-center gap-2.5">
@@ -399,29 +461,6 @@ export function SettingsView() {
           </>
         )}
       </p>
-    </section>
-  );
-}
-
-/** بخش ۱۴: وضعیت خالی (نمایش مستقل) */
-export function EmptyStateView() {
-  const openModal = useAppStore((s) => s.openModal);
-  return (
-    <section className="p-margin flex flex-col items-center justify-center text-center gap-3 py-16" id="view-emptyState">
-      <div className="w-20 h-20 rounded-2xl bg-surface-container dark:bg-slate-800 flex items-center justify-center text-primary mb-2">
-        <Icon name="checklist" size={36} />
-      </div>
-      <h3 className="text-headline-lg font-bold text-on-surface dark:text-inverse-on-surface">هیچ کاری برای امروز نمانده!</h3>
-      <p className="text-body-sm text-on-surface-variant max-w-[260px] leading-relaxed">
-        تمام وظایف تعیین‌شده با موفقیت انجام شده‌اند. وقت یک استراحت کوتاه است.
-      </p>
-      <button
-        className="mt-4 px-6 py-2.5 bg-primary text-white font-bold rounded-2xl shadow-md active:scale-95 text-body-sm flex items-center gap-1.5"
-        onClick={() => openModal('quickAdd')}
-      >
-        <Icon name="add" size={18} />
-        <span>افزودن کار جدید</span>
-      </button>
     </section>
   );
 }

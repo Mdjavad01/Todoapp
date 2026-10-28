@@ -66,6 +66,7 @@ export function PaywallView() {
   const clearPaymentResult = useAppStore((s) => s.clearPaymentResult);
   const setPaymentResult = useAppStore((s) => s.setPaymentResult);
   const openAccountSheet = useAppStore((s) => s.openAccountSheet);
+  const goHome = useAppStore((s) => s.goHome); // فاز الف — دکمه‌ی بازگشت صفحه‌ی داخلی
 
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [selected, setSelected] = useState<string>('annual');
@@ -328,6 +329,14 @@ export function PaywallView() {
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-paywall">
+      {/* فاز الف — بازگشت به صفحه‌ی قبل (صفحه‌ی داخلی) */}
+      <button
+        className="w-9 h-9 rounded-full bg-surface-container dark:bg-slate-700 flex items-center justify-center text-on-surface self-start"
+        onClick={goHome}
+        aria-label="بازگشت به خانه"
+      >
+        <Icon name="arrow_forward" size={18} />
+      </button>
       <div className="text-center py-2">
         <span className="inline-block p-2 rounded-2xl bg-amber-400/20 text-amber-500 mb-2">
           <Icon name="workspace_premium" size={36} />

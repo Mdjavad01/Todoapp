@@ -2,20 +2,26 @@ import { Icon } from './Icon';
 import { useAppStore } from '@/store/useAppStore';
 import type { ViewName } from '@/types';
 
-const TABS: { view: ViewName; icon: 'home' | 'check_circle' | 'bar_chart' | 'settings'; label: string }[] = [
+/**
+ * فاز الف — ناوبری پایین، دقیقاً ۵ تب: خانه / امروز / پلنر / آمار / تنظیمات.
+ * تب فعال با رنگ برند و وزن بولد کاملاً مشخص است. صفحات داخلی (لیست، مهم، همه،
+ * جستجو) زیر تب «خانه» هایلایت می‌شوند.
+ */
+const TABS: { view: ViewName; icon: 'home' | 'today' | 'event_note' | 'bar_chart' | 'settings'; label: string }[] = [
   { view: 'home', icon: 'home', label: 'خانه' },
-  { view: 'todayView', icon: 'check_circle', label: 'امروز' },
+  { view: 'myday', icon: 'today', label: 'امروز' },
+  { view: 'planned', icon: 'event_note', label: 'پلنر' },
   { view: 'analytics', icon: 'bar_chart', label: 'آمار' },
   { view: 'settings', icon: 'settings', label: 'تنظیمات' },
 ];
 
-/** ناوبری پایین — دقیقاً مطابق طرح */
 export function BottomNav() {
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
 
   const isActive = (tab: ViewName): boolean =>
-    tab === view || (view === 'listView' && tab === 'home') || (view === 'myday' && tab === 'todayView');
+    tab === view ||
+    ((view === 'listView' || view === 'important' || view === 'all' || view === 'search') && tab === 'home');
 
   return (
     <nav
@@ -25,7 +31,7 @@ export function BottomNav() {
       {TABS.map((tab) => (
         <button
           key={tab.view}
-          className={`flex flex-col items-center justify-center active:scale-95 transition-transform duration-150 ${
+          className={`flex flex-col items-center justify-center w-16 h-full active:scale-95 transition-transform duration-150 ${
             isActive(tab.view)
               ? 'text-primary dark:text-inverse-primary font-bold'
               : 'text-on-surface-variant dark:text-slate-300'
@@ -38,21 +44,6 @@ export function BottomNav() {
         </button>
       ))}
     </nav>
-  );
-}
-
-/** دکمه‌ی شناور افزودن — بالای نوار افزودن سریع (فاز ۳) */
-export function Fab() {
-  const openModal = useAppStore((s) => s.openModal);
-  return (
-    <button
-      className="absolute bottom-32 left-5 w-14 h-14 rounded-full bg-primary hover:bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-95 transition-all z-40"
-      onClick={() => openModal('quickAdd')}
-      title="افزودن کار جدید"
-      aria-label="افزودن کار جدید"
-    >
-      <Icon name="add" size={30} />
-    </button>
   );
 }
 

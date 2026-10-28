@@ -220,9 +220,9 @@ export function sortTasks(tasks: TaskEntity[], key: ListSortKey, manualOrder: st
   }
 }
 
-/** کارت‌های هوشمند خانه — مرجع واحد برای HomeView و شیت مدیریت (فاز ۲ + ناوبری واقعی فاز ۳) */
+/** ردیف‌های هوشمند خانه — مرجع واحد برای HomeView و شیت مدیریت (فاز ۲ + ناوبری واقعی فاز ۳) */
 export const HUB_CARDS: { key: HubKey; label: string }[] = [
-  { key: 'today', label: 'روزهای من' },
+  { key: 'today', label: 'امروز' },
   { key: 'urgent', label: 'مهم' },
   { key: 'planned', label: 'برنامه‌ریزی‌شده' },
   { key: 'all', label: 'همه‌ی کارها' },
@@ -257,6 +257,44 @@ export function plannedSections(tasks: TaskEntity[], today: Date): { overdue: Ta
     overdue: sortC(dated.filter((t) => t.dueDate! < todayIso)),
     today: sortC(dated.filter((t) => t.dueDate === todayIso)),
     upcoming: sortC(dated.filter((t) => t.dueDate! > todayIso)),
+  };
+}
+
+/**
+ * فاز الف — بخش‌های تب «پلنر»: عقب‌افتاده / امروز / فردا / این هفته / بعداً.
+ * هفته‌ی شمسی از شنبه شروع می‌شود (همان قاعده‌ی weekBars)؛ مرزها با ISO قطعی‌اند و
+ * مرتب‌سازی داخل هر بخش همان قاعده‌ی قطعی (سررسید، ساعت، ایجاد، شناسه) است.
+ */
+export function plannerSections(tasks: TaskEntity[], today: Date): {
+  overdue: TaskEntity[];
+  today: TaskEntity[];
+  tomorrow: TaskEntity[];
+  thisWeek: TaskEntity[];
+  later: TaskEntity[];
+} {
+  const todayIso = toIsoDate(today);
+  const tomorrow = startOfDay(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = toIsoDate(tomorrow);
+  const sat = startOfDay(today);
+  sat.setDate(sat.getDate() - ((sat.getDay() + 1) % 7)); // شنبه‌ی این هفته
+  const weekEnd = new Date(sat);
+  weekEnd.setDate(sat.getDate() + 7); // انحصاری — شنبه‌ی هفته‌ی بعد
+  const weekEndIso = toIsoDate(weekEnd);
+  const dated = tasks.filter((t) => !t.deletedAt && !t.completedAt && t.dueDate !== null);
+  const cmp = (a: TaskEntity, b: TaskEntity) =>
+    (a.dueDate ?? '').localeCompare(b.dueDate ?? '') ||
+    (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99') ||
+    a.createdAt.localeCompare(b.createdAt) ||
+    a.id.localeCompare(b.id);
+  const sortC = (arr: TaskEntity[]) => [...arr].sort(cmp);
+  const due = (t: TaskEntity) => t.dueDate!;
+  return {
+    overdue: sortC(dated.filter((t) => due(t) < todayIso)),
+    today: sortC(dated.filter((t) => due(t) === todayIso)),
+    tomorrow: sortC(dated.filter((t) => due(t) === tomorrowIso)),
+    thisWeek: sortC(dated.filter((t) => due(t) > tomorrowIso && due(t) < weekEndIso)),
+    later: sortC(dated.filter((t) => due(t) >= weekEndIso)),
   };
 }
 

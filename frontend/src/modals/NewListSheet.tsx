@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Sheet, SheetHeader } from '@/components/Sheet';
+import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 
 /** آیکن‌های پیشنهادی لیست — مشترک با شیت ویرایش لیست (فاز ۲) */
 export const LIST_EMOJIS = ['🏠', '🛒', '📚', '📈', '💼', '💳', '🏋️', '✈️', '🎨', '🌸', '🍳', '🔧'];
 
-/** مودال ساخت لیست جدید (دکمه‌ی «لیست جدید» در خانه) */
+/** مودال ساخت لیست جدید (ردیف «لیست جدید» در خانه) — با میانبر قالب‌های آماده (فاز الف) */
 export function NewListSheet() {
   const modal = useAppStore((s) => s.modal);
   const openModal = useAppStore((s) => s.openModal);
+  const setView = useAppStore((s) => s.setView);
   const createList = useAppStore((s) => s.createList);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('🏠');
@@ -18,6 +20,11 @@ export function NewListSheet() {
     createList(name, emoji);
     setName('');
     setEmoji('🏠');
+  };
+
+  const goTemplates = () => {
+    openModal(null);
+    setView('templates');
   };
 
   return (
@@ -54,6 +61,14 @@ export function NewListSheet() {
         disabled={!name.trim()}
       >
         ساخت لیست
+      </button>
+      <button
+        className="w-full -mt-2 py-2 text-xs font-bold text-primary flex items-center justify-center gap-1 active:scale-95 transition-transform"
+        onClick={goTemplates}
+        aria-label="شروع از قالب‌های آماده"
+      >
+        <Icon name="auto_awesome" size={15} />
+        یا از قالب‌های آماده شروع کنید
       </button>
     </Sheet>
   );

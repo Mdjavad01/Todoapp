@@ -80,7 +80,7 @@ export function ManageListsSheet() {
             );
           })}
         </div>
-        <p className="text-[11px] text-on-surface-variant">کارت‌های بزرگ بالای خانه — هر کدام را نخواهید، خاموش کنید.</p>
+        <p className="text-[11px] text-on-surface-variant">ردیف‌های بالای خانه — هر کدام را نخواهید، خاموش کنید.</p>
       </div>
 
       {/* گروه‌ها */}

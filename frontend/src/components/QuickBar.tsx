@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '@/components/Icon';
+import { MicButton } from '@/components/Sheet';
 import { useAppStore } from '@/store/useAppStore';
 import { detectSmartDate } from '@/lib/smartDate';
 import { defaultListId } from '@/lib/selectors';
@@ -9,10 +10,11 @@ import { defaultListId } from '@/lib/selectors';
  *  - تایپ + Enter = افزودن با تشخیص هوشمند تاریخ/ساعت («فردا ساعت ۱۷ …»)
  *  - دکمه‌ی تاریخ = تقویم شمسی برای کار جدید
  *  - دکمه‌ی باز شدن = شیت کامل افزودن (با پیش‌نویس همین متن)
- * در نمای لیست، هدف همان لیست است؛ در بقیه، لیست پیش‌فرض (اولین لیست).
+ * فاز الف — فقط داخل لیست‌ها و صفحه‌ی «امروز» نشان داده می‌شود (خانه/پلنر/آمار/تنظیمات نه)
+ * و میکروفون (ورودی صوتی به‌زودی) فقط همین‌جاست.
  */
 
-const VISIBLE_VIEWS = ['home', 'listView', 'myday', 'important', 'planned', 'all'];
+const VISIBLE_VIEWS = ['listView', 'myday'];
 
 export function QuickBar() {
   const view = useAppStore((s) => s.view);
@@ -71,6 +73,7 @@ export function QuickBar() {
             {smart.label}
           </span>
         ) : null}
+        <MicButton size={19} className="w-9 h-9 rounded-xl shrink-0" />
         <button
           className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-transform shrink-0"
           onClick={() => openCalendar('quickAdd')}

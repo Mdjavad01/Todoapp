@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { TaskCard, CompletedRow } from '@/components/TaskCard';
 import { useAppStore } from '@/store/useAppStore';
-import { myDayTasks, starredPending, plannedSections, allPendingByList } from '@/lib/selectors';
-import { toFa, relativeDayLabel, faFullDate, faShort, parseIsoDate } from '@/lib/format';
+import { starredPending, allPendingByList } from '@/lib/selectors';
+import { toFa, relativeDayLabel, faShort, parseIsoDate } from '@/lib/format';
 import type { TaskEntity, ListEntity } from '@/types';
 
 /**
- * فاز ۳ — چهار نمای هوشمند واقعی (مطابق الگوی رفتاری Microsoft To Do):
- *   «روزهای من» / «مهم» / «برنامه‌ریزی‌شده» / «همه‌ی کارها»
+ * نمای‌های هوشمند (مطابق الگوی رفتاری Microsoft To Do):
+ *   «مهم» و «همه‌ی کارها» — صفحات داخلی که از ردیف‌های خانه باز می‌شوند.
+ *   «امروز» و «پلنر» به تب‌های مستقل ناوبری ۵تبی منتقل شدند (views/TodayTab و views/PlannerView).
  * همه از سِلکتورهای خالص lib/selectors.ts تغذیه می‌شوند و TaskCard مشترک دارند.
  */
 
@@ -53,8 +54,8 @@ function SmartShell({
   );
 }
 
-/** فهرست کارها + آکاردئون انجام‌شده‌ها (مشترک بین نماها) */
-function SmartTaskList({ pending, completed }: { pending: TaskEntity[]; completed: TaskEntity[] }) {
+/** فهرست کارها + آکاردئون انجام‌شده‌ها (مشترک بین نماها — در TodayTab هم استفاده می‌شود) */
+export function SmartTaskList({ pending, completed }: { pending: TaskEntity[]; completed: TaskEntity[] }) {
   const subtasks = useAppStore((s) => s.subtasks);
   const [expanded, setExpanded] = useState(false);
 
@@ -115,8 +116,8 @@ function SmartTaskList({ pending, completed }: { pending: TaskEntity[]; complete
   );
 }
 
-/** حالت خالی مشترک */
-function SmartEmpty({ emoji, title, hint }: { emoji: string; title: string; hint: string }) {
+/** حالت خالی مشترک (در TodayTab و PlannerView هم استفاده می‌شود) */
+export function SmartEmpty({ emoji, title, hint }: { emoji: string; title: string; hint: string }) {
   return (
     <div className="flex flex-col items-center justify-center text-center gap-2 py-12">
       <div className="w-20 h-20 rounded-full bg-primary-container/15 flex items-center justify-center text-4xl mb-1">
@@ -134,69 +135,7 @@ function completedOf(tasks: TaskEntity[], ids: Set<string>): TaskEntity[] {
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
 }
 
-/* ---------------- ۱) روزهای من ---------------- */
-
-export function MyDayView() {
-  const tasks = useAppStore((s) => s.tasks);
-  const myDayIds = useAppStore((s) => s.myDayIds);
-  const addMyDayTask = useAppStore((s) => s.addMyDayTask);
-  const [quick, setQuick] = useState('');
-  const today = new Date();
-
-  const pending = useMemo(() => myDayTasks(tasks, myDayIds, today).filter((t) => !t.completedAt), [tasks, myDayIds]);
-  const completed = useMemo(() => {
-    const todayIso = toIso(today);
-    return myDayTasks(tasks, myDayIds, today).filter(
-      (t) => t.completedAt && (t.completedAt ?? '').slice(0, 10) === todayIso,
-    );
-  }, [tasks, myDayIds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const submit = () => {
-    if (!quick.trim()) return;
-    void addMyDayTask(quick);
-    setQuick('');
-  };
-
-  return (
-    <SmartShell id="view-myday" title="روزهای من" subtitle={faFullDate(today)} count={pending.length}>
-      {/* افزودن دستی — کار بی‌تاریخ فقط همین‌جا می‌ماند (قاعده هرس: فردا می‌رود مگر تکمیل نشده) */}
-      <div className="p-2 bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/40 flex items-center gap-2 shadow-sm">
-        <input
-          className="flex-1 bg-transparent border-0 text-body-sm text-on-surface dark:text-inverse-on-surface focus:ring-0 placeholder:text-outline outline-none px-2"
-          placeholder="افزودن به روزهای من..."
-          type="text"
-          value={quick}
-          onChange={(e) => setQuick(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          aria-label="افزودن سریع به روزهای من"
-        />
-        <button
-          className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm active:scale-95"
-          onClick={submit}
-          disabled={!quick.trim()}
-          aria-label="افزودن"
-        >
-          <Icon name="arrow_back" size={20} />
-        </button>
-      </div>
-
-      {pending.length === 0 && completed.length === 0 ? (
-        <SmartEmpty emoji="☀️" title="روز پاکی است!" hint="کارهای امروز این‌جا جمع می‌شوند: هر کاری سررسیدش امروز باشد خودکار می‌آید و می‌توانید کار دلخواه هم اضافه کنید." />
-      ) : (
-        <SmartTaskList pending={pending} completed={completed} />
-      )}
-    </SmartShell>
-  );
-}
-
-function toIso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/* ---------------- ۲) مهم (ستاره‌دار) ---------------- */
+/* ---------------- ۱) مهم (ستاره‌دار) — صفحه‌ی داخلی از ردیف خانه ---------------- */
 
 export function ImportantView() {
   const tasks = useAppStore((s) => s.tasks);
@@ -215,40 +154,10 @@ export function ImportantView() {
   );
 }
 
-/* ---------------- ۳) برنامه‌ریزی‌شده ---------------- */
+/* ---------------- ۲) برنامه‌ریزی‌شده → به تب «پلنر» منتقل شد (views/PlannerView) ---------------- */
 
-export function PlannedView() {
-  const tasks = useAppStore((s) => s.tasks);
-  const today = new Date();
-  const sections = useMemo(() => plannedSections(tasks, today), [tasks]); // eslint-disable-line react-hooks/exhaustive-deps
-  const total = sections.overdue.length + sections.today.length + sections.upcoming.length;
-  const datedIds = useMemo(
-    () => new Set(tasks.filter((t) => !t.deletedAt && t.dueDate !== null).map((t) => t.id)),
-    [tasks],
-  );
-  const completed = useMemo(() => completedOf(tasks, datedIds).slice(0, 30), [tasks, datedIds]);
-
-  return (
-    <SmartShell id="view-planned" title="برنامه‌ریزی‌شده" subtitle="همه‌ی کارهای تاریخ‌دار به ترتیب سررسید" count={total}>
-      {total === 0 && completed.length === 0 ? (
-        <SmartEmpty emoji="📅" title="هیچ کارِ تاریخ‌داری نیست" hint="هنگام افزودن کار، تاریخ سررسید بگذارید (مثال: «فردا گزارش را بفرست») تا این‌جا مرتب دیده شود." />
-      ) : (
-        <>
-          {sections.overdue.length > 0 ? (
-            <TaskSection title="معوقه" accent="text-red-600 dark:text-red-300" tasks={sections.overdue} />
-          ) : null}
-          {sections.today.length > 0 ? <TaskSection title="امروز" accent="text-primary" tasks={sections.today} /> : null}
-          {sections.upcoming.length > 0 ? <TaskSection title="آینده" accent="text-on-surface-variant" tasks={sections.upcoming} /> : null}
-          {completed.length > 0 ? (
-            <CompletedAccordion title="انجام‌شده‌های تاریخ‌دار" completed={completed} />
-          ) : null}
-        </>
-      )}
-    </SmartShell>
-  );
-}
-
-function TaskSection({ title, accent, tasks }: { title: string; accent: string; tasks: TaskEntity[] }) {
+/** بخش عنوان‌دار کارها — در PlannerView هم استفاده می‌شود */
+export function TaskSection({ title, accent, tasks }: { title: string; accent: string; tasks: TaskEntity[] }) {
   const subtasks = useAppStore((s) => s.subtasks);
   return (
     <div className="flex flex-col gap-2.5">
@@ -267,7 +176,8 @@ function TaskSection({ title, accent, tasks }: { title: string; accent: string; 
   );
 }
 
-function CompletedAccordion({ title, completed }: { title: string; completed: TaskEntity[] }) {
+/** آکاردئون انجام‌شده‌ها — در PlannerView هم استفاده می‌شود */
+export function CompletedAccordion({ title, completed }: { title: string; completed: TaskEntity[] }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="border-t border-outline-variant/40 pt-3">
@@ -302,7 +212,7 @@ function CompletedAccordion({ title, completed }: { title: string; completed: Ta
   );
 }
 
-/* ---------------- ۴) همه‌ی کارها ---------------- */
+/* ---------------- ۳) همه‌ی کارها — صفحه‌ی داخلی از ردیف خانه ---------------- */
 
 export function AllView() {
   const tasks = useAppStore((s) => s.tasks);

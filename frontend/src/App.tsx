@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { StatusBar } from '@/components/StatusBar';
-import { TopBar, SectionChips } from '@/components/TopBar';
-import { BottomNav, Fab, Toast } from '@/components/BottomNav';
+import { TopBar } from '@/components/TopBar';
+import { BottomNav, Toast } from '@/components/BottomNav';
 import { HomeView } from '@/views/HomeView';
 import { ListView } from '@/views/ListView';
-import { TodayView, AnalyticsView } from '@/views/TodayView';
-import { MyDayView, ImportantView, PlannedView, AllView } from '@/views/SmartViews';
+import { TodayTab } from '@/views/TodayTab';
+import { PlannerView } from '@/views/PlannerView';
+import { AnalyticsView } from '@/views/AnalyticsView';
+import { ImportantView, AllView } from '@/views/SmartViews';
 import { TemplatesView, JobKitsView } from '@/views/TemplatesView';
 import { PaywallView } from '@/views/PaywallView';
-import { SettingsView, EmptyStateView } from '@/views/SettingsView';
+import { SettingsView } from '@/views/SettingsView';
 import { SearchView } from '@/views/SearchView';
 import { QuickAddSheet } from '@/modals/QuickAddSheet';
 import { TaskDetailSheet } from '@/modals/TaskDetailSheet';
@@ -23,7 +25,6 @@ import { TermsSheet } from '@/modals/TermsSheet';
 import { TourOverlay } from '@/modals/TourOverlay';
 import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
-import { CoachAdd } from '@/components/CoachAdd';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
 import { onAppResume } from '@/lib/native';
@@ -70,7 +71,6 @@ export default function App() {
       <div className="relative w-full max-w-[410px] h-[100dvh] sm:h-[calc(100dvh-2rem)] sm:max-h-[884px] bg-background dark:bg-inverse-surface rounded-none sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border-0 sm:border-[8px] sm:border-slate-800 transition-colors duration-200 pt-safe sm:pt-0">
         <StatusBar />
         <TopBar />
-        <SectionChips />
 
         <main className="flex-1 overflow-y-auto no-scrollbar relative pb-36" id="appContent" ref={mainRef}>
           {!ready ? (
@@ -79,17 +79,16 @@ export default function App() {
             <>
               {view === 'home' ? <HomeView /> : null}
               {view === 'listView' ? <ListView /> : null}
-              {view === 'todayView' ? <TodayView /> : null}
-              {/* فاز ۳ — نمای‌های هوشمند */}
-              {view === 'myday' ? <MyDayView /> : null}
-              {view === 'important' ? <ImportantView /> : null}
-              {view === 'planned' ? <PlannedView /> : null}
-              {view === 'all' ? <AllView /> : null}
+              {/* ناوبری ۵تبی (فاز الف): امروز = myday، پلنر = planned */}
+              {view === 'myday' ? <TodayTab /> : null}
+              {view === 'planned' ? <PlannerView /> : null}
               {view === 'analytics' ? <AnalyticsView /> : null}
+              {/* صفحات داخلی از ردیف‌های خانه */}
+              {view === 'important' ? <ImportantView /> : null}
+              {view === 'all' ? <AllView /> : null}
               {view === 'templates' ? <TemplatesView /> : null}
               {view === 'jobkits' ? <JobKitsView /> : null}
               {view === 'paywall' ? <PaywallView /> : null}
-              {view === 'emptyState' ? <EmptyStateView /> : null}
               {view === 'settings' ? <SettingsView /> : null}
               {view === 'search' ? <SearchView /> : null}
             </>
@@ -97,8 +96,6 @@ export default function App() {
         </main>
 
         {ready ? <QuickBar /> : null}
-        {ready ? <Fab /> : null}
-        <CoachAdd />
         <BottomNav />
         <Toast />
 

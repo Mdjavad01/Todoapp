@@ -1,33 +1,78 @@
+import { useMemo, useRef } from 'react';
 import { Icon } from '@/components/Icon';
-import { MicButton } from '@/components/Sheet';
 import { AdBanner } from '@/components/AdBanner';
 import { useAppStore } from '@/store/useAppStore';
-import { homeStats, sortedLists, listProgress, LIST_BAR_COLORS, GREETING_TEXT, HUB_CARDS } from '@/lib/selectors';
-import { useDragSort } from '@/lib/dragSort';
-import type { DragHandleProps } from '@/components/TaskCard';
-import { toFa, faFullDate } from '@/lib/format';
-import type { ListEntity, TaskEntity } from '@/types';
+import {
+  sortedLists,
+  listProgress,
+  myDayTasks,
+  starredPending,
+  plannerSections,
+  homeStats,
+  HUB_CARDS,
+  defaultListId,
+} from '@/lib/selectors';
+import { toFa } from '@/lib/format';
+import type { ListEntity, HubKey } from '@/types';
 
-/** بخش ۲: صفحه‌ی خانه — دقیقاً مطابق طرح با داده‌ی زنده (فاز ۲: بخش‌بندی گروهی + ترتیب کشیدنی) */
+/**
+ * فاز الف — صفحه‌ی خانه‌ی ساده (الگوی سادگی):
+ *   ردیف‌های هوشمند (امروز/مهم/برنامه‌ریزی‌شده/همه‌ی کارها) + جداکننده +
+ *   لیست‌های کاربر (ایموجی، نام، تعداد باقی‌مانده — بدون نوار پیشرفت) با گروه‌های جمع‌شونده +
+ *   ردیف «لیست جدید». ویرایش/ترتیب/حذف فقط از منوی ⋮ یا نگه‌داشتن طولانی.
+ *   بدون چیپ، بدون کارت خوش‌آمد، بدون میکروفون، بدون دکمه‌ی شناور و نوار افزودن.
+ *   نوار اندازه‌ی فونت: ۱۵px (عنوان‌ها/نام‌ها) و ۱۲px (تعدادها) — دو وزن: bold/normal.
+ */
+
+const ROW_H = 'min-h-[48px]'; // ناحیه‌ی لمس حداقل ۴۸ پیکسل
+
 export function HomeView() {
   const tasks = useAppStore((s) => s.tasks);
   const lists = useAppStore((s) => s.lists);
   const groups = useAppStore((s) => s.groups);
+  const groupsCollapsed = useAppStore((s) => s.groupsCollapsed);
+  const toggleGroupCollapsed = useAppStore((s) => s.toggleGroupCollapsed);
   const hubHidden = useAppStore((s) => s.hubHidden);
-  const userName = useAppStore((s) => s.userName);
-  const session = useAppStore((s) => s.session);
-  // اولویت نام: پروفایل کاربر وارد‌شده ← تنظیم محلی ← بدون نام (سلام خنثی)
-  const displayName = session?.displayName?.trim() || userName.trim();
+  const myDayIds = useAppStore((s) => s.myDayIds);
   const setView = useAppStore((s) => s.setView);
   const openList = useAppStore((s) => s.openList);
   const openModal = useAppStore((s) => s.openModal);
-  const reorderWithin = useAppStore((s) => s.reorderWithin);
   const openEditList = useAppStore((s) => s.openEditList);
-  const today = new Date();
-  const stats = homeStats(tasks, today);
-  const hour = today.getHours();
 
-  /* ---- فاز ۲: بخش‌بندی لیست‌ها (بدون گروه + گروه‌ها) و کارت‌های هوشمند قابل پنهان‌سازی ---- */
+  const today = new Date();
+
+  /* ---- شمارنده‌های ردیف‌های هوشمند (هم‌جهت با مقصدهای واقعی) ---- */
+  const counts: Record<HubKey, number> = useMemo(() => {
+    const stats = homeStats(tasks, today);
+    const planner = plannerSections(tasks, today);
+    return {
+      today: myDayTasks(tasks, myDayIds, today).filter((t) => !t.completedAt).length,
+      urgent: starredPending(tasks).length,
+      planned:
+        planner.overdue.length +
+        planner.today.length +
+        planner.tomorrow.length +
+        planner.thisWeek.length +
+        planner.later.length,
+      all: stats.allCount,
+    };
+  }, [tasks, myDayIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hubClicks: Record<HubKey, () => void> = {
+    today: () => setView('myday'),
+    urgent: () => setView('important'),
+    planned: () => setView('planned'),
+    all: () => setView('all'),
+  };
+  const hubIcons: Record<HubKey, 'today' | 'star' | 'event_note' | 'checklist'> = {
+    today: 'today',
+    urgent: 'star',
+    planned: 'event_note',
+    all: 'checklist',
+  };
+  const visibleHubs = HUB_CARDS.filter((h) => !hubHidden.includes(h.key));
+
+  /* ---- لیست‌های کاربر: بدون گروه + گروه‌های فعال (قاعده‌ی فاز ۲ حفظ شده) ---- */
   const live = sortedLists(lists);
   const liveIds = new Set(live.map((l) => l.id));
   const activeGroups = groups
@@ -37,294 +82,192 @@ export function HomeView() {
   const ungrouped = live.filter((l) => !groupedIds.has(l.id));
   const hasGroups = activeGroups.length > 0;
 
-  const hubCounts: Record<string, number> = {
-    today: stats.todayTotal,
-    urgent: stats.urgentCount,
-    planned: stats.plannedCount,
-    all: stats.allCount,
+  /* ---- حالت خالی: هیچ کار زنده‌ای در هیچ لیستی نیست ---- */
+  const isEmpty = useMemo(
+    () => live.every((l) => tasks.filter((t) => t.listId === l.id && !t.deletedAt).length === 0),
+    [live, tasks],
+  );
+
+  const addFirst = () => {
+    const id = defaultListId(lists);
+    if (id) openList(id);
+    openModal('quickAdd');
   };
-  const hubClicks: Record<string, () => void> = {
-    // فاز ۳ — هر کارت هوشمند به نمای واقعی خودش می‌رود (روزهای من / مهم / برنامه‌ریزی‌شده / همه)
-    today: () => setView('myday'),
-    urgent: () => setView('important'),
-    planned: () => setView('planned'),
-    all: () => setView('all'),
-  };
-  const hubIconCls: Record<string, string> = {
-    today: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
-    urgent: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
-    planned: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300',
-    all: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
-  };
-  const hubIcons: Record<string, 'today' | 'priority_high' | 'event_note' | 'folder'> = {
-    today: 'today',
-    urgent: 'priority_high',
-    planned: 'event_note',
-    all: 'folder',
-  };
-  const visibleHubs = HUB_CARDS.filter((h) => !hubHidden.includes(h.key));
 
   return (
-    <section className="p-margin flex flex-col gap-5" id="view-home">
-      {/* بنر تبلیغ/اطلاعیه از پنل ادمین (فاز ۹) — اگر اطلاعیه‌ی فعالی باشد */}
+    <section className="p-margin flex flex-col gap-4 pb-6" id="view-home">
       <AdBanner />
 
-      {/* خوش‌آمدگویی و تاریخ شمسی */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-headline-lg font-headline-lg text-on-surface dark:text-inverse-on-surface">
-            {displayName ? `${GREETING_TEXT(hour)}، ${displayName} عزیز` : `${GREETING_TEXT(hour)}!`}
-          </h1>
-          <p className="text-body-sm font-body-sm text-on-surface-variant dark:text-outline mt-0.5">
-            {faFullDate(today)} • <span className="text-primary font-bold">روز پرباری پیش روست</span>
-          </p>
-        </div>
-        <MicButton size={20} className="w-10 h-10 rounded-full bg-primary-container/15 text-primary" />
-      </div>
-
-      {/* کارت قهرمان پیشرفت امروز */}
-      <div className="bg-gradient-to-l from-primary via-primary-container to-primary-deep text-on-primary rounded-2xl p-4 shadow-md relative overflow-hidden">
-        <div className="absolute -left-6 -bottom-6 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none" />
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-1.5">
-            <Icon name="flag" size={20} />
-            <span className="text-headline-sm font-headline-sm">برنامه‌ی امروز</span>
-          </div>
-          <span className="text-label-lg font-bold bg-white/20 px-2 py-0.5 rounded-full">
-            {toFa(stats.todayPct)}٪ تکمیل
-          </span>
-        </div>
-        <p className="text-body-sm opacity-90 mb-3">
-          {toFa(stats.todayRemaining)} از {toFa(stats.todayTotal)} کار مانده • تمرکز روی پروژه‌های اصلی
-        </p>
-        <div className="w-full bg-black/20 h-2.5 rounded-full overflow-hidden p-0.5">
-          <div
-            className="bg-primary-fixed h-full rounded-full transition-all duration-700"
-            style={{ width: `${stats.todayPct}%` }}
-          />
-        </div>
-      </div>
-
-      {/* شبکه‌ی ۴تایی دسته‌بندی‌ها — هر کارت قابل پنهان‌سازی (فاز ۲) */}
+      {/* ردیف‌های هوشمند — ساده، لیستی، قابل پنهان‌سازی از تنظیمات */}
       {visibleHubs.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 divide-y divide-outline-variant/20 overflow-hidden">
           {visibleHubs.map((h) => (
-            <HubCard
+            <button
               key={h.key}
-              icon={hubIcons[h.key]}
-              iconCls={hubIconCls[h.key]}
-              title={h.label}
-              count={hubCounts[h.key]}
+              className={`w-full ${ROW_H} px-3 flex items-center gap-3 text-right hover:bg-surface-container/60 dark:hover:bg-slate-700/50 active:bg-surface-container transition-colors`}
               onClick={hubClicks[h.key]}
-            />
+              aria-label={`${h.label} — ${toFa(counts[h.key])} کار`}
+            >
+              <span className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Icon name={hubIcons[h.key]} size={20} />
+              </span>
+              <span className="flex-1 text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">{h.label}</span>
+              <span className="text-xs text-on-surface-variant">{toFa(counts[h.key])}</span>
+              <Icon name="arrow_back" size={16} className="text-outline shrink-0" />
+            </button>
           ))}
         </div>
       ) : null}
 
-      {/* لیست‌های من — با بخش‌بندی گروهی و ترتیب کشیدنی (فاز ۲) */}
-      <div className="flex flex-col gap-3">
-        <div className="flex justify-between items-center">
-          <h2 className="text-headline-md font-headline-md text-on-surface dark:text-inverse-on-surface">لیست‌های من</h2>
-          <div className="flex items-center gap-3">
-            <button
-              className="text-label-md text-on-surface-variant font-bold flex items-center gap-0.5"
-              onClick={() => openModal('manageLists')}
-              aria-label="مدیریت لیست‌ها"
-            >
-              <Icon name="edit" size={17} />
-              <span>ویرایش</span>
-            </button>
-            <button
-              className="text-label-md text-primary font-bold flex items-center gap-0.5"
-              onClick={() => openModal('newList')}
-            >
-              <span>لیست جدید</span>
-              <Icon name="add" size={18} />
-            </button>
-          </div>
-        </div>
+      {/* جداکننده‌ی بخش‌ها */}
+      <div className="border-t border-outline-variant/40" aria-hidden="true" />
 
-        {hasGroups && ungrouped.length > 0 ? (
-          <ListSection
-            title="بدون گروه"
-            lists={ungrouped}
-            tasks={tasks}
-            onCommit={(next) => void reorderWithin(ungrouped.map((l) => l.id), next)}
-            onOpen={openList}
-            onEdit={openEditList}
-          />
-        ) : null}
+      {/* لیست‌های کاربر */}
+      <div className="flex flex-col gap-1" aria-label="لیست‌های من">
+        <h2 className="text-[15px] font-bold text-on-surface-variant px-1 pb-1">لیست‌های من</h2>
 
-        {!hasGroups ? (
-          <ListSection
-            lists={ungrouped}
-            tasks={tasks}
-            onCommit={(next) => void reorderWithin(ungrouped.map((l) => l.id), next)}
-            onOpen={openList}
-            onEdit={openEditList}
-          />
-        ) : null}
-
-        {activeGroups.map((g) => (
-          <ListSection
-            key={g.id}
-            title={g.name}
-            lists={g.listIds.map((id) => live.find((l) => l.id === id)!).filter(Boolean)}
-            tasks={tasks}
-            onCommit={(next) => void reorderWithin(g.listIds, next)}
-            onOpen={openList}
-            onEdit={openEditList}
-          />
+        {ungrouped.map((l) => (
+          <ListRow key={l.id} list={l} tasks={tasks} onOpen={openList} onEdit={openEditList} />
         ))}
+
+        {hasGroups
+          ? activeGroups.map((g) => {
+              const collapsed = groupsCollapsed.includes(g.id);
+              const gLists = g.listIds.map((id) => live.find((l) => l.id === id)!).filter(Boolean);
+              return (
+                <div key={g.id} className="flex flex-col">
+                  <button
+                    className={`w-full ${ROW_H} px-1 flex items-center gap-2 text-right rounded-xl hover:bg-surface-container/60 dark:hover:bg-slate-700/50 transition-colors`}
+                    onClick={() => toggleGroupCollapsed(g.id)}
+                    aria-expanded={!collapsed}
+                    aria-label={`گروه ${g.name}${collapsed ? ' — باز کردن' : ' — جمع کردن'}`}
+                  >
+                    <Icon name="folder" size={17} className="text-on-surface-variant shrink-0" />
+                    <span className="flex-1 text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">{g.name}</span>
+                    <span className="text-xs text-on-surface-variant">{toFa(gLists.length)}</span>
+                    <span
+                      className="w-8 h-8 flex items-center justify-center text-outline transition-transform duration-200"
+                      style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                    >
+                      <Icon name="expand_more" size={20} />
+                    </span>
+                  </button>
+                  {!collapsed
+                    ? gLists.map((l) => (
+                        <ListRow key={l.id} list={l} tasks={tasks} onOpen={openList} onEdit={openEditList} />
+                      ))
+                    : null}
+                </div>
+              );
+            })
+          : null}
+
+        {/* ردیف «لیست جدید» — با گزینه‌ی قالب آماده داخل شیت */}
+        <button
+          className={`w-full ${ROW_H} mt-1 px-3 flex items-center gap-3 text-right rounded-2xl border border-dashed border-primary/40 text-primary hover:bg-primary/5 active:bg-primary/10 transition-colors`}
+          onClick={() => openModal('newList')}
+          aria-label="ساخت لیست جدید"
+        >
+          <span className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Icon name="add" size={20} />
+          </span>
+          <span className="flex-1 text-[15px] font-bold">لیست جدید</span>
+          <span className="text-xs text-on-surface-variant">یا از قالب آماده</span>
+        </button>
       </div>
+
+      {/* حالت خالی — پیام کوتاه و دوستانه */}
+      {isEmpty ? (
+        <div className="flex flex-col items-center text-center gap-2 py-6" id="home-empty">
+          <div className="w-16 h-16 rounded-full bg-primary-container/15 flex items-center justify-center text-3xl">
+            🌱
+          </div>
+          <p className="text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">
+            همه‌چیز آماده است!
+          </p>
+          <p className="text-xs text-on-surface-variant max-w-[240px] leading-relaxed">
+            لیست‌هایت ساخته شده‌اند؛ اولین کارت را اضافه کن تا کارام از همین لحظه همراهت باشد.
+          </p>
+          <button
+            className="mt-2 h-12 px-5 rounded-2xl bg-primary text-on-primary text-[15px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1.5"
+            onClick={addFirst}
+          >
+            <Icon name="add" size={18} />
+            <span>اولین کارت را اضافه کن</span>
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
 
-/* ---------- بخش لیست‌ها (بدون گروه یا یک گروه) با کشیدنی درون‌بخشی — فاز ۲ ---------- */
-function ListSection({
-  title,
-  lists,
-  tasks,
-  onCommit,
-  onOpen,
-  onEdit,
-}: {
-  title?: string;
-  lists: ListEntity[];
-  tasks: TaskEntity[];
-  onCommit(next: string[]): void;
-  onOpen(id: string): void;
-  onEdit(id: string): void;
-}) {
-  const ids = lists.map((l) => l.id);
-  const drag = useDragSort(ids, onCommit);
-  if (lists.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-2.5" ref={drag.containerRef as (el: HTMLDivElement | null) => void}>
-      {title ? (
-        <div className="flex justify-between items-center pt-1">
-          <span className="text-label-md font-bold text-on-surface-variant flex items-center gap-1.5">
-            <Icon name="folder" size={15} />
-            {title}
-          </span>
-          <span className="text-[11px] text-outline">{toFa(lists.length)} لیست</span>
-        </div>
-      ) : null}
-      {drag.order.map((id) => {
-        const list = lists.find((l) => l.id === id);
-        if (!list) return null;
-        return (
-          <ListCard
-            key={list.id}
-            list={list}
-            tasks={tasks}
-            dragging={drag.draggingId === list.id}
-            itemClass={drag.itemClass(list.id)}
-            handleProps={lists.length > 1 ? drag.handleProps(list.id) : undefined}
-            ignoreClick={drag.shouldIgnoreClick}
-            onOpen={onOpen}
-            onEdit={onEdit}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function ListCard({
+/**
+ * ردیف لیست — ایموجی، نام، تعداد باقی‌مانده (بدون نوار پیشرفت).
+ * ویرایش/کپی/حذف/ترتیب: منوی ⋮ یا نگه‌داشتن طولانی → شیت ویرایش لیست (فاز ۲).
+ */
+function ListRow({
   list,
   tasks,
-  dragging,
-  itemClass,
-  handleProps,
-  ignoreClick,
   onOpen,
   onEdit,
 }: {
   list: ListEntity;
-  tasks: TaskEntity[];
-  dragging: boolean;
-  itemClass: string;
-  handleProps?: DragHandleProps;
-  ignoreClick(): boolean;
+  tasks: import('@/types').TaskEntity[];
   onOpen(id: string): void;
   onEdit(id: string): void;
 }) {
-  const p = listProgress(tasks, list.id);
-  return (
-    <div
-      data-drag-item
-      className={`${itemClass} ${dragging ? 'shadow-lg ring-1 ring-primary/40' : ''} bg-surface-container-lowest dark:bg-slate-800 p-3.5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col gap-2.5 cursor-pointer hover:shadow-md transition-all`}
-      onClick={() => {
-        if (!ignoreClick()) onOpen(list.id);
-      }}
-    >
-      <div className="flex justify-between items-center gap-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl shrink-0">{list.emoji}</span>
-          <span className="text-label-lg font-bold text-on-surface dark:text-inverse-on-surface truncate">{list.name}</span>
-        </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <span className="text-body-sm font-bold text-primary">{toFa(p.pending)} کار</span>
-          <button
-            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-white/50 dark:hover:bg-white/10 active:scale-90 transition-transform"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(list.id);
-            }}
-            aria-label={`ویرایش لیست ${list.name}`}
-            title="ویرایش، کپی یا حذف لیست"
-          >
-            <Icon name="more_vert" size={18} />
-          </button>
-          {handleProps ? (
-            <button
-              {...handleProps}
-              className="w-7 h-8 rounded-full flex items-center justify-center text-outline hover:text-on-surface-variant cursor-grab active:cursor-grabbing"
-              title="کشیدن برای تغییر ترتیب"
-            >
-              <Icon name="drag_indicator" size={17} />
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div className="w-full bg-surface-container dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-        <div
-          className={`${LIST_BAR_COLORS[list.color]} h-full rounded-full transition-all duration-500`}
-          style={{ width: `${p.pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+  const pending = listProgress(tasks, list.id).pending;
+  const pressTimer = useRef<number | null>(null);
+  const longPressed = useRef(false);
 
-function HubCard({
-  icon,
-  iconCls,
-  title,
-  count,
-  onClick,
-}: {
-  icon: 'today' | 'priority_high' | 'event_note' | 'folder';
-  iconCls: string;
-  title: string;
-  count: number;
-  onClick(): void;
-}) {
+  const startPress = () => {
+    longPressed.current = false;
+    pressTimer.current = window.setTimeout(() => {
+      longPressed.current = true;
+      onEdit(list.id);
+    }, 500);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
   return (
     <div
-      className="bg-surface-container-lowest dark:bg-slate-800 p-3.5 rounded-2xl shadow-sm border border-outline-variant/30 flex items-center gap-3 cursor-pointer hover:border-primary/50 transition-all active:scale-[0.98]"
-      onClick={onClick}
+      className={`w-full ${ROW_H} px-3 flex items-center gap-3 rounded-xl hover:bg-surface-container/60 dark:hover:bg-slate-700/50 active:bg-surface-container transition-colors cursor-pointer select-none`}
+      onClick={() => {
+        if (!longPressed.current) onOpen(list.id);
+        longPressed.current = false;
+      }}
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onPointerCancel={cancelPress}
+      role="button"
+      aria-label={`باز کردن لیست ${list.name} — ${toFa(pending)} کار باقی‌مانده`}
     >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconCls}`}>
-        <Icon name={icon} size={24} />
-      </div>
-      <div className="flex flex-col">
-        <span className="text-label-lg font-label-lg text-on-surface dark:text-inverse-on-surface">{title}</span>
-        <span className="text-body-sm text-on-surface-variant dark:text-outline font-semibold">{toFa(count)} کار</span>
-      </div>
+      <span className="text-xl shrink-0" aria-hidden="true">
+        {list.emoji}
+      </span>
+      <span className="flex-1 min-w-0 truncate text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">
+        {list.name}
+      </span>
+      <span className="text-xs text-on-surface-variant shrink-0">{toFa(pending)}</span>
+      <button
+        className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-transform shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          cancelPress();
+          onEdit(list.id);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label={`ویرایش لیست ${list.name}`}
+        title="ویرایش، کپی، ترتیب یا حذف لیست"
+      >
+        <Icon name="more_vert" size={18} />
+      </button>
     </div>
   );
 }

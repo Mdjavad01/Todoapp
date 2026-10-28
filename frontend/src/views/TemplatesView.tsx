@@ -3,15 +3,32 @@ import { useAppStore } from '@/store/useAppStore';
 import { TEMPLATES, JOB_KITS } from '@/db/catalog';
 import { toFa } from '@/lib/format';
 
+/** فاز الف — سربرگ مشترک صفحات داخلی: دکمه‌ی بازگشت + عنوان روشن */
+function InnerHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  const goHome = useAppStore((s) => s.goHome);
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        className="w-9 h-9 rounded-full bg-surface-container dark:bg-slate-700 flex items-center justify-center text-on-surface shrink-0"
+        onClick={goHome}
+        aria-label="بازگشت به خانه"
+      >
+        <Icon name="arrow_forward" size={18} />
+      </button>
+      <div>
+        <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">{title}</h1>
+        <p className="text-body-sm text-on-surface-variant">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 /** بخش ۹: قالب‌های آماده */
 export function TemplatesView() {
   const applyTemplate = useAppStore((s) => s.applyTemplate);
   return (
     <section className="p-margin flex flex-col gap-4" id="view-templates">
-      <div>
-        <h2 className="text-headline-lg font-bold text-on-surface dark:text-inverse-on-surface">قالب‌های آماده</h2>
-        <p className="text-body-sm text-on-surface-variant">چک‌لیست‌های تخصصی آماده برای شروع بدون اتلاف وقت</p>
-      </div>
+      <InnerHeader title="قالب‌های آماده" subtitle="چک‌لیست‌های تخصصی آماده برای شروع بدون اتلاف وقت" />
       <div className="grid grid-cols-1 gap-3">
         {TEMPLATES.map((tpl) => (
           <div
@@ -49,10 +66,7 @@ export function JobKitsView() {
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-jobkits">
-      <div>
-        <h2 className="text-headline-lg font-bold text-on-surface dark:text-inverse-on-surface">بسته‌های شغلی تخصصی</h2>
-        <p className="text-body-sm text-on-surface-variant">روتین‌ها و فریم‌ورک‌های استاندارد برای حرفه‌ای‌ها</p>
-      </div>
+      <InnerHeader title="بسته‌های شغلی تخصصی" subtitle="روتین‌ها و فریم‌ورک‌های استاندارد برای حرفه‌ای‌ها" />
       {JOB_KITS.map((kit) =>
         kit.pro ? (
           <div

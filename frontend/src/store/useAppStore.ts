@@ -104,6 +104,8 @@ interface AppState {
   /* ---- فاز ۲ — قابلیت کامل لیست‌ها ---- */
   /** گروه‌های لیست‌ها (سطح دستگاه؛ با خروج پاک می‌شود) */
   groups: ListGroup[];
+  /** فاز الف — گروه‌های جمع‌شده‌ی خانه (سطح دستگاه؛ pref «groups-collapsed») */
+  groupsCollapsed: string[];
   /** کارت‌های هوشمند پنهان‌شده‌ی خانه */
   hubHidden: HubKey[];
   /** ترتیب به‌یادماندنی هر لیست — کلید: شناسه‌ی لیست */
@@ -204,6 +206,8 @@ interface AppState {
   renameGroup(groupId: string, name: string): void;
   deleteGroup(groupId: string): void;
   setListGroup(listId: string, groupId: string | null): void;
+  /** فاز الف — جمع/باز کردن گروه در خانه */
+  toggleGroupCollapsed(groupId: string): void;
 }
 
 function applyAccent(a: AccentColor): void {
@@ -269,6 +273,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   paymentResult: null,
 
   groups: [],
+  groupsCollapsed: [],
   hubHidden: [],
   listSorts: {},
   taskOrders: {},
@@ -295,6 +300,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const prefs = await repo.prefsAll();
     const groups = (prefs.find((p) => p.key === 'list-groups')?.value as ListGroup[] | undefined) ?? [];
     const hubHidden = (prefs.find((p) => p.key === 'hubs-hidden')?.value as HubKey[] | undefined) ?? [];
+    // فاز الف — وضعیت جمع‌شده‌ی گروه‌های خانه
+    const groupsCollapsed = (prefs.find((p) => p.key === 'groups-collapsed')?.value as string[] | undefined) ?? [];
     const listSorts: Record<string, ListSortKey> = {};
     const taskOrders: Record<string, string[]> = {};
     for (const p of prefs) {
@@ -312,7 +319,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, hubHidden, listSorts, taskOrders, myDayIds });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, groupsCollapsed, hubHidden, listSorts, taskOrders, myDayIds });
     // فاز ۴ — ترجیح واقعی اعلان‌ها خوانده شد؛ بازبینی اجباری (اگر خاموش باشد زنگ‌های اولیه پاک می‌شوند)
     void syncReminders(get().tasks, alerts, true);
     applyDark(dark);
@@ -467,6 +474,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       paymentResult: null,
       myDayIds: [],
       quickDraft: '',
+      groupsCollapsed: [],
     });
   },
 
@@ -900,6 +908,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     const arr = [...cur];
     set({ hubHidden: arr });
     void repo.prefsSet('hubs-hidden', arr);
+  },
+
+  /** فاز الف — جمع/باز کردن یک گروه در خانه (سطح دستگاه، به‌یادماندنی) */
+  toggleGroupCollapsed(groupId) {
+    const cur = new Set(get().groupsCollapsed);
+    if (cur.has(groupId)) cur.delete(groupId);
+    else cur.add(groupId);
+    const arr = [...cur];
+    set({ groupsCollapsed: arr });
+    void repo.prefsSet('groups-collapsed', arr);
   },
 
   addGroup(name) {

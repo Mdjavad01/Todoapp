@@ -81,15 +81,13 @@ export interface PrefEntity {
 export type ViewName =
   | 'home'
   | 'listView'
-  | 'todayView'
   | 'analytics'
   | 'templates'
   | 'jobkits'
   | 'paywall'
-  | 'emptyState'
   | 'settings'
   | 'search'
-  /** فاز ۳ — نمای‌های هوشمند */
+  /** ناوبری ۵تبی — «امروز» = myday و «پلنر» = planned؛ بقیه صفحات داخلی‌اند */
   | 'myday'
   | 'important'
   | 'planned'
