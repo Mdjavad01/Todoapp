@@ -38,6 +38,9 @@ export function HomeView() {
   const openList = useAppStore((s) => s.openList);
   const openModal = useAppStore((s) => s.openModal);
   const openEditList = useAppStore((s) => s.openEditList);
+  const demoCleanupBanner = useAppStore((s) => s.demoCleanupBanner);
+  const dismissDemoCleanup = useAppStore((s) => s.dismissDemoCleanup);
+  const cleanLegacyDemos = useAppStore((s) => s.cleanLegacyDemos);
 
   const today = new Date();
 
@@ -97,6 +100,56 @@ export function HomeView() {
   return (
     <section className="p-margin flex flex-col gap-4 pb-6" id="view-home">
       <AdBanner />
+
+      {/* فاز نصب تمیز — بنر یک‌بارمصرف پاک‌سازی داده‌ی نمونه‌ی نصب‌های قدیمی (هیچ‌چیز بی‌صدا حذف نمی‌شود) */}
+      {demoCleanupBanner ? (
+        <div
+          className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300/60 dark:border-amber-700/50 rounded-2xl p-3.5"
+          role="alertdialog"
+          aria-label="پاک‌سازی کارهای نمونه‌ی قدیمی"
+        >
+          <div className="flex items-start gap-2.5">
+            <span className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <Icon name="delete" size={20} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold text-amber-900 dark:text-amber-200">
+                کارهای نمونه‌ی قدیمی پیدا شد. پاک شوند؟
+              </p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5 leading-relaxed">
+                {demoCleanupBanner.taskCount > 0 ? (
+                  <>
+                    {toFa(demoCleanupBanner.taskCount)} کار نمونه از نسخه‌های قبلی
+                    {demoCleanupBanner.listCount > 0 ? ` و ${toFa(demoCleanupBanner.listCount)} لیست نمونه` : ''}{' '}
+                    شناسایی شد. کارهای خودت دست نمی‌خورند و تا لحظه‌ی حذف می‌توانی واگرد کنی.
+                  </>
+                ) : (
+                  <>
+                    {toFa(demoCleanupBanner.listCount)} لیست نمونه‌ی بدون کار از نسخه‌های قبلی شناسایی شد. لیست‌های واقعی‌ات دست
+                    نمی‌خورند.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              className="flex-1 min-h-[44px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-black active:scale-[0.98] transition-transform"
+              onClick={() => void cleanLegacyDemos()}
+              aria-label="پاک کردن کارهای نمونه"
+            >
+              پاک کن
+            </button>
+            <button
+              className="flex-1 min-h-[44px] rounded-xl bg-transparent border border-amber-400/70 dark:border-amber-600/60 text-amber-800 dark:text-amber-300 text-[13px] font-bold active:scale-[0.98] transition-transform"
+              onClick={dismissDemoCleanup}
+              aria-label="نگه داشتن کارهای نمونه"
+            >
+              نگه دار
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* ردیف‌های هوشمند — ساده، لیستی، قابل پنهان‌سازی از تنظیمات */}
       {visibleHubs.length > 0 ? (

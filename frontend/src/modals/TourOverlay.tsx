@@ -3,7 +3,12 @@ import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { toFa } from '@/lib/format';
 
-/** گام‌های تور — سلکتورِ المان واقعی + جهت توولتیپ (v12)؛ sel=null یعنی گام پایانی وسط صفحه */
+/**
+ * گام‌های راهنمای اولین اجرا (فاز نصب تمیز — ج) — سلکتورِ المان واقعی + جهت توولتیپ؛
+ * دقیقاً ۳ گام طبق مسترپرامپت: ساخت اولین کار با نوار افزودن ← سررسید و یادآور ← لیست‌ها و ناوبری پایین.
+ * «رد کردن» همیشه دیده می‌شود؛ وضعیت دیده‌شدن در pref 'coach-guide-seen' است و از
+ * «تنظیمات ← راهنمای کارام» دوباره قابل نمایش است.
+ */
 interface TourStep {
   sel: string | null;
   place: 'top' | 'bottom';
@@ -13,34 +18,22 @@ interface TourStep {
 
 const STEPS: TourStep[] = [
   {
-    sel: '[aria-label="سوییچ تم روز/شب"]',
-    place: 'bottom',
-    title: 'شب و روز با یک ضربه',
-    text: 'با این دکمه اپ را به حالت شب یا روز ببرید؛ همه‌ی رنگ‌ها هم‌زمان عوض می‌شوند. کنارش جستجو و تقویم شمسی هم هست.',
-  },
-  {
-    sel: '[aria-label="جستجو"]',
-    place: 'bottom',
-    title: 'جستجوی سریع',
-    text: 'بین همه‌ی کارها و لیست‌هایتان بگردید؛ هر کلمه‌ای که یادتان باشد را همین‌جا تایپ کنید تا پیدایش کند.',
+    sel: '[aria-label="تب امروز"]',
+    place: 'top',
+    title: 'اولین کارت را بساز ✍️',
+    text: 'از تب «امروز» یا داخل هر لیست، در نوار پایین صفحه بنویس: «فردا ساعت ۱۷ خرید نان» — کارام خودش تاریخ و ساعت را تشخیص می‌دهد.',
   },
   {
     sel: '[aria-label="تقویم شمسی"]',
     place: 'bottom',
-    title: 'تقویم شمسی',
-    text: 'تاریخ امروز را شمسی ببینید و برای کارهایتان روزِ دقیق انتخاب کنید؛ کافی است روی همین آیکن بزنید.',
+    title: 'سررسید و یادآور ⏰',
+    text: 'با تقویم شمسی روز دقیق هر کار را بده و در جزئیات کار، یادآور بگذار تا سر موعد خبرت کند.',
   },
   {
     sel: 'nav[aria-label="ناوبری اصلی"]',
     place: 'top',
-    title: 'پنج بخش اصلی',
-    text: 'خانه، امروز، پلنر، آمار و تنظیمات — همه‌چیز از همین نوار پایین در دسترس است. افزودن کار هم داخل هر لیست یا در تب «امروز» با نوار پایین صفحه انجام می‌شود.',
-  },
-  {
-    sel: null,
-    place: 'top',
-    title: 'همه‌چیز آماده است! 🎉',
-    text: 'حالا کارام را می‌شناسید. از تب خانه یک لیست باز کنید و اولین کارتان را با نوار پایین صفحه اضافه کنید. هر وقت راهنما خواستید، در تنظیمات در دسترس است.',
+    title: 'لیست‌ها و ناوبری 🗂️',
+    text: 'لیست‌هایت در خانه‌اند؛ بساز، گروه کن و با ایموجی شخصی‌سازی کن. پنج تب پایین هم همه‌چیز را یک ضربه دور نگه می‌دارد.',
   },
 ];
 
@@ -108,7 +101,7 @@ export function TourOverlay() {
   if (!open) return null;
 
   const step = STEPS[idx];
-  const isFinish = step.sel === null;
+  const isFinish = idx === STEPS.length - 1;
 
   // جای‌گذاری توولتیپ نسبت به المان هدف (داخل قاب موبایل)
   let tipLeft = frame.w / 2 - TIP_W / 2;
@@ -169,15 +162,25 @@ export function TourOverlay() {
 
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-black text-primary bg-primary/10 rounded-full px-2.5 py-1">
-            {isFinish ? 'پایان تور' : `گام ${toFa(idx + 1)} از ${toFa(STEPS.length - 1)}`}
+            راهنمای کارام · گام {toFa(idx + 1)} از {toFa(STEPS.length)}
           </span>
-          <button
-            className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container dark:hover:bg-slate-700 active:scale-95 transition-all"
-            onClick={close}
-            aria-label="بستن تور"
-          >
-            <Icon name="close" size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* «رد کردن» همیشه دیده می‌شود (فاز نصب تمیز) — هر لحظه قابل خروج از راهنما */}
+            <button
+              className="h-7 px-2 rounded-full flex items-center justify-center text-[11px] font-black text-on-surface-variant hover:bg-surface-container dark:hover:bg-slate-700 active:scale-95 transition-all"
+              onClick={close}
+              aria-label="رد کردن راهنما"
+            >
+              رد کردن
+            </button>
+            <button
+              className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container dark:hover:bg-slate-700 active:scale-95 transition-all"
+              onClick={close}
+              aria-label="بستن راهنما"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
         </div>
 
         <h4 className="text-headline-sm font-black text-on-surface dark:text-inverse-on-surface">{step.title}</h4>
@@ -208,7 +211,7 @@ export function TourOverlay() {
           >
             {isFinish ? (
               <>
-                شروع به کار با کارام
+                فهمیدم، شروع کنیم!
                 <Icon name="check" size={17} />
               </>
             ) : (

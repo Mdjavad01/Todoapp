@@ -1,6 +1,7 @@
 import { idbGetAll, idbPut, seedTransaction, STORES } from './idb';
 import { metaGet, metaSet } from './repo';
 import { nowIso, uuid } from '@/lib/uuid';
+import { DEFAULT_LIST_ID } from '@/sync/lww';
 import type { ListEntity, ReminderEntity, PrefEntity } from '@/types';
 
 /**
@@ -25,12 +26,13 @@ export async function ensureDefaultData(): Promise<void> {
   const marked = await metaGet<number>('default-list-v1');
   if (marked) return;
 
-  // فقط وقتی هیچ لیست زنده‌ای نیست، لیست پیش‌فرض ساخته می‌شود
+  // فقط وقتی هیچ لیست زنده‌ای نیست، لیست پیش‌فرض ساخته می‌شود — با «شناسه‌ی قطعی» تا
+  // دو دستگاه هرگز دو لیست پیش‌فرض جدا نسازند (فاز نصب تمیز)
   const lists = await idbGetAll<ListEntity>(STORES.lists);
   if (!lists.some((l) => !l.deletedAt)) {
     const now = nowIso();
     const entity: ListEntity = {
-      id: uuid(),
+      id: DEFAULT_LIST_ID,
       name: 'کارهای من',
       emoji: '🗂️',
       color: 'teal',
@@ -42,6 +44,29 @@ export async function ensureDefaultData(): Promise<void> {
     await idbPut(STORES.lists, entity);
   }
   await metaSet('default-list-v1', 1);
+}
+
+/**
+ * بعد از سینک (فاز نصب تمیز): اگر حساب/دستگاه هیچ لیست زنده‌ای ندارد (مثلاً ورود به
+ * حساب تازه که لیست خالی مهمان آن با prune حذف شده)، لیست پیش‌فرضِ قطعی ساخته می‌شود.
+ * چون شناسه ثابت است، اگر دستگاه دیگری هم همین را ساخته باشد، در سرور ادغام می‌شود.
+ * @returns true اگر لیستی ساخته شد (تماس‌دهنده باید refresh + سینک بعدی کند)
+ */
+export async function ensureAliveDefaultList(): Promise<boolean> {
+  const lists = await idbGetAll<ListEntity>(STORES.lists);
+  if (lists.some((l) => !l.deletedAt)) return false;
+  const now = nowIso();
+  await idbPut(STORES.lists, {
+    id: DEFAULT_LIST_ID,
+    name: 'کارهای من',
+    emoji: '🗂️',
+    color: 'teal',
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  });
+  return true;
 }
 
 /**

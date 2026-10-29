@@ -37,6 +37,7 @@ export function BottomNav() {
               : 'text-on-surface-variant dark:text-slate-300'
           }`}
           onClick={() => setView(tab.view)}
+          aria-label={`تب ${tab.label}`}
           aria-current={isActive(tab.view) ? 'page' : undefined}
         >
           <Icon name={tab.icon} size={24} />

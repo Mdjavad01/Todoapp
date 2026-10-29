@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { PRIORITY_BADGE } from '@/lib/selectors';
+import { DEFAULT_LIST_NAME } from '@/sync/lww';
 import { toIsoDate, relativeDayLabel } from '@/lib/format';
 import type { TaskEntity } from '@/types';
 
@@ -25,7 +26,7 @@ export function SearchView() {
   const chips: { key: string; label: string }[] = [
     { key: 'all', label: 'همه' },
     { key: 'urgent', label: 'فوری' },
-    { key: 'home', label: homeList?.name ?? 'کارهای خانه' },
+    { key: 'home', label: homeList?.name ?? DEFAULT_LIST_NAME },
     { key: 'bills', label: billsList?.name ?? 'مالی و قبوض' },
   ];
 

@@ -130,7 +130,7 @@ export function GuideSheet() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">تور تعاملی کارام</p>
-              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">۵ گام کوتاه؛ هر گام یک بخش واقعی از اپ را با نورافکن نشانتان می‌دهد</p>
+              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">۳ گام کوتاه؛ هر گام یک بخش واقعی از اپ را با نورافکن نشانتان می‌دهد</p>
             </div>
           </div>
           <button

@@ -6,9 +6,9 @@ import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { isNativeApp } from '@/lib/native';
 import { queueSync } from '@/sync/engine';
 
-const APP_VERSION = '۴.۱.۰';
+const APP_VERSION = '۴.۲.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '4.1.0';
+const APP_VERSION_RAW = '4.2.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {

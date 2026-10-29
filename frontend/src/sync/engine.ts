@@ -15,6 +15,7 @@
 
 import { idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
 import { dedupeSeedLists } from '@/db/dedupe';
+import { ensureAliveDefaultList } from '@/db/seed';
 import { setClockOffset } from '@/lib/clock';
 import { revTupleStrictlyNewer, chunkChanges, emptyChanges, type SyncChanges } from './lww';
 import { authedFetch, ApiError } from './api';
@@ -241,6 +242,14 @@ export async function runSync(): Promise<SyncState> {
     // ---------- ادغام لیست‌های سید تکراری (نصب‌های قدیمی) ----------
     if (applied && (await dedupeSeedLists())) {
       applied = true; // تومب‌استون‌های محلی با سینک بعدی به سرور می‌روند
+    }
+
+    // ---------- فاز نصب تمیز: هیچ دستگاهی بدون لیست نمی‌ماند ----------
+    // ورود به حساب تازه: لیست خالیِ مهمان prune شده و حساب هم خالی است → لیست پیش‌فرضِ
+    // قطعی ساخته می‌شود (شناسه ثابت → اگر دستگاه دیگری هم ساخته باشد، همان یک رکورد ادغام می‌شود)
+    if (await ensureAliveDefaultList()) {
+      applied = true; // لیست نو با سینک بعدی push می‌شود
+      queueSync(500);
     }
 
     setState({

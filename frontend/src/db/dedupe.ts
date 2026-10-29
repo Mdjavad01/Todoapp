@@ -12,13 +12,20 @@
 
 import { idbGetAll, idbPut, STORES } from './idb';
 import { nowIso } from '@/lib/uuid';
-import { DEFAULT_LIST_NAME, SEED_LIST_NAMES } from '@/sync/lww';
+import { DEFAULT_LIST_ID, DEFAULT_LIST_NAME, SEED_LIST_NAMES } from '@/sync/lww';
 import type { ListEntity, TaskEntity } from '@/types';
+
+/**
+ * نام‌های مشمول ادغام هم‌نام — سیدهای قدیمی + لیست پیش‌فرض (فاز نصب تمیز):
+ * نصب‌های قدیمی‌تر از «شناسه‌ی قطعی»، لیست پیش‌فرض را با UUID تصادفی می‌ساختند؛
+ * اگر دو دستگاه چنین لیستی را پوش کرده باشند، ادغام قطعی (قدیمی‌ترین نگه‌دار) رخ می‌دهد.
+ */
+export const MERGEABLE_LIST_NAMES: readonly string[] = [...SEED_LIST_NAMES, DEFAULT_LIST_NAME];
 
 /** true یعنی تغییری کرد (کلاینت باید refresh + سینک بعدی) */
 export async function dedupeSeedLists(): Promise<boolean> {
   const lists = await idbGetAll<ListEntity>(STORES.lists);
-  const alive = lists.filter((l) => !l.deletedAt && SEED_LIST_NAMES.includes(l.name));
+  const alive = lists.filter((l) => !l.deletedAt && MERGEABLE_LIST_NAMES.includes(l.name));
   if (alive.length < 2) return false;
 
   const byName = new Map<string, ListEntity[]>();
@@ -56,11 +63,17 @@ async function reParentTasks(fromListId: string, toListId: string, now: string):
 /**
  * هنگام ورود به حساب: اگر فقط یک لیستِ پیش‌فرضِ خالی داریم (هیچ کار زنده‌ای نیست)،
  * آن را حذف نرم می‌کنیم تا با سینک به حساب پوش نشود و در دستگاه دیگر هم ظاهر نشود.
+ *
+ * استثنا (فاز نصب تمیز): لیست پیش‌فرضِ «شناسه‌قطعی» (DEFAULT_LIST_ID) تومب‌استون
+ * «نمی‌شود» — این لیست خودش «لیست حساب» است و در همه‌ی دستگاه‌ها همان شناسه را دارد؛
+ * تومب‌استونِ تازه‌ترِ این دستگاه، رکورد زنده‌ی حساب را روی دستگاه‌های دیگر می‌کُشت و
+ * دوباره‌سازی لازم می‌شد (جارِ LWW). ادغام هم‌شناسه در سرور تکراری بودن را ناممکن می‌کند.
  */
 export async function pruneEmptyDefaultList(): Promise<void> {
   const lists = await idbGetAll<ListEntity>(STORES.lists);
   const alive = lists.filter((l) => !l.deletedAt);
   if (alive.length !== 1 || alive[0].name !== DEFAULT_LIST_NAME) return;
+  if (alive[0].id === DEFAULT_LIST_ID) return;
 
   const tasks = await idbGetAll<TaskEntity>(STORES.tasks);
   const hasContent = tasks.some((t) => !t.deletedAt);

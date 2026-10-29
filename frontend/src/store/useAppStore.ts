@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureDefaultData } from '@/db/seed';
-import { toIsoDate, faShort } from '@/lib/format';
+import { toIsoDate, faShort, toFa } from '@/lib/format';
 import { defaultListId, sortedLists } from '@/lib/selectors';
 import { pruneMyDay, type RepeatMeta } from '@/lib/repeat';
 import { applySectionOrder } from '@/lib/dragSort';
@@ -14,6 +14,11 @@ import * as auth from '@/sync/auth';
 import * as payments from '@/sync/payments';
 // فاز ۴ — یادآور بومی: فقط در اپ اندروید فعال می‌شود (وب بی‌عمل)
 import { syncReminders, clearReminders } from '@/lib/reminderScheduler';
+import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoScanResult, type DemoCleanupSnapshot } from '@/db/demoCleanup';
+
+/* فاز نصب تمیز — اسکن جاری و اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارند) */
+let currentDemoScan: DemoScanResult | null = null;
+let lastDemoSnapshot: DemoCleanupSnapshot | null = null;
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type FontScale = 'small' | 'medium' | 'large';
@@ -94,6 +99,8 @@ interface AppState {
   welcomeSheet: boolean;
   /** حباب راهنمای «اولین کار» (v10) — بالای دکمه‌ی + تا اولین افزودن یا بستن */
   coachAdd: boolean;
+  /** فاز نصب تمیز — بنر یک‌بارمصرف «کارهای نمونه‌ی قدیمی» (اسکن demoCleanup) */
+  demoCleanupBanner: { taskCount: number; listCount: number } | null;
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
@@ -134,6 +141,14 @@ interface AppState {
   openTermsSheet(): void;
   /** شروع تور تعاملی (v12) — شیت راهنما و حباب آموزشی بسته می‌شوند */
   openTour(): void;
+  /** فاز نصب تمیز — اسکن داده‌ی نمونه‌ی قدیمی و نمایش بنر (اگر چیزی پیدا شد) */
+  scanLegacyDemoBanner(): Promise<void>;
+  /** «نگه دار» — دیگر هرگز پرسیده نمی‌شود */
+  dismissDemoCleanup(): void;
+  /** «پاک کن» — حذف نرم سینک‌پذیر با واگرد توست‌دار */
+  cleanLegacyDemos(): Promise<void>;
+  /** واگرد پاک‌سازی نمونه‌ها */
+  undoLegacyDemoCleanup(): Promise<void>;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
   saveDisplayName(name: string): Promise<void>;
   /** بستن حباب راهنمای اولین کار — دیگر نمایش داده نمی‌شود */
@@ -259,6 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   tourOpen: false,
   welcomeSheet: false,
   coachAdd: false,
+  demoCleanupBanner: null,
   appSettings: {
     appName: 'کارام',
     paywallTitle: 'کارام پرو',
@@ -285,16 +301,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     await ensureDefaultData();
     await get().refresh();
-    const [dark, accent, biometric, alerts, savedName, fontScale, coachSeen, welcomeDone] = await Promise.all([
+    const [dark, accent, biometric, alerts, savedName, fontScale, coachSeen] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
       repo.prefsGet<boolean>('biometricLock', true),
       repo.prefsGet<boolean>('alerts', true),
       repo.prefsGet<string>('userName', ''),
       repo.prefsGet<FontScale>('fontScale', 'medium'),
-      // v10 — حباب راهنمای اولین کار و وضعیت آنبوردینگ کامل
+      // v10 — حباب راهنمای اولین کار (فاز نصب تمیز: آنبوردینگ مودالی حذف شد — راهنمای Tooltip جایگزین شد)
       repo.prefsGet<boolean>('coach-add-seen', false),
-      repo.prefsGet<string>('welcome-done', 'none'),
     ]);
     // فاز ۲ — گروه‌ها/هوشمندهای پنهان/مرتب‌سازی هر لیست/ترتیب دستی کارها (سطح دستگاه، با خروج پاک می‌شوند)
     const prefs = await repo.prefsAll();
@@ -345,11 +360,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       void runSync();
     }
 
-    // آنبوردینگ کامل (v10) — نشست فعال بدون نام و بدون تکمیل آنبوردینگ قبلی
+    // فاز نصب تمیز — هیچ مودال مزاحمی در باز شدن اپ نیست؛ راهنمای ۳مرحله‌ای Tooltip
+    // فقط یک‌بار در هر نصب و فقط در خانه باز می‌شود (پرچم 'coach-guide-seen')؛
+    // نمایش دوباره از: تنظیمات ← راهنمای کارام ← تور آموزشی
     {
-      const sess = get().session;
-      const hasName = !!sess?.displayName?.trim() || !!userName.trim();
-      if (sess && !hasName && welcomeDone === 'none') set({ welcomeSheet: true });
+      const coachGuideSeen = await repo.prefsGet<boolean>('coach-guide-seen', false);
+      if (!coachGuideSeen && get().view === 'home' && typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          // پرچم همان لحظه ثبت می‌شود تا رفرش وسط راه هم باعث تکرار نشود
+          void repo.prefsSet('coach-guide-seen', true);
+          if (useAppStore.getState().view === 'home' && !useAppStore.getState().welcomeSheet) {
+            useAppStore.setState({ tourOpen: true });
+          }
+        }, 900);
+      }
+    }
+
+    // فاز نصب تمیز — اسکن محافظه‌کارانه‌ی داده‌ی نمونه‌ی نصب‌های قدیمی (بنر یک‌بارمصرف)
+    {
+      const cleanupPref = await repo.prefsGet<string>('demo-cleanup-v1', '');
+      if (cleanupPref === '') void get().scanLegacyDemoBanner();
     }
 
     // تنظیمات عمومی سرور (فاز ۴.۵) — در نبود شبکه با پیش‌فرض‌ها ادامه می‌دهیم
@@ -428,6 +458,54 @@ export const useAppStore = create<AppState>((set, get) => ({
   openTour() {
     if (get().coachAdd) get().dismissCoachAdd();
     set({ tourOpen: true, guideSheet: false });
+  },
+
+  /* ---- فاز نصب تمیز — پاک‌سازی ایمن داده‌ی نمونه‌ی نصب‌های قدیمی ---- */
+
+  async scanLegacyDemoBanner() {
+    try {
+      const [tasks, lists] = await Promise.all([repo.tasksAll(), repo.listsAll()]);
+      const scan = scanLegacyDemos(tasks, lists);
+      currentDemoScan = scan;
+      set({ demoCleanupBanner: scan ? { taskCount: scan.tasks.length, listCount: scan.lists.length } : null });
+    } catch {
+      /* محیط بدون IndexedDB — نادیده */
+    }
+  },
+
+  dismissDemoCleanup() {
+    void repo.prefsSet('demo-cleanup-v1', 'kept');
+    currentDemoScan = null;
+    set({ demoCleanupBanner: null });
+  },
+
+  async cleanLegacyDemos() {
+    const scan = currentDemoScan;
+    if (!scan) return;
+    currentDemoScan = null;
+    set({ demoCleanupBanner: null });
+    void repo.prefsSet('demo-cleanup-v1', 'cleaned');
+    lastDemoSnapshot = await runDemoCleanup(scan);
+    await get().refresh();
+    queueSync();
+    // زنگ‌های کارهای نمونه‌ی حذف‌شده هم از دستگاه برداشته شود
+    void syncReminders(get().tasks, get().alerts, true);
+    const n = toFa(lastDemoSnapshot.tasks.length + lastDemoSnapshot.subtasks.length + lastDemoSnapshot.reminders.length);
+    get().showToast(`${n} مورد نمونه پاک شد`, {
+      label: 'واگرد',
+      run: () => void get().undoLegacyDemoCleanup(),
+    });
+  },
+
+  async undoLegacyDemoCleanup() {
+    const snap = lastDemoSnapshot;
+    if (!snap) return;
+    lastDemoSnapshot = null;
+    await undoDemoCleanup(snap);
+    await get().refresh();
+    queueSync();
+    void syncReminders(get().tasks, get().alerts, true);
+    get().showToast('واگرد شد؛ همه‌چیز سر جای قبلی برگشت');
   },
 
   async saveDisplayName(name) {
