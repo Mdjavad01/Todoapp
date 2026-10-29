@@ -8,9 +8,9 @@ import { queueSync } from '@/sync/engine';
 import { syncReminders } from '@/lib/reminderScheduler';
 import { openExactAlarmSettings } from '@/lib/reminderBridge';
 
-const APP_VERSION = '۴.۳.۰';
+const APP_VERSION = '۴.۴.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '4.3.0';
+const APP_VERSION_RAW = '4.4.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {
@@ -48,7 +48,6 @@ export function SettingsView() {
   const setAccent = useAppStore((s) => s.setAccent);
   const fontScale = useAppStore((s) => s.fontScale);
   const setFontScale = useAppStore((s) => s.setFontScale);
-  const biometricLock = useAppStore((s) => s.biometricLock);
   const alerts = useAppStore((s) => s.alerts);
   const setPref = useAppStore((s) => s.setPref);
   const setView = useAppStore((s) => s.setView);
@@ -354,19 +353,8 @@ export function SettingsView() {
 
       {/* لیست ترجیحات */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20 text-body-md">
-        <div className="p-3.5 flex justify-between items-center">
-          <div className="flex items-center gap-2.5">
-            <Icon name="fingerprint" size={22} className="text-outline" />
-            <span>قفل بیومتریک و اثرانگشت</span>
-          </div>
-          <input
-            type="checkbox"
-            className="rounded text-primary focus:ring-0"
-            checked={biometricLock}
-            onChange={(e) => setPref('biometricLock', e.target.checked)}
-            aria-label="قفل بیومتریک"
-          />
-        </div>
+        {/* فاز ۳ — قفل واقعی با اثر انگشت (تأیید زنده در فعال‌سازی؛ فقط اپ اندروید) */}
+        <BiometricLockRow />
         <div className="p-3.5 flex justify-between items-center">
           <div className="flex items-center gap-2.5">
             <Icon name="notifications_active" size={22} className="text-outline" />
@@ -465,6 +453,89 @@ export function SettingsView() {
         )}
       </p>
     </section>
+  );
+}
+
+/**
+ * فاز ۳ — ردیف «قفل با اثر انگشت»:
+ *  - اپ اندروید: کلید واقعی — فعال‌سازی فقط با تأیید زنده‌ی احراز هویت؛ با هر خروج از
+ *    برنامه، بازگشت نیازمند اثر انگشت/چهره یا رمز دستگاه است. وضعیت بیومتریک صادقانه نشان داده می‌شود.
+ *  - وب: کلید غیرفعال با توضیح «فقط در اپ اندروید» (قفل وب‌سازی نمی‌شود).
+ */
+function BiometricLockRow() {
+  const biometricLock = useAppStore((s) => s.biometricLock);
+  const setBiometricLock = useAppStore((s) => s.setBiometricLock);
+  const biometry = useAppStore((s) => s.biometry);
+  const showToast = useAppStore((s) => s.showToast);
+  const native = isNativeApp();
+
+  const kindLabel =
+    biometry === null
+      ? null
+      : biometry.kind === 'fingerprint'
+        ? 'اثر انگشت'
+        : biometry.kind === 'face' || biometry.kind === 'faceid'
+          ? 'تشخیص چهره'
+          : biometry.kind === 'iris'
+            ? 'عنبیه'
+            : biometry.kind === 'touchid'
+              ? 'Touch ID'
+              : null;
+
+  const onToggle = (checked: boolean) => {
+    void setBiometricLock(checked).catch(() => showToast('تغییر وضعیت قفل ناموفق بود'));
+  };
+
+  if (!native) {
+    return (
+      <div className="p-3.5 flex justify-between items-center">
+        <div className="flex items-center gap-2.5">
+          <Icon name="fingerprint" size={22} className="text-outline" />
+          <div className="flex flex-col">
+            <span className={biometricLock ? '' : 'text-on-surface-variant'}>قفل با اثر انگشت</span>
+            <span className="text-[11px] text-on-surface-variant">فقط در نسخه‌ی اندروید کارام کار می‌کند</span>
+          </div>
+        </div>
+        <input type="checkbox" className="rounded text-primary focus:ring-0" checked={false} disabled aria-label="قفل با اثر انگشت (فقط اپ اندروید)" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3.5 py-3.5 flex flex-col gap-2">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2.5">
+          <Icon name="fingerprint" size={22} className="text-outline" />
+          <div className="flex flex-col">
+            <span className="font-bold">قفل با اثر انگشت</span>
+            <span className="text-[11px] text-on-surface-variant">با هر خروج از برنامه، ورود دوباره نیازمند احراز هویت</span>
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          className="rounded text-primary focus:ring-0"
+          checked={biometricLock}
+          onChange={(e) => onToggle(e.target.checked)}
+          aria-label="قفل با اثر انگشت"
+        />
+      </div>
+      {/* وضعیت صادقانه‌ی بیومتریک دستگاه — هیچ‌چیز بی‌صدا نمی‌ماند */}
+      <p className="text-[11px] leading-5 text-on-surface-variant">
+        {biometry === null ? (
+          'در حال بررسی وضعیت بیومتریک دستگاه…'
+        ) : biometry.available ? (
+          <>
+            دستگاه: {kindLabel ?? 'بیومتریک'} در دسترس ✓ — فعال‌سازی با یک تأیید زنده انجام می‌شود؛ اگر بعداً اثر انگشت
+            را حذف کنید، با رمز دستگاه هم می‌توانید وارد شوید.
+          </>
+        ) : (
+          <span className="text-amber-700 dark:text-amber-300">
+            بیومتریک در دسترس نیست: {biometry.reason} — قفل فعلاً اعمال نمی‌شود؛ بعد از ثبت اثر انگشت در تنظیمات اندروید،
+            این کلید را روشن کنید.
+          </span>
+        )}
+      </p>
+    </div>
   );
 }
 

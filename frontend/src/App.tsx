@@ -27,7 +27,7 @@ import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
-import { onAppResume, isNativeApp } from '@/lib/native';
+import { onAppResume, onAppPause, isNativeApp } from '@/lib/native';
 import { syncReminders } from '@/lib/reminderScheduler';
 import { openExactAlarmSettings } from '@/lib/reminderBridge';
 
@@ -62,8 +62,26 @@ export default function App() {
       void syncReminders(st.tasks, st.alerts, true);
       // فاز ۲ (ممیزی یادآور) — وضعیت مجوز/آلارم دقیق بعد از بازگشت (مثلاً از تنظیمات سیستم) تازه می‌شود
       void st.refreshReminderStatus();
+      // فاز ۳ — وضعیت بیومتریک تازه می‌شود (مثلاً اثر انگشت تازه ثبت شده) + اگر قفل است، پاپ‌آپ ورود دوباره باز می‌شود
+      void st.refreshBiometry();
+      if (st.lockState.locked) void useAppStore.getState().unlockAttempt();
     });
     return off;
+  }, []);
+
+  // فاز ۳ — پس‌زمینه رفتن اپ = قفل (اگر کلید بیومتریک روشن باشد) — هم شنونده بومی هم visibilitychange (جینگل‌بند)
+  useEffect(() => {
+    const off = onAppPause(() => {
+      useAppStore.getState().appBackgrounded();
+    });
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') useAppStore.getState().appBackgrounded();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      off();
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   // min-h-dvh در موبایل: ارتفاع پویای واقعی ویوپورت — با min-h-screen (100vh) وقتی نوار آدرس مرورگر باز است،
@@ -102,6 +120,9 @@ export default function App() {
         {ready ? <QuickBar /> : null}
         <BottomNav />
         <Toast />
+
+        {/* فاز ۳ — صفحه‌ی قفل بیومتریک (فقط اپ اندروید با کلید روشن) — بالای همه‌چیز و مات */}
+        {ready ? <LockGate /> : null}
 
         <QuickAddSheet />
         <TaskDetailSheet />
@@ -163,6 +184,57 @@ function ReminderWarningBanner() {
           <Icon name="close" size={14} />
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * فاز ۳ — صفحه‌ی قفل بیومتریک: بالای همه‌ی محتوا (z-50، پس‌زمینه‌ی مات) — با هر خروج از
+ * برنامه و بازگشت، ورود نیازمند اثر انگشت/چهره یا رمز دستگاه است (ماشین حالت: lib/appLock).
+ * در وب هرگز رندر نمی‌شود (قفل فقط در اپ اندروید معنا دارد).
+ */
+function LockGate() {
+  const locked = useAppStore((s) => s.lockState.locked);
+  const lastMessage = useAppStore((s) => s.lockState.lastMessage);
+  const unlockAttempt = useAppStore((s) => s.unlockAttempt);
+  const triedRef = useRef(false);
+
+  // پاپ‌آپ احراز هویت خودکار در اولین نمایش صفحه‌ی قفل
+  useEffect(() => {
+    if (locked && !triedRef.current) {
+      triedRef.current = true;
+      void unlockAttempt();
+    }
+  }, [locked, unlockAttempt]);
+
+  if (!locked || !isNativeApp()) return null;
+  return (
+    <div
+      className="absolute inset-0 z-[70] bg-background dark:bg-inverse-surface flex flex-col items-center justify-center gap-4 px-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label="برنامه قفل است — برای ورود احراز هویت کنید"
+      data-testid="lock-gate"
+    >
+      <div className="w-16 h-16 rounded-3xl bg-primary/10 text-primary flex items-center justify-center">
+        <Icon name="lock" size={32} />
+      </div>
+      <span className="text-headline-md font-black">کارام قفل است</span>
+      <span className="text-body-sm text-on-surface-variant text-center leading-6">
+        برای ورود، اثر انگشت/چهره یا رمز دستگاه خود را وارد کنید.
+      </span>
+      {lastMessage ? (
+        <span className="text-xs text-center leading-5 text-amber-700 dark:text-amber-300 max-w-[280px]" role="status">
+          {lastMessage}
+        </span>
+      ) : null}
+      <button
+        className="mt-2 rounded-xl bg-primary text-on-primary px-6 py-3 font-bold text-body-sm active:scale-95 transition-transform min-h-[44px]"
+        onClick={() => void unlockAttempt()}
+        aria-label="تلاش دوباره برای احراز هویت"
+      >
+        تلاش دوباره
+      </button>
     </div>
   );
 }

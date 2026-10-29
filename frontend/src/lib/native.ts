@@ -70,3 +70,17 @@ export function onAppResume(callback: () => void): () => void {
     void handle.then((h) => h.remove());
   };
 }
+
+/**
+ * فاز ۳ — گوش‌دادن به پس‌زمینه رفتن اپ (قفل بیومتریک + پاک‌سازی‌های رفت)
+ * خروجی: تابع لغو گوش‌دادن
+ */
+export function onAppPause(callback: () => void): () => void {
+  if (!isNativeApp()) return () => undefined;
+  const handle = App.addListener('appStateChange', (state) => {
+    if (!state.isActive) callback();
+  });
+  return () => {
+    void handle.then((h) => h.remove());
+  };
+}

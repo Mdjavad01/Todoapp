@@ -40,8 +40,10 @@
     <!-- فاز ۴ — یادآور بومی: پلاگین local-notifications خودش RECEIVE_BOOT_COMPLETED/WAKE_LOCK/POST_NOTIFICATIONS
          را با مانیفست-مرج می‌آورد؛ SCHEDULE_EXACT_ALARM برای «آلارم دقیق» (زنگ سررسید در زمان درست، حتی در Doze)
          و VIBRATE برای لرزش کانال یادآور صریح اعلام می‌شوند. -->
+    <!-- فاز ۳ — قفل بیومتریک: USE_BIOMETRIC مجوز عادی برای BiometricPrompt (اثر انگشت/چهره/رمز دستگاه) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

@@ -15,6 +15,10 @@ import * as payments from '@/sync/payments';
 // فاز ۴ — یادآور بومی: فقط در اپ اندروید فعال می‌شود (وب بی‌عمل)
 import { syncReminders, clearReminders, registerSnooze, reminderDiag, setReminderActionHandlers, handleReminderAction, type ReminderDiag } from '@/lib/reminderScheduler';
 import { onReminderAction } from '@/lib/reminderBridge';
+// فاز ۳ — قفل بیومتریک واقعی: ماشین حالت خالص + پل بومی (وب بی‌عمل)
+import { initialLockState, reduceLock, lockEnabledFromPref, type LockState, type LockEnv } from '@/lib/appLock';
+import { biometryInfo, biometricUnlock, type BiometryInfo } from '@/lib/biometricBridge';
+import { isNativeApp } from '@/lib/native';
 import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoScanResult, type DemoCleanupSnapshot } from '@/db/demoCleanup';
 
 /* فاز نصب تمیز — اسکن جاری و اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارند) */
@@ -106,6 +110,10 @@ interface AppState {
   reminderWarning: 'exact-denied' | 'permission-denied' | null;
   /** فاز ۲ — وضعیت تشخیصی یادآور برای کارت «اطمینان از دریافت یادآور» در تنظیمات */
   reminderDiag: ReminderDiag | null;
+  /** فاز ۳ — وضعیت قفل بیومتریک (ماشین حالت خالص lib/appLock — سطح نشست) */
+  lockState: LockState;
+  /** فاز ۳ — وضعیت بیومتریک دستگاه (null = وب یا هنوز خوانده نشده) */
+  biometry: BiometryInfo | null;
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
@@ -175,7 +183,17 @@ interface AppState {
   setDark(d: boolean): void;
   setAccent(a: AccentColor): void;
   setFontScale(f: FontScale): void;
-  setPref(key: 'biometricLock' | 'alerts', value: boolean): void;
+  setPref(key: 'alerts', value: boolean): void;
+  /** فاز ۳ — روشن/خاموش‌کردن قفل بیومتریک با تأیید زنده‌ی احراز هویت (فقط اپ اندروید) */
+  setBiometricLock(enabled: boolean): Promise<void>;
+  /** فاز ۳ — خواندن وضعیت بیومتریک + تصمیم قفل سرد (اولین اجرای فرایند) */
+  initAppLock(): Promise<void>;
+  /** فاز ۳ — پس‌زمینه رفتن اپ → قفل (اگر کلید روشن باشد) */
+  appBackgrounded(): void;
+  /** فاز ۳ — تلاش برای بازکردن قفل (پاپ‌آپ بیومتریک) — با گارد تلاش هم‌زمان */
+  unlockAttempt(): Promise<void>;
+  /** فاز ۳ — بازخوانی وضعیت بیومتریک (بعد از resume — مثلاً ثبت اثر انگشت تازه) */
+  refreshBiometry(): Promise<void>;
 
   openModal(m: ModalName, taskId?: string | null): void;
   openCalendar(target: CalendarTarget): void;
@@ -257,6 +275,18 @@ function applyFontScale(f: FontScale): void {
   root.classList.toggle('font-large', f === 'large');
 }
 
+/* فاز ۳ — قفل بیومتریک: محیط تصمیم‌گیری از state فعلی + گارد تلاش هم‌زمان */
+function lockEnv(s: Pick<AppState, 'biometricLock' | 'biometry'>): LockEnv {
+  return {
+    native: isNativeApp(),
+    enabled: s.biometricLock,
+    available: s.biometry?.available ?? false,
+  };
+}
+
+/** فقط یک دیالوگ بیومتریک در هر لحظه — تلاش موازی (دکمه‌ی تلاش دوباره × resume) ممکن است بیفتد */
+let unlockBusy = false;
+
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   lists: [],
@@ -288,6 +318,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   demoCleanupBanner: null,
   reminderWarning: null,
   reminderDiag: null,
+  lockState: initialLockState,
+  biometry: null,
   appSettings: {
     appName: 'کارام',
     paywallTitle: 'کارام پرو',
@@ -314,10 +346,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     await ensureDefaultData();
     await get().refresh();
-    const [dark, accent, biometric, alerts, savedName, fontScale, coachSeen] = await Promise.all([
+    const [dark, accent, alerts, savedName, fontScale, coachSeen] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
-      repo.prefsGet<boolean>('biometricLock', true),
       repo.prefsGet<boolean>('alerts', true),
       repo.prefsGet<string>('userName', ''),
       repo.prefsGet<FontScale>('fontScale', 'medium'),
@@ -342,6 +373,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (myDayIds.length !== rawMyDay.length) {
       void repo.prefsSet('myday-ids', myDayIds);
     }
+    // فاز ۳ — قفل واقعی: کلید «biometricLock» قبلاً کلید نمایشی بی‌اثری با پیش‌فرض روشن بود؛
+    // کاربری که هرگز آن را لمس نکرده نباید ناگهان قفل ببیند → کلید نبودن = خاموش (فعال‌سازی صریح لازم است)
+    const biometricRaw = prefs.find((p) => p.key === 'biometricLock');
+    const biometric = lockEnabledFromPref(biometricRaw?.value);
+    if (!biometricRaw) void repo.prefsSet('biometricLock', false);
     // مهاجرت یک‌باره: اسم پیش‌فرض جعلی نسخه‌های قبل پاک می‌شود (نام واقعی از پروفایل کاربر می‌آید)
     const userName = savedName === 'علی' ? '' : savedName;
     if (savedName === 'علی') {
@@ -353,6 +389,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     applyDark(dark);
     applyAccent(accent);
     applyFontScale(fontScale);
+
+    // فاز ۳ — قفل بیومتریک: وضعیت بیومتریک خوانده و تصمیم قفل سرد گرفته می‌شود (قبل از ready)
+    await get().initAppLock();
 
     // اتصال موتور سینک به store (فاز ۲) — پیام‌های موقت مثل جبران ساعت هم از همین مسیر
     setSyncListeners({
@@ -673,7 +712,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async setPref(key, value) {
     set({ [key]: value } as Partial<AppState>);
-    await repo.prefsSet(key === 'biometricLock' ? 'biometricLock' : 'alerts', value);
+    await repo.prefsSet(key, value);
     // فاز ۴ — کلید اعلان‌ها فوراً روی زنگ‌های دستگاه اثر می‌گذارد
     if (key === 'alerts') {
       if (value) void syncReminders(get().tasks, true, true);
@@ -681,6 +720,69 @@ export const useAppStore = create<AppState>((set, get) => ({
       // فاز ۲ — بنر/کارت تشخیص با وضعیت جدید هماهنگ شود
       void get().refreshReminderStatus();
     }
+  },
+
+  /* ---- فاز ۳ — قفل بیومتریک واقعی ---- */
+
+  async setBiometricLock(enabled) {
+    if (!isNativeApp()) return; // وب: بی‌عمل (UI خودش غیرفعال است)
+    if (enabled) {
+      // تأیید زنده قبل از فعال‌سازی — قفلی که شاید باز نشود هرگز ثبت نمی‌شود
+      const info = get().biometry ?? (await biometryInfo());
+      if (info) set({ biometry: info });
+      if (!info || !info.available) {
+        get().showToast('بیومتریک در دسترس نیست — ابتدا اثر انگشت را در تنظیمات اندروید ثبت کنید');
+        return;
+      }
+      const r = await biometricUnlock('برای فعال‌سازی قفل کارام احراز هویت کنید');
+      if (r.result !== 'ok') {
+        get().showToast(r.result === 'cancel' ? 'فعال‌سازی قفل لغو شد' : r.message);
+        return;
+      }
+    }
+    set({ biometricLock: enabled });
+    await repo.prefsSet('biometricLock', enabled);
+    set({ lockState: reduceLock(get().lockState, { type: 'lock-disabled' }, lockEnv(get())) });
+    if (enabled) get().showToast('قفل با اثر انگشت فعال شد — با هر خروج از برنامه، ورود دوباره نیازمند احراز هویت است');
+    else get().showToast('قفل بیومتریک خاموش شد');
+  },
+
+  async initAppLock() {
+    if (!isNativeApp()) {
+      set({ biometry: null, lockState: initialLockState });
+      return;
+    }
+    const info = await biometryInfo();
+    set({ biometry: info });
+    set({ lockState: reduceLock(get().lockState, { type: 'cold-start' }, lockEnv(get())) });
+  },
+
+  appBackgrounded() {
+    const st = get();
+    if (!isNativeApp()) return;
+    set({ lockState: reduceLock(st.lockState, { type: 'backgrounded' }, lockEnv(st)) });
+  },
+
+  async unlockAttempt() {
+    const st = get();
+    if (!st.lockState.locked || unlockBusy || !isNativeApp()) return;
+    unlockBusy = true;
+    try {
+      const r = await biometricUnlock('برای ورود به کارام احراز هویت کنید');
+      set({ lockState: reduceLock(get().lockState, { type: 'unlock-result', result: r.result, message: r.message }, lockEnv(get())) });
+      if (r.result === 'unavailable') {
+        // باز شدن اضطراری — قفل این نشست برداشته شد (قاعده‌ی «هرگز حبس نشوید»)
+        get().showToast(r.message);
+      }
+    } finally {
+      unlockBusy = false;
+    }
+  },
+
+  async refreshBiometry() {
+    if (!isNativeApp()) return;
+    const info = await biometryInfo();
+    if (info) set({ biometry: info });
   },
 
   openModal(modal, taskId = null) {

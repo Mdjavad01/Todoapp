@@ -17,7 +17,10 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "9.1.2",
     "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7",
+    "@capacitor/browser": "^7",
     "@capacitor/core": "^7.0.0",
     "@capacitor/local-notifications": "^7"
   }
