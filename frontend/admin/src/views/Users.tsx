@@ -96,6 +96,7 @@ export default function Users({
           <option value="">همه‌ی وضعیت‌ها</option>
           <option value="active">فعال</option>
           <option value="blocked">مسدود</option>
+          <option value="deleted">حذف‌شده (پوسته‌ی بی‌نام)</option>
         </select>
         <button type="submit" className="btn-primary">
           جستجو
@@ -226,6 +227,9 @@ function UserDetailModal({
   const [busy, setBusy] = useState<string | null>(null);
   const [name, setName] = useState(u.displayName ?? '');
   const [planCode, setPlanCode] = useState('monthly');
+  // v1.9 — حذف کامل حساب: دیالوگ دومرحله‌ای با تایپ «حذف» — برگشت‌ناپذیر
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
 
   const run = async (key: string, fn: () => Promise<{ message?: string }>) => {
     setBusy(key);
@@ -377,6 +381,65 @@ function UserDetailModal({
               <p className="text-[11px] leading-5 text-slate-400">
                 تمدید از انتهای اشتراک فعلی محاسبه می‌شود و در تاریخچه با منبع «اعطای مدیر» ثبت می‌گردد.
               </p>
+            </div>
+
+            {/* v1.9 — حذف کامل حساب (عملیات حساس — دومرحله‌ای با تایپ تأیید) */}
+            <div className="flex flex-wrap items-end gap-2 border-t border-dashed border-slate-200 pt-3">
+              <div>
+                <p className="label !text-rose-600">حذف کامل حساب</p>
+                <p className="text-[11px] leading-5 text-slate-400">
+                  همه‌ی لیست‌ها/کارها/زیرکارها/یادآورها، هویت‌ها و توکن‌ها سخت پاک می‌شود؛ سوابق مالی بی‌نام می‌ماند. عملیات در Audit ثبت می‌شود.
+                </p>
+              </div>
+              {!confirmDelete ? (
+                <button
+                  type="button"
+                  className="btn-danger !py-1.5 text-xs"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    setConfirmDelete(true);
+                    setDeleteWord('');
+                  }}
+                >
+                  <IconWarning size={15} /> حذف کاربر و تمام داده‌هایش
+                </button>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2 rounded-xl border border-rose-300 bg-rose-50 p-2.5">
+                  <div>
+                    <label className="label !text-rose-700" htmlFor="del-word">
+                      برای تأیید، «حذف» را تایپ کنید
+                    </label>
+                    <input
+                      id="del-word"
+                      className="field !w-32"
+                      value={deleteWord}
+                      onChange={(e) => setDeleteWord(e.target.value)}
+                      placeholder="حذف"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-danger !py-1.5 text-xs"
+                    disabled={busy !== null || deleteWord.trim() !== 'حذف'}
+                    onClick={() =>
+                      void run('delete', () => api.deleteUser(u.id)).then(() => {
+                        setConfirmDelete(false);
+                        onClose();
+                      })
+                    }
+                  >
+                    حذف نهایی
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-outline !py-1.5 text-xs"
+                    onClick={() => setConfirmDelete(false)}
+                  >
+                    انصراف
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         )}

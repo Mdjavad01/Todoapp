@@ -23,7 +23,7 @@
 import type { TaskEntity } from '@/types';
 import * as repo from '@/db/repo';
 import { isNativeApp } from '@/lib/native';
-import { buildReminderSchedule } from '@/lib/reminders';
+import { buildReminderSchedule, stableNotificationId } from '@/lib/reminders';
 import { restoreSnooze, resolveReminderPlan, snoozeEntries, snoozeSnapshot, clearSnoozes, type SnoozeEntry } from '@/lib/reminderPlan';
 import {
   bridgeErrors,
@@ -233,4 +233,28 @@ export async function reminderDiag(tasks: TaskEntity[], alertsOn: boolean): Prom
 /** ثبت خطای سطح زمان‌بند — بی‌صدا نمی‌ماند */
 export function recordSchedulerError(message: string): void {
   lastSchedulerError = { at: new Date().toISOString(), message };
+}
+
+/* ------------------------------------------------------------------ */
+/* v1.9 — یادآور آزمایشی (تنظیمات ← کارت اطمینان از دریافت یادآور)     */
+/* ------------------------------------------------------------------ */
+
+/** پیش‌نمایش/آزمون: زنگ آزمایشی ~۱۰ ثانیه بعد — با همان کانال و دکمه‌های اعلان */
+export async function sendTestReminder(): Promise<boolean> {
+  if (!isNativeApp()) return false;
+  const fireAtMs = Date.now() + 10_000;
+  const ok = await scheduleReminderAlarms([
+    {
+      notifId: stableNotificationId('karam-test-reminder', fireAtMs, 'یادآور آزمایشی کارام'),
+      taskId: 'karam-test-reminder',
+      title: 'یادآور آزمایشی کارام',
+      body: 'اگر این اعلان را همین حالا دیدید، یادآور کارام روی این گوشی سالم است ✓',
+      fireAtMs,
+      reminderMinutes: 0,
+    },
+  ]);
+  if (!ok) {
+    recordSchedulerError('ثبت زنگ آزمایشی ناموفق بود');
+  }
+  return ok;
 }

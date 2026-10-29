@@ -39,3 +39,5 @@ keystore.properties
 
 # گام ۱ — کش هرگز داخل پوشه‌ی کد نباید ساخته شود (حالا در storage محافظت‌شده است)
 backend/src/storage/
+tests/telegram-mock-state.json
+backend/storage/cache/retention-state.json

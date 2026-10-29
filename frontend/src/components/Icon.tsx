@@ -72,7 +72,13 @@ export type IconName =
   | 'wifi'
   | 'workspace_premium'
   | 'format_size'
-  | 'help';
+  | 'help'
+  // v1.9 — بسته‌ی ایمنی و اعتماد
+  | 'delete_forever'
+  | 'download'
+  | 'manage_accounts'
+  | 'schedule'
+  | 'smartphone';
 
 interface IconProps {
   name: IconName;

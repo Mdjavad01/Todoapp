@@ -196,9 +196,20 @@ export const api = {
   deleteAnnouncement: (id: number) =>
     request<{ message: string }>(`/announcements/${id}`, { method: 'DELETE' }),
 
-  settings: () => request<{ items: { key: string; value: string; updatedAt: string }[]; editable: string[] }>('/settings'),
+  settings: () =>
+    request<{
+      items: { key: string; value: string; updatedAt: string; secret?: { isSet: boolean; last4: string } }[];
+      editable: string[];
+      secretKeys?: string[];
+    }>('/settings'),
   updateSettings: (body: Record<string, string>) =>
     request<{ message: string; changed: string[]; telegram?: { ok: boolean; bot?: string; error?: string } }>('/settings', { method: 'PATCH', body }),
+
+  // ---- v1.9 — حذف کامل حساب کاربر (ابزار ادمین) + سلامت کامل ادمین ----
+  deleteUser: (id: number) =>
+    request<{ message: string; removed: Record<string, number> }>(`/users/${id}/delete`, { method: 'POST' }),
+  health: () =>
+    request<AdminHealth>('/health'),
 
   // ---- واریزی کارت‌به‌کارت (فاز ۸) ----
   deposits: (params: { status?: string; page?: number }) =>
@@ -309,6 +320,24 @@ export interface AdminPlan {
   isActive: boolean;
   sortOrder: number;
   updatedAt: string;
+}
+
+/** v1.9 — سلامت کامل ادمین (GET /api/admin/health) */
+export interface AdminHealth {
+  service: string;
+  version: string;
+  php: string;
+  time: string;
+  ok: boolean;
+  status: 'ok' | 'down';
+  checks: {
+    database: { ok: boolean; note?: string | null };
+    config: { ok: boolean; warnings: { code: string; message: string }[] };
+    storage: { ok: boolean; path: string | null; note?: string | null };
+    crons: Record<string, { ok: boolean; at: string | null; ageHours: number | null; note: string | null }>;
+    providers: Record<string, { ok: boolean; at: string | null; note: string | null }>;
+    disk: { ok: boolean; disk: { freeBytes: number; totalBytes: number | null } | null };
+  };
 }
 
 export interface AdminAnnouncement {

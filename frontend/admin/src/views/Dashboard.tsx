@@ -2,7 +2,7 @@
  * کارام — پنل مدیریت: داشبورد آمار
  */
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, type AdminHealth } from '../api';
 import { faNum, faDayShort, faMonthShort } from '../format';
 import { priceText, usePriceDisplay } from '../usePriceDisplay';
 import { Spinner, Bar } from '../ui';
@@ -15,11 +15,26 @@ interface HealthWarning {
   message: string;
 }
 
+/** v1.9 — برچسب فارسی کرون‌ها و ارسال‌کننده‌ها در بنرهای داشبورد */
+const CRON_LABELS: Record<string, string> = {
+  reminder: 'یادآور تلگرامی',
+  backup: 'بکاپ روزانه',
+  retention: 'پاک‌سازی (نگه‌داری)',
+};
+const PROVIDER_LABELS: Record<string, string> = {
+  smtp: 'ایمیل (SMTP)',
+  telegram: 'ربات تلگرام',
+  sms: 'پیامک',
+};
+
 export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'error', text: string) => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [priceMode] = usePriceDisplay();
   const [busy, setBusy] = useState(false);
   const [warnings, setWarnings] = useState<HealthWarning[]>([]);
+  // v1.9 — سلامت کامل ادمین (دیتابیس/storage/کرون‌ها/SMTP/ربات/دیسک)
+  const [health, setHealth] = useState<AdminHealth | null>(null);
+  const [healthLoadFailed, setHealthLoadFailed] = useState(false);
 
   const load = async () => {
     setBusy(true);
@@ -40,7 +55,19 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
       .then((r) => r.json())
       .then((j: { warnings?: HealthWarning[] }) => setWarnings(Array.isArray(j.warnings) ? j.warnings : []))
       .catch(() => setWarnings([]));
+    // v1.9 — سلامت کامل: از مسیر ادمین با همان نشست پنل
+    api
+      .health()
+      .then(setHealth)
+      .catch(() => setHealthLoadFailed(true));
   }, []);
+
+  const cronProblems = health
+    ? Object.entries(health.checks.crons).filter(([, c]) => !c.ok)
+    : [];
+  const providerProblems = health
+    ? Object.entries(health.checks.providers).filter(([, prov]) => !prov.ok)
+    : [];
 
   if (!stats) return busy ? <Spinner /> : null;
 
@@ -49,6 +76,46 @@ export default function Dashboard({ onToast }: { onToast: (kind: 'success' | 'er
 
   return (
     <div className="space-y-5">
+      {/* v1.9 — سرویس پایین است؟ (دیتابیس/storage/دیسک) — بنر قرمز */}
+      {health && !health.ok ? (
+        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-300 bg-rose-50 p-3.5 text-xs leading-6 text-rose-800">
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-rose-600" />
+          <div className="min-w-0 space-y-1">
+            <b>سلامت سرویس: مشکل جدی</b>
+            {!health.checks.database.ok ? <p>· دیتابیس: {health.checks.database.note ?? 'ناسالم'}</p> : null}
+            {!health.checks.storage.ok ? <p>· storage قابل‌نوشتن نیست: {health.checks.storage.note ?? ''}</p> : null}
+            {!health.checks.disk.ok ? <p>· فضای دیسک کم است{health.checks.disk.disk ? ` (${Math.round(health.checks.disk.disk.freeBytes / 1024 / 1024)}MB آزاد)` : ''}</p> : null}
+          </div>
+        </div>
+      ) : null}
+      {healthLoadFailed && !health ? (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-6 text-amber-800">
+          <b>سلامت کامل سرویس بارگذاری نشد</b> — احتمالاً دسترسی settings.manage ندارید یا سرور پاسخ نداد.
+        </div>
+      ) : null}
+
+      {/* v1.9 — کرون‌های عقب‌مانده */}
+      {cronProblems.length > 0 ? (
+        <div role="status" className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-6 text-amber-800">
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <span>
+            <b>کرون‌های عقب‌مانده:</b>{' '}
+            {cronProblems.map(([name, c]) => `${CRON_LABELS[name] ?? name} (${c.note ?? 'نامشخص'})`).join(' · ')}
+            {' — راهنمای کرون‌ها در docs/INSTALL.md بخش ۱۹'}</span>
+        </div>
+      ) : null}
+
+      {/* v1.9 — ارسال‌کننده‌های ساکت (SMTP/ربات/پیامک) */}
+      {providerProblems.length > 0 ? (
+        <div role="status" className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-6 text-amber-800">
+          <IconWarning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <span>
+            <b>ارسال‌کننده‌های ساکت (بیش از ۷۲ ساعت بدون ارسال موفق):</b>{' '}
+            {providerProblems.map(([name]) => `${PROVIDER_LABELS[name] ?? name}`).join(' · ')}
+          </span>
+        </div>
+      ) : null}
+
       {/* هشدارهای پیکربندی (گام ۱) */}
       {warnings.map((w) => (
         <div

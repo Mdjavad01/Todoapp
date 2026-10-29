@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
+import { PRO_BENEFITS, PRO_SOON } from '@/lib/proBenefits';
 import { toFa, faDateTimeUtc, formatToman } from '@/lib/format';
 import { isNativeApp, onBrowserFinished, openExternal } from '@/lib/native';
 import { PaymentMethodSheet } from '@/modals/PaymentMethodSheet';
@@ -47,12 +48,9 @@ const PLAN_NOTES: Record<string, string> = {
   lifetime: 'یکبار پرداخت',
 };
 
-const BENEFITS = [
-  'تبدیل نامحدود وویس به وظیفه هوشمند با هوش مصنوعی',
-  'دسترسی به تمامی بسته‌های شغلی تخصصی و مالی',
-  'همگام‌سازی ابری و بک‌آپ خودکار نامحدود',
-  'قفل امنیتی بیومتریک و تم‌های اختصاصی لوکس',
-];
+// v1.9 — صداقت پی‌وال: فقط مزایای واقعاً قفل‌شده + «به‌زودی» بدون قیمت (منبع واحد: lib/proBenefits.ts)
+const BENEFITS = PRO_BENEFITS;
+const SOON_FEATURES = PRO_SOON;
 
 export function PaywallView() {
   const showToast = useAppStore((s) => s.showToast);
@@ -426,6 +424,19 @@ export function PaywallView() {
             <span>{b}</span>
           </div>
         ))}
+        {/* v1.9 — قابلیت‌های در مسیر ساخت: برچسب «به‌زودی» بدون قیمت — هیچ وعده‌ی فروخته‌شده‌ای وجود ندارد */}
+        <div className="pt-1.5 border-t border-outline-variant/20" />
+        <p className="text-[11px] text-on-surface-variant">به‌زودی (فعلاً در دسترس نیست — بدون قیمت):</p>
+        {SOON_FEATURES.map((b) => (
+          <div key={b} className="flex items-center gap-2 opacity-70">
+            <Icon name="schedule" size={18} className="text-on-surface-variant" />
+            <span className="text-on-surface-variant">{b} — به‌زودی</span>
+          </div>
+        ))}
+        {/* شفافیت رایگان: این‌ها با خرید پرو خریداری نمی‌شوند — همه رایگان‌اند */}
+        <p className="text-[11px] text-on-surface-variant leading-5 pt-1">
+          سینک ابری و قفل بیومتریک برای همه‌ی کاربران رایگان است و جزو اشتراک پرو فروخته نمی‌شود.
+        </p>
       </div>
 
       {paymentsClosed ? (

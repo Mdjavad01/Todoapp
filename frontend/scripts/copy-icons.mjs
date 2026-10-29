@@ -15,10 +15,10 @@ mkdirSync(outDir, { recursive: true });
 const ICON_NAMES = [
   'add', 'arrow_back', 'arrow_back_ios', 'arrow_forward', 'arrow_downward', 'arrow_upward', 'auto_awesome', 'bar_chart',
   'battery_full', 'calendar_month', 'calendar_today', 'check', 'check_circle', 'checklist',
-  'close', 'cloud_sync', 'dark_mode', 'delete', 'drag_indicator', 'edit', 'event_note', 'expand_more', 'filter_list',
-  'fingerprint', 'flag', 'folder', 'home', 'light_mode', 'lock', 'mic', 'more_vert',
-  'notifications', 'notifications_active', 'priority_high', 'psychology', 'replay', 'search',
-  'settings', 'shop', 'signal_cellular_4_bar', 'sort', 'star', 'star_filled', 'today', 'verified', 'warning',
+  'close', 'cloud_sync', 'dark_mode', 'delete', 'delete_forever', 'download', 'drag_indicator', 'edit', 'event_note', 'expand_more', 'filter_list',
+  'fingerprint', 'flag', 'folder', 'home', 'light_mode', 'lock', 'mail', 'manage_accounts', 'mic', 'more_vert',
+  'notifications', 'notifications_active', 'priority_high', 'psychology', 'replay', 'schedule', 'search',
+  'settings', 'shop', 'signal_cellular_4_bar', 'smartphone', 'sort', 'star', 'star_filled', 'today', 'verified', 'warning',
   'wifi', 'workspace_premium',
 ];
 
@@ -31,6 +31,8 @@ const MANUAL_ICONS = {
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>',
   'star_filled':
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 17.27 4.15 2.51c.76.46 1.69-.22 1.49-1.08l-1.1-4.72 3.67-3.18c.67-.58.31-1.68-.57-1.75l-4.83-.41-1.89-4.46c-.34-.81-1.5-.81-1.84 0L9.19 8.63l-4.83.41c-.88.07-1.24 1.17-.57 1.75l3.67 3.18-1.1 4.72c-.2.86.73 1.54 1.49 1.08L12 17.27z"/></svg>',
+  // v1.9 — «smartphone» در این نسخه‌ی پکیج نیست؛ همان آیکن mobile Material به آن نام کپی می‌شود
+  'smartphone': readFileSync(join(srcDir, 'mobile.svg'), 'utf8'),
 };
 
 for (const name of ICON_NAMES) {

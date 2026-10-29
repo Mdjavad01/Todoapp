@@ -93,6 +93,8 @@ interface AppState {
   searchQuery: string;
   searchFilter: string;
   accountSheet: boolean;
+  /** v1.9 — شیت دومرحله‌ای حذف حساب (تنظیمات ← حساب و داده‌های من) */
+  deleteAccountSheet: boolean;
   genderSheet: boolean;
   /** راهنمای کارام (v11) — پاپ‌آپ مرکزی با پرسش‌های پرتکرار */
   guideSheet: boolean;
@@ -148,6 +150,8 @@ interface AppState {
   goHome(): void;
 
   openAccountSheet(): void;
+  /** v1.9 — باز کردن شیت دومرحله‌ای حذف حساب */
+  openDeleteAccountSheet(): void;
   openGenderSheet(): void;
   /** باز کردن پاپ‌آپ راهنمای کارام (v11) */
   openGuideSheet(): void;
@@ -309,6 +313,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: '',
   searchFilter: 'all',
   accountSheet: false,
+  deleteAccountSheet: false,
   genderSheet: false,
   guideSheet: false,
   termsSheet: false,
@@ -461,6 +466,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (bs?.sync?.maxItems) {
         setSyncConfig({ chunkSize: bs.sync.maxItems });
       }
+      // v1.9 — آستانه‌ی نگه‌داری تومب‌استون برای «سینک کامل مجدد» کلاینتِ دیر آمده
+      if (bs?.sync?.tombstoneRetentionDays) {
+        setSyncConfig({ tombstoneRetentionDays: bs.sync.tombstoneRetentionDays });
+      }
     } catch {
       /* آفلاین — پیش‌فرض‌ها */
     }
@@ -538,6 +547,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openAccountSheet() {
     set({ accountSheet: true });
+  },
+
+  /** v1.9 — باز کردن شیت حذف حساب (دومرحله‌ای با OTP و تایپ تأیید) */
+  openDeleteAccountSheet() {
+    set({ deleteAccountSheet: true });
   },
 
   openGenderSheet() {

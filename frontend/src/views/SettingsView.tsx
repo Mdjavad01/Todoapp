@@ -4,6 +4,8 @@ import { useAppStore, ACCENTS, type AccentColor, type FontScale } from '@/store/
 import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { isNativeApp } from '@/lib/native';
+import { exportMyData } from '@/sync/auth';
+import { sendTestReminder } from '@/lib/reminderScheduler';
 import { queueSync } from '@/sync/engine';
 import { syncReminders } from '@/lib/reminderScheduler';
 import { openExactAlarmSettings } from '@/lib/reminderBridge';
@@ -60,6 +62,7 @@ export function SettingsView() {
   const appSettings = useAppStore((s) => s.appSettings);
   const openTermsSheet = useAppStore((s) => s.openTermsSheet);
   const openModal = useAppStore((s) => s.openModal);
+  const openDeleteAccountSheet = useAppStore((s) => s.openDeleteAccountSheet);
   const premium = useAppStore((s) => s.premium);
   const isPro = premium.loaded && premium.isPremium;
 
@@ -123,6 +126,27 @@ export function SettingsView() {
     }
   };
 
+  // v1.9 — دریافت داده از سرور (JSON کامل حساب — لیست/کار/زیرکار/یادآور)
+  const [exportBusy, setExportBusy] = useState(false);
+  const doServerExport = async () => {
+    setExportBusy(true);
+    try {
+      const data = await exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `karam-data-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      showToast('داده‌های حساب شما (JSON) دانلود شد');
+    } catch {
+      showToast('دریافت داده از سرور ناموفق بود');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   return (
     <section className="p-margin flex flex-col gap-4" id="view-settings">
       <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">تنظیمات</h1>
@@ -147,7 +171,7 @@ export function SettingsView() {
                 ? premium.daysLeft !== null
                   ? `${toFa(premium.daysLeft)} روز باقی‌مانده`
                   : 'بدون محدودیت زمانی'
-                : 'تحلیل عمقی، بسته‌های شغلی و تم‌های اختصاصی'}
+                : 'تحلیل عمقی آماری و بسته‌های شغلی تخصصی'}
             </p>
           </div>
         </div>
@@ -350,6 +374,39 @@ export function SettingsView() {
           />
         </div>
       </div>
+
+      {/* v1.9 — حساب و داده‌های من: دریافت داده از سرور + حذف حساب (فقط برای حساب‌دار) */}
+      {session ? (
+        <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 p-4 flex flex-col gap-3">
+          <span className="text-label-md font-bold flex items-center gap-2">
+            <Icon name="manage_accounts" size={20} className="text-outline" />
+            حساب و داده‌های من
+          </span>
+          <p className="text-body-sm text-on-surface-variant leading-relaxed">
+            داده‌های حساب شما (لیست‌ها، کارها، زیرکارها و یادآورها) هر وقت بخواهید به‌صورت فایل JSON می‌توانید بگیرید؛
+            و اگر خواستید، حساب و تمام داده‌هایش را برای همیشه حذف کنید.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              className="w-full py-3 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+              onClick={() => void doServerExport()}
+              disabled={exportBusy}
+              aria-label="دریافت داده‌های من از سرور"
+            >
+              <Icon name="download" size={18} />
+              {exportBusy ? 'در حال آماده‌سازی…' : 'دریافت داده‌های من (JSON)'}
+            </button>
+            <button
+              className="w-full py-3 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 font-bold text-body-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
+              onClick={openDeleteAccountSheet}
+              aria-label="حذف حساب و پاک‌کردن همه‌ی داده‌ها"
+            >
+              <Icon name="delete_forever" size={18} />
+              حذف حساب و پاک‌کردن همه‌ی داده‌ها
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* لیست ترجیحات */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20 text-body-md">
@@ -629,6 +686,18 @@ function ReminderDiagCard() {
             پرسش دوباره‌ی خودکار نمی‌دهد).
           </p>
         ) : null}
+        {/* v1.9 — یادآور آزمایشی: آزمون واقعی زنگِ همین گوشی (~۱۰ ثانیه بعد) */}
+        <button
+          className="mt-2.5 w-full rounded-lg bg-primary/10 text-primary px-3 py-2 text-[11px] font-black active:scale-95 transition-transform"
+          onClick={() =>
+            void sendTestReminder().then((ok) => {
+              showToast(ok ? 'یادآور آزمایشی ثبت شد؛ تا ۱۰ ثانیه دیگر می‌رسد' : 'ثبت یادآور آزمایشی ناموفق بود');
+            })
+          }
+          aria-label="ارسال یادآور آزمایشی"
+        >
+          ارسال یادآور آزمایشی (۱۰ ثانیه بعد)
+        </button>
       </div>
     </div>
   );

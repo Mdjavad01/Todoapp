@@ -16,6 +16,8 @@ interface SettingRow {
   key: string;
   value: string;
   updatedAt: string;
+  /** v1.9 — کلیدهای راز: مقدار واقعی هرگز از سرور نمی‌آید؛ فقط وضعیت + ۴ کاراکتر آخر */
+  secret?: { isSet: boolean; last4: string };
 }
 
 interface FieldDef {
@@ -116,12 +118,12 @@ const GROUPS: GroupDef[] = [
     description: 'درایور عمومی — آدرس و قالب هر شرکت پیامکی قابل تنظیم است. {phone} و {code} جایگزین می‌شوند.',
     fields: [
       { key: 'provider_sms_enabled', label: 'کانال ورود با موبایل', kind: 'bool' },
-      { key: 'provider_sms_url', label: 'آدرس API ارسال', kind: 'text', dir: 'ltr' },
+      { key: 'provider_sms_url', label: 'آدرس API ارسال', kind: 'text', dir: 'ltr', secret: true, help: 'راز — معمولاً کلید API در URL است؛ مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود، فقط ۴ کاراکتر آخر' },
       { key: 'provider_sms_method', label: 'متد', kind: 'select', options: [
         { value: 'GET', label: 'GET' },
         { value: 'POST', label: 'POST' },
       ] },
-      { key: 'provider_sms_headers', label: 'هدرها (JSON)', kind: 'textarea', dir: 'ltr', help: 'نمونه: {"Authorization":"Bearer xxx"}' },
+      { key: 'provider_sms_headers', label: 'هدرها (JSON)', kind: 'textarea', dir: 'ltr', secret: true, help: 'راز — معمولاً Authorization این‌جاست؛ نمونه: {"Authorization":"Bearer xxx"}. مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود' },
       { key: 'provider_sms_body', label: 'قالب بدنه', kind: 'textarea', dir: 'ltr', help: 'خالی = پارامتر phone و code · نمونه: {"mobile":"{phone}","message":"کد: {code}"}' },
     ],
   },
@@ -130,7 +132,7 @@ const GROUPS: GroupDef[] = [
     description: 'فروش اشتراک کارام پرو از درگاه زیبال — کد مرچنت را از پنل زیبال بگیرید (برای تست: zibal).',
     fields: [
       { key: 'gateway_zibal_enabled', label: 'درگاه زیبال فعال', kind: 'bool', help: 'با روشن کردن این گزینه، دکمه‌ی خرید در اپ به درگاه وصل می‌شود' },
-      { key: 'zibal_merchant', label: 'کد مرچنت زیبال', kind: 'text', dir: 'ltr', help: 'مرچنت واقعی از panel.zibal.ir — مقدار zibal فقط برای تست' },
+      { key: 'zibal_merchant', label: 'کد مرچنت زیبال', kind: 'text', dir: 'ltr', secret: true, help: 'راز — مرچنت واقعی از panel.zibal.ir (مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود، فقط ۴ کاراکتر آخر)' },
     ],
   },
   {
@@ -185,10 +187,20 @@ const GROUPS: GroupDef[] = [
       { key: 'reminder_lookback_days', label: 'بازه عقب‌افتادگی (روز)', kind: 'number', help: 'پیش‌فرض ۳۰ — فقط کارهایی که ۱ تا ۳۰ روز از موعدشان گذشته (جلوگیری از اسپم کارهای قدیمی)' },
     ],
   },
+  {
+    title: 'نگه‌داری و پاک‌سازی (v1.9)',
+    description: 'کرون روزانه api/cron/retention-cron.php (راهنما در INSTALL بخش ۲۰) جدول‌های لاگ/توکن/تومب‌استون قدیمی را پاک می‌کند. حالت بدون‌حذف برای بررسی: php retention-cron.php --dry',
+    fields: [
+      { key: 'retention_otp_days', label: 'کدهای یک‌بارمصرف (روز)', kind: 'number', help: 'پیش‌فرض ۹۰ — رکوردهای OTP قدیمی‌تر از این پاک می‌شوند' },
+      { key: 'retention_provider_logs_days', label: 'لاگ پروایدرها (روز)', kind: 'number', help: 'پیش‌فرض ۱۸۰ — لاگ ارسال ایمیل/ربات/پیامک/درگاه قدیمی‌تر از این پاک می‌شود' },
+      { key: 'retention_audit_days', label: 'Audit عملیات مدیریتی (روز)', kind: 'number', help: 'پیش‌فرض ۳۶۵ — حداقل مجاز ۹۰' },
+      { key: 'retention_refresh_expired_days', label: 'توکن‌های منقضی (روز پس از انقضا)', kind: 'number', help: 'پیش‌فرض ۳۰ — نشست فعال هرگز پاک نمی‌شود' },
+      { key: 'retention_tombstone_days', label: 'حذف‌های نرم (تومب‌استون — روز)', kind: 'number', help: 'پیش‌فرض ۱۸۰ — حداقل مجاز ۹۰ (ایمنی سینک). کلاینتِ بیشتر از این مدت آفلاین، سینک کامل مجدد می‌گیرد و داده‌ی حذف‌شده برنمی‌گردد' },
+    ],
+  },
 ];
 
 const SECRET_MASK = '••••••••';
-
 export default function Settings({
   onToast,
   session,
@@ -198,7 +210,9 @@ export default function Settings({
 }) {
   const [rows, setRows] = useState<SettingRow[] | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [shownSecrets, setShownSecrets] = useState<Set<string>>(new Set());
+  // v1.9 — رازها ماسک‌اند: مقدار واقعی از سرور نمی‌آید؛ فقط وقتی ادمین مقدار جدید تایپ کند
+  // فرستاده می‌شود. «پاک‌کردن» عمدی با مجموعه‌ی جدا انجام می‌شود (ارسال '' به سرور).
+  const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   // گام ۲ — دیالوگ تأیید بستن کلید اصلی پرداخت (عملیت حساس — لاگ Audit هم می‌شود)
   const [confirmMasterOff, setConfirmMasterOff] = useState(false);
@@ -223,8 +237,15 @@ export default function Settings({
 
   const dirtyKeys = useMemo(() => {
     if (!rows) return [] as string[];
-    return rows.filter((r) => draft[r.key] !== undefined && draft[r.key] !== r.value).map((r) => r.key);
-  }, [rows, draft]);
+    return rows
+      .filter(
+        (r) =>
+          draft[r.key] !== undefined &&
+          // پاک‌کردن عمدی راز هم «تغییر» است حتی اگر مقدار خالی همان مقدار خالی سرور باشد
+          (draft[r.key] !== r.value || clearedSecrets.has(r.key)),
+      )
+      .map((r) => r.key);
+  }, [rows, draft, clearedSecrets]);
 
   const save = async () => {
     if (dirtyKeys.length === 0) return;
@@ -260,6 +281,82 @@ export default function Settings({
     const server = serverMap[f.key] ?? '';
     let value = draft[f.key] ?? server;
     const dirty = draft[f.key] !== undefined && draft[f.key] !== server;
+
+    /**
+     * v1.9 — رندر امن رازها: مقدار واقعی هرگز از سرور نمی‌آید؛ فقط {isSet, last4}.
+     *  - بدون تایپ: هیچ چیزی ارسال نمی‌شود (سرور دست‌نخورده می‌ماند)
+     *  - تایپ مقدار جدید: فقط آن مقدار جدید ارسال می‌شود
+     *  - «پاک‌کردن»: '' صریح ارسال می‌شود
+     */
+    const renderSecretField = (sf: FieldDef) => {
+      const meta = rows?.find((r) => r.key === sf.key)?.secret;
+      const isSet = meta?.isSet ?? false;
+      const typed = draft[sf.key] !== undefined && draft[sf.key] !== '';
+      const cleared = clearedSecrets.has(sf.key) && !typed;
+
+      let badge: string;
+      let badgeClass: string;
+      if (typed) {
+        badge = 'مقدار جدید — فقط با ذخیره ثبت می‌شود';
+        badgeClass = 'text-amber-600';
+      } else if (cleared) {
+        badge = 'پاک‌کردن ثبت شد — با ذخیره اعمال می‌شود';
+        badgeClass = 'text-rose-600';
+      } else if (isSet) {
+        badge = `ذخیره شده · پایان: ${SECRET_MASK}${meta?.last4 ?? ''}`;
+        badgeClass = 'text-emerald-600';
+      } else {
+        badge = 'ثبت نشده';
+        badgeClass = 'text-slate-400';
+      }
+
+      return (
+        <div className="py-2" key={sf.key}>
+          <p className="text-sm font-semibold text-slate-700">
+            {sf.label} <span className="ml-1 rounded bg-slate-100 px-1.5 text-[10px] text-slate-500">راز</span>
+          </p>
+          <div className="mt-1 flex gap-1.5">
+            <input
+              className={`field ${sf.dir === 'ltr' ? 'text-left' : ''}`}
+              dir={sf.dir}
+              type="password"
+              autoComplete="new-password"
+              placeholder={isSet && !cleared ? 'برای تغییر، مقدار جدید را وارد کنید' : 'مقدار'}
+              value={draft[sf.key] ?? ''}
+              disabled={!canManage}
+              onChange={(e) => setDraft({ ...draft, [sf.key]: e.target.value })}
+              aria-label={sf.label}
+            />
+            {isSet && canManage ? (
+              <button
+                type="button"
+                className="btn-ghost shrink-0 text-xs !text-rose-600"
+                onClick={() => {
+                  if (cleared) {
+                    setClearedSecrets((s) => {
+                      const n = new Set(s);
+                      n.delete(sf.key);
+                      return n;
+                    });
+                  } else {
+                    setDraft({ ...draft, [sf.key]: '' });
+                    setClearedSecrets((s) => new Set(s).add(sf.key));
+                  }
+                }}
+                aria-label={`پاک‌کردن ${sf.label}`}
+              >
+                {cleared ? 'بی‌اثر' : 'پاک‌کردن'}
+              </button>
+            ) : null}
+          </div>
+          <p className={`mt-0.5 text-[11px] ${badgeClass}`}>{badge}</p>
+          {sf.help ? <p className="mt-0.5 text-[11px] leading-5 text-slate-400">{sf.help}</p> : null}
+          {draft[sf.key] !== undefined ? (
+            <DirtyNote updatedAt={rows?.find((r) => r.key === sf.key)?.updatedAt} />
+          ) : null}
+        </div>
+      );
+    };
 
     if (f.kind === 'shortcuts') {
       return <ShortcutsEditor key={f.key} help={f.help} value={value} dirty={dirty} disabled={!canManage} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />;
@@ -355,6 +452,9 @@ export default function Settings({
     }
 
     if (f.kind === 'textarea') {
+      if (f.secret) {
+        return renderSecretField(f);
+      }
       return (
         <div className="py-2" key={f.key}>
           <p className="text-sm font-semibold text-slate-700">{f.label}</p>
@@ -373,7 +473,9 @@ export default function Settings({
     }
 
     // text / number
-    const isMasked = f.secret && !shownSecrets.has(f.key) && value !== '';
+    if (f.secret) {
+      return renderSecretField(f);
+    }
     return (
       <div className="py-2" key={f.key}>
         <p className="text-sm font-semibold text-slate-700">{f.label}</p>
@@ -383,33 +485,11 @@ export default function Settings({
             dir={f.dir}
             type={f.kind === 'number' ? 'text' : 'text'}
             inputMode={f.kind === 'number' ? 'numeric' : undefined}
-            value={isMasked ? SECRET_MASK : value}
+            value={value}
             disabled={!canManage}
             onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
-            onFocus={() => {
-              if (f.secret && !shownSecrets.has(f.key)) {
-                setShownSecrets((s) => new Set(s).add(f.key));
-                setDraft((d) => ({ ...d, [f.key]: d[f.key] ?? server }));
-              }
-            }}
             aria-label={f.label}
           />
-          {f.secret ? (
-            <button
-              type="button"
-              className="btn-ghost shrink-0 text-xs"
-              onClick={() =>
-                setShownSecrets((s) => {
-                  const n = new Set(s);
-                  if (n.has(f.key)) n.delete(f.key);
-                  else n.add(f.key);
-                  return n;
-                })
-              }
-            >
-              {shownSecrets.has(f.key) ? 'پنهان' : 'نمایش'}
-            </button>
-          ) : null}
         </div>
         {f.help ? <p className="mt-0.5 text-[11px] text-slate-400">{f.help}</p> : null}
         {dirty ? <DirtyNote updatedAt={rows?.find((r) => r.key === f.key)?.updatedAt} /> : null}

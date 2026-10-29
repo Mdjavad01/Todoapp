@@ -47,6 +47,7 @@ require $srcDir . '/src/Payments/ZibalProvider.php';
 require $srcDir . '/src/Payments/PaymentsPolicy.php'; // گام ۲ — کلید خاموش‌کردن پرداخت‌ها
 require $srcDir . '/src/Services/Referral.php'; // v20 — دعوت دوستان
 require $srcDir . '/src/Services/GiftCode.php'; // v20 — کد هدیه
+require $srcDir . '/src/Services/AccountDeletion.php'; // v1.9 — حذف حساب و دریافت داده
 require $srcDir . '/src/Controllers/HealthController.php';
 require $srcDir . '/src/Controllers/AuthController.php';
 require $srcDir . '/src/Controllers/RestEntityController.php';
@@ -117,6 +118,11 @@ $router->delete('/api/v1/me/sessions/{id}', [$auth, 'revokeSession']);
 $router->get('/api/v1/me/referral', [$auth, 'referralStatus']); // v20 — دعوت دوستان
 $router->post('/api/v1/me/referral', [$auth, 'referralRedeem']);
 
+// ---- حذف حساب و دریافت داده (v1.9 — بسته‌ی ایمنی و اعتماد) ----
+$router->get('/api/v1/me/export', [$auth, 'exportData']);
+$router->post('/api/v1/me/delete-request', [$auth, 'deleteAccountRequest']);
+$router->post('/api/v1/me/delete', [$auth, 'deleteAccountConfirm']);
+
 // ---- CRUD موجودیت‌ها (Bearer) ----
 $lists = new RestEntityController(Entities::ENTITY_LISTS);
 $tasks = new RestEntityController(Entities::ENTITY_TASKS);
@@ -175,6 +181,7 @@ $router->get('/api/admin/users/{id}', [$admin, 'userShow']);
 $router->patch('/api/admin/users/{id}', [$admin, 'userUpdate']);
 $router->post('/api/admin/users/{id}/premium', [$admin, 'userGrantPremium']);
 $router->post('/api/admin/users/{id}/revoke-sessions', [$admin, 'userRevokeSessions']);
+$router->post('/api/admin/users/{id}/delete', [$admin, 'userDelete']); // v1.9 — حذف کامل حساب
 $router->get('/api/admin/plans', [$admin, 'plansIndex']);
 $router->patch('/api/admin/plans/{id}', [$admin, 'planUpdate']);
 $router->get('/api/admin/announcements', [$admin, 'announcementsIndex']);
@@ -194,6 +201,9 @@ $router->get('/api/admin/otp/shortcuts', [$admin, 'otpShortcuts']); // گام ۱
 $router->post('/api/admin/otp/telegram/poll', [$admin, 'otpShortcutTelegramPoll']);
 $router->post('/api/admin/otp/verify', [$admin, 'otpShortcutVerify']);
 $router->get('/api/admin/audit', [$admin, 'auditIndex']);
+
+// v1.9 — سلامت کامل فقط برای ادمین (دیتابیس/storage/کرون‌ها/SMTP/ربات/دیسک)
+$router->get('/api/admin/health', [new HealthController(), 'adminHealth']);
 
 // اجرا — مسیر بدون query string
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';

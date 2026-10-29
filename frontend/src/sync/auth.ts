@@ -159,7 +159,7 @@ export interface BootstrapPayload {
   /** v17 — اطلاعات پشتیبانی در شیت قوانین و صفحه ورود */
   support?: { email: string | null; telegram: string | null } | null;
   /** ترمیم جریان — سقف آیتم سینک برای push تکه‌تکه (سرورهای قدیمی بدون این فیلد) */
-  sync?: { maxItems?: number } | null;
+  sync?: { maxItems?: number; tombstoneRetentionDays?: number } | null;
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {
@@ -176,4 +176,50 @@ export async function listSessions(): Promise<ActiveSession[]> {
 
 export async function revokeSession(id: number): Promise<void> {
   await authedFetch(`/v1/me/sessions/${id}`, { method: 'DELETE' });
+}
+
+/* ---------------- حذف حساب و دریافت داده (v1.9 — بسته‌ی ایمنی و اعتماد) ---------------- */
+
+/** خروجی کامل GET /api/v1/me/export — شکل موجودیت‌ها همان خروجی سینک است */
+export interface AccountExport {
+  kind: string;
+  version: number;
+  exportedAt: string;
+  account: { uuid: string; displayName: string | null; createdAt: string | null };
+  counts: Record<string, number>;
+  lists: unknown[];
+  tasks: unknown[];
+  subtasks: unknown[];
+  reminders: unknown[];
+}
+
+/** دریافت JSON کامل داده‌ی حساب از سرور (لیست‌ها/کارها/زیرکارها/یادآورها) */
+export async function exportMyData(): Promise<AccountExport> {
+  return authedFetch<AccountExport>('/v1/me/export');
+}
+
+/** پاسخ گام ۱ حذف حساب — کد دومرحله‌ای به هویت اصلی ارسال می‌شود */
+export interface DeleteRequestResult {
+  channel: 'email' | 'mobile' | 'telegram_chat_id';
+  target: string;
+  expiresIn: number;
+  resendAfter: number;
+  /** اگر اشتراک فعال باشد — برای هشدار روشن قبل از حذف */
+  premiumUntil: string | null;
+  confirmText: string;
+  /** فقط در حالت توسعه (OTP_DEBUG) — روی سرور واقعی هرگز */
+  devCode?: string;
+}
+
+/** گام ۱ حذف حساب: درخواست کد تأیید (ایمیل/موبایل/تلگرامِ هویت اصلی) */
+export async function requestAccountDeletion(): Promise<DeleteRequestResult> {
+  return authedFetch<DeleteRequestResult>('/v1/me/delete-request', { method: 'POST' });
+}
+
+/** گام ۲ حذف حساب: کد + تایپ دقیق متن تأیید — موفق = همه‌چیز پاک شده و توکن‌ها باطل */
+export async function confirmAccountDeletion(code: string, confirmText: string): Promise<{ deleted: boolean; message: string }> {
+  return authedFetch<{ deleted: boolean; message: string }>('/v1/me/delete', {
+    method: 'POST',
+    body: { code, confirmText },
+  });
 }

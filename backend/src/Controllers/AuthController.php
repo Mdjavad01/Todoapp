@@ -437,6 +437,129 @@ final class AuthController
         ]);
     }
 
+    /* ================= حذف حساب و دریافت داده (v1.9) ================= */
+
+    /** GET /api/v1/me/export — خروجی JSON کامل داده‌ی حساب (لیست/کار/زیرکار/یادآور) */
+    public function exportData(): void
+    {
+        $user = Guard::requireUser();
+        Response::ok(AccountDeletion::export((int) $user['id']));
+    }
+
+    /**
+     * POST /api/v1/me/delete-request — گام ۱ حذف حساب: ارسال کد تأیید دومرحله‌ای
+     * به هویت اصلی حساب (ایمیل/موبایل/تلگرام) با purpose جداگانه (account_delete).
+     * کد حذف حساب برای ورود کار نمی‌کند. اگر اشتراک فعال باشد هشدار برمی‌گردد.
+     */
+    public function deleteAccountRequest(): void
+    {
+        $user = Guard::requireUser();
+        $pdo = Database::pdo();
+        $identity = AccountDeletion::primaryIdentity((int) $user['id']);
+        if ($identity === null) {
+            Response::error('حساب شما هویت تأییدشده‌ای ندارد؛ با پشتیبانی تماس بگیرید', 409, ['code' => 'no_identity']);
+            return;
+        }
+
+        // همان محدودسازی ارسال ورود: فاصله‌ی حداقلی + سقف ساعتی
+        $limit = Otp::checkRateLimit($pdo, self::otpChannelType($identity['type']), $identity['value'], Request::ip());
+        if (!$limit['ok']) {
+            Response::error($limit['reason'], 429, ['code' => 'rate_limited', 'retryAfter' => $limit['retryAfter'] ?? 60]);
+            return;
+        }
+
+        $created = Otp::createCode($pdo, self::otpChannelType($identity['type']), $identity['value'], Request::ip(), Otp::PURPOSE_ACCOUNT_DELETE);
+        $sent = self::sendDeletionCode($identity['type'], $identity['value'], $created['code']);
+        if (!$sent && Mailer::transport() !== 'log') {
+            Response::error('ارسال کد تأیید ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'send_failed']);
+            return;
+        }
+
+        Response::ok([
+            'channel' => $identity['type'],
+            'target' => self::maskTarget($identity['value']),
+            'expiresIn' => Otp::ttlMinutes() * 60,
+            'resendAfter' => Otp::resendAfterSeconds(),
+            'premiumUntil' => AccountDeletion::activePremiumUntil((int) $user['id']),
+            'confirmText' => AccountDeletion::CONFIRM_TEXT,
+            // فقط در حالت توسعه (OTP_DEBUG + غیر production) — روی هاست هرگز
+            ...(Otp::debugEcho() ? ['devCode' => $created['code']] : []),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/me/delete — گام ۲ حذف حساب: {code, confirmText}
+     * تأیید دومرحله‌ای: کد تازه (purpose=account_delete) + تایپ دقیق متن تأیید.
+     * پس از موفقیت: همه‌ی داده پاک، توکن‌ها باطل، پوسته‌ی بی‌نام برای حسابداری می‌ماند.
+     */
+    public function deleteAccountConfirm(): void
+    {
+        $user = Guard::requireUser();
+        $body = Request::json();
+        $code = Validator::str($body, 'code', 4, 8);
+        $confirm = trim((string) ($body['confirmText'] ?? ''));
+        // عربی/فارسی یکسان‌سازی شود (حذف حساب)
+        $confirm = str_replace('ي', 'ی', $confirm);
+
+        if (mb_strtolower($confirm) !== mb_strtolower(AccountDeletion::CONFIRM_TEXT)) {
+            throw new ValidationError('برای تأیید، عبارت «' . AccountDeletion::CONFIRM_TEXT . '» را دقیقاً تایپ کنید');
+        }
+
+        $identity = AccountDeletion::primaryIdentity((int) $user['id']);
+        if ($identity === null) {
+            Response::error('هویتی برای تأیید یافت نشد', 409, ['code' => 'no_identity']);
+            return;
+        }
+
+        $result = Otp::verifyCode(Database::pdo(), self::otpChannelType($identity['type']), $identity['value'], (string) $code, Otp::PURPOSE_ACCOUNT_DELETE);
+        if (!$result['ok']) {
+            Response::error($result['error'], 400, ['code' => $result['code']]);
+            return;
+        }
+
+        AccountDeletion::delete((int) $user['id'], 'user', (int) $user['id']);
+        Response::ok(['deleted' => true, 'message' => 'حساب شما و تمام داده‌هایش حذف شد']);
+    }
+
+    /** کانال OTP برای type هویت */
+    private static function otpChannelType(string $identityType): string
+    {
+        return $identityType === 'telegram_chat_id' ? 'telegram' : $identityType;
+    }
+
+    /** ماسک هدف برای نمایش (سمت کلاینت کامل نشان داده نشود) */
+    private static function maskTarget(string $value): string
+    {
+        if (str_contains($value, '@')) {
+            $at = (int) strpos($value, '@');
+            $name = mb_substr($value, 0, max(1, min(2, $at - 1)));
+            return $name . '…@' . mb_substr($value, $at + 1);
+        }
+        return '••••' . mb_substr($value, -4);
+    }
+
+    /** ارسال کد حذف حساب به کانال هویت — ایمیل/موبایل/تلگرام */
+    private static function sendDeletionCode(string $identityType, string $value, string $code): bool
+    {
+        $message = 'کد تأیید حذف حساب کارام: ' . $code . "\n" .
+            'اگر شما این درخواست را نداده‌اید، این کد را با کسی در میان نگذارید.';
+        try {
+            switch ($identityType) {
+                case 'email':
+                    return Mailer::send($value, 'کد تأیید حذف حساب کارام: ' . $code, Mailer::otpHtml($code, (string) Otp::ttlMinutes()));
+                case 'mobile':
+                    return (bool) Sms::sendCode($value, $code)['ok'];
+                case 'telegram_chat_id':
+                    return TelegramBot::sendMessage($value, $message);
+                default:
+                    return false;
+            }
+        } catch (Throwable $e) {
+            error_log('[karam][account-delete] ارسال کد ناموفق: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     /* ================= نشست بدون OTP (فاز ۲ — پیش‌فرض بسته) ================= */
 
     /** POST /api/auth/session — فقط برای توسعه‌ی محلی با OPEN_SESSION=1 */

@@ -20,6 +20,7 @@ import { NewListSheet } from '@/modals/NewListSheet';
 import { EditListSheet } from '@/modals/EditListSheet';
 import { ManageListsSheet } from '@/modals/ManageListsSheet';
 import { AccountSheet } from '@/modals/AccountSheet';
+import { DeleteAccountSheet } from '@/modals/DeleteAccountSheet';
 import { GuideSheet } from '@/modals/GuideSheet';
 import { TermsSheet } from '@/modals/TermsSheet';
 import { TourOverlay } from '@/modals/TourOverlay';
@@ -131,6 +132,7 @@ export default function App() {
         <EditListSheet />
         <ManageListsSheet />
         <AccountSheet />
+        <DeleteAccountSheet />
         <GuideSheet />
         <TermsSheet />
         <TourOverlay />

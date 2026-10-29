@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { Icon } from '@/components/Icon';
 import { AdBanner } from '@/components/AdBanner';
+import { GuestDataBanner } from '@/components/GuestDataBanner';
 import { useAppStore } from '@/store/useAppStore';
 import {
   sortedLists,
@@ -100,6 +101,9 @@ export function HomeView() {
   return (
     <section className="p-margin flex flex-col gap-4 pb-6" id="view-home">
       <AdBanner />
+
+      {/* v1.9 — شفافیت داده‌ی مهمان: داده فقط روی همین گوشی است (یک‌بار، قابل‌بستن) */}
+      <GuestDataBanner />
 
       {/* فاز نصب تمیز — بنر یک‌بارمصرف پاک‌سازی داده‌ی نمونه‌ی نصب‌های قدیمی (هیچ‌چیز بی‌صدا حذف نمی‌شود) */}
       {demoCleanupBanner ? (

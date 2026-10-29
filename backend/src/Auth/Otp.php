@@ -23,6 +23,9 @@ final class Otp
 
     private const PURPOSE_LOGIN = 'login';
 
+    /** v1.9 — کد دومرحله‌ای حذف حساب؛ جدا از کد ورود (یکی برای دیگری قابل استفاده نیست) */
+    public const PURPOSE_ACCOUNT_DELETE = 'account_delete';
+
     /* ---------------- تنظیمات قابل‌override با .env (برای تست سریع‌تر) ---------------- */
 
     public static function ttlMinutes(): int
@@ -256,11 +259,16 @@ final class Otp
     /* ---------------- درج رکوردها ---------------- */
 
     /**
-     * ساخت کد ورود برای یک هویت — رکورد فقط با هش ذخیره می‌شود.
+     * ساخت کد یک‌بارمصرف برای یک هویت — رکورد فقط با هش ذخیره می‌شود.
+     * purpose: login (پیش‌فرض) یا account_delete (v1.9 — حذف حساب)؛ جداست تا
+     * کدِ حذف حساب هرگز برای ورود قابل استفاده نباشد و برعکس.
      * @return array{expiresAt:string}
      */
-    public static function createCode(PDO $pdo, string $type, string $value, string $ip): array
+    public static function createCode(PDO $pdo, string $type, string $value, string $ip, string $purpose = self::PURPOSE_LOGIN): array
     {
+        if ($purpose !== self::PURPOSE_LOGIN && $purpose !== self::PURPOSE_ACCOUNT_DELETE) {
+            $purpose = self::PURPOSE_LOGIN;
+        }
         $code = self::generateCode();
         $now = time();
         $stmt = $pdo->prepare(
@@ -271,12 +279,15 @@ final class Otp
             ':t' => $type,
             ':v' => $value,
             ':h' => self::hash($code, $type, $value),
-            ':p' => self::PURPOSE_LOGIN,
+            ':p' => $purpose,
             ':ip' => $ip !== '' ? $ip : null,
             ':exp' => gmdate('Y-m-d H:i:s', $now + self::ttlMinutes() * 60),
             ':now' => gmdate('Y-m-d H:i:s', $now),
         ]);
-        self::recordIssued(['type' => $type, 'value' => $value, 'code' => $code]);
+        // ژورنال محلی فقط برای مسیر ورود است — کد حذف حساب هرگز فایل نمی‌شود
+        if ($purpose === self::PURPOSE_LOGIN) {
+            self::recordIssued(['type' => $type, 'value' => $value, 'code' => $code]);
+        }
         return ['code' => $code, 'expiresAt' => gmdate('Y-m-d\TH:i:s\Z', $now + self::ttlMinutes() * 60)];
     }
 
@@ -357,11 +368,11 @@ final class Otp
     }
 
     /**
-     * تأیید کد برای یک هویت.
+     * تأیید کد برای یک هویت — فقط از رکوردهای همان purpose.
      * @return array{ok:true}|array{ok:false, error:string, code:string}
      *         code: invalid | locked | expired
      */
-    public static function verifyCode(PDO $pdo, string $type, string $value, string $code): array
+    public static function verifyCode(PDO $pdo, string $type, string $value, string $code, string $purpose = self::PURPOSE_LOGIN): array
     {
         $now = gmdate('Y-m-d H:i:s');
         $stmt = $pdo->prepare(
@@ -369,7 +380,7 @@ final class Otp
              WHERE identity_type = :t AND identity_value = :v AND purpose = :p AND consumed_at IS NULL
              ORDER BY id DESC LIMIT 1'
         );
-        $stmt->execute([':t' => $type, ':v' => $value, ':p' => self::PURPOSE_LOGIN]);
+        $stmt->execute([':t' => $type, ':v' => $value, ':p' => $purpose]);
         $row = $stmt->fetch();
 
         if ($row === false) {

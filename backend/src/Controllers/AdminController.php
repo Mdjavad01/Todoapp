@@ -39,6 +39,18 @@ declare(strict_types=1);
 
 final class AdminController
 {
+    /**
+     * v1.9 — کلیدهای راز: در GET هرگز مقدار واقعی برنمی‌گردد؛ فقط {isSet, last4}.
+     * مقدار فقط وقتی تغییر می‌کند که ادمین مقدار جدید بفرستد؛ مقدار ماسک‌شده پذیرفته نمی‌شود.
+     * مقدار رازها در Audit هم ثبت نمی‌شود (فقط نام کلید). فهرست رسمی: docs/INSTALL.md بخش ۱۹.
+     */
+    public const SECRET_SETTING_KEYS = [
+        'smtp_pass',            // رمز SMTP
+        'telegram_bot_token',   // توکن ربات تلگرام
+        'zibal_merchant',       // مرچنت درگاه زیبال
+        'provider_sms_url',     // URL سرویس پیامک (معمولاً کلید API در URL)
+        'provider_sms_headers', // هدرهای سرویس پیامک (معمولاً Authorization)
+    ];
     /* ================= احراز ================= */
 
     /** POST /api/admin/login */
@@ -606,6 +618,38 @@ final class AdminController
 
         Audit::admin($ctx['admin']['id'], 'user.sessions_revoke', 'user', (string) $uuid, ['count' => $count]);
         Response::ok(['message' => "{$count} نشست کاربر باطل شد"]);
+    }
+
+    /**
+     * POST /api/admin/users/{id}/delete — حذف کامل حساب کاربر (v1.9 — ابزار ادمین)
+     * همان منطق حذف خودکار کاربر (AccountDeletion::delete): داده‌ها/هویت‌ها/توکن‌ها سخت پاک،
+     * سوابق مالی حداقلی و بی‌نام می‌مانند. عملیات حساس: فقط users.manage + CSRF + ثبت در Audit.
+     */
+    public function userDelete(array $params): void
+    {
+        $ctx = AdminGuard::requireAdmin();
+        AdminGuard::requirePermission($ctx, 'users.manage');
+        AdminGuard::requireCsrf($ctx);
+        $id = self::userId($params);
+        $pdo = Database::pdo();
+
+        $stmt = $pdo->prepare('SELECT uuid, display_name, status FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            Response::error('کاربر یافت نشد', 404);
+            return;
+        }
+        if ((string) $row['status'] === 'deleted') {
+            Response::error('این حساب قبلاً حذف شده است', 409, ['code' => 'already_deleted']);
+            return;
+        }
+
+        $result = AccountDeletion::delete($id, 'admin', (int) $ctx['admin']['id']);
+        Response::ok([
+            'message' => 'حساب کاربر و تمام داده‌هایش حذف شد (سوابق مالی بی‌نام باقی ماند)',
+            'removed' => $result['removed'],
+        ]);
     }
 
     private static function userId(array $params): int
@@ -1184,6 +1228,13 @@ final class AdminController
             // --- یادآور تلگرامی (v20 — کرون روزانه cron/reminder-cron.php) ---
             'reminder_enabled' => ['type' => 'bool'],
             'reminder_lookback_days' => ['type' => 'int', 'min' => 1, 'max' => 365],
+            // --- نگه‌داری (v1.9 — کرون روزانه cron/retention-cron.php) — آستانه‌ها به روز ---
+            'retention_otp_days' => ['type' => 'int', 'min' => 7, 'max' => 730],
+            'retention_provider_logs_days' => ['type' => 'int', 'min' => 30, 'max' => 730],
+            'retention_audit_days' => ['type' => 'int', 'min' => 90, 'max' => 1095],
+            'retention_refresh_expired_days' => ['type' => 'int', 'min' => 7, 'max' => 365],
+            // سقف پایین ۹۰ = ایمنی سینک (کلاینتِ دیر آمده سینک کامل مجدد می‌گیرد)
+            'retention_tombstone_days' => ['type' => 'int', 'min' => 90, 'max' => 1095],
         ];
     }
 
@@ -1195,9 +1246,24 @@ final class AdminController
         $rows = Database::pdo()->query('SELECT `key`, `value`, `updated_at` FROM settings ORDER BY `key` ASC')->fetchAll();
         $items = [];
         foreach ($rows as $r) {
-            $items[] = ['key' => (string) $r['key'], 'value' => (string) ($r['value'] ?? ''), 'updatedAt' => (string) $r['updated_at']];
+            $key = (string) $r['key'];
+            $item = ['key' => $key, 'value' => (string) ($r['value'] ?? ''), 'updatedAt' => (string) $r['updated_at']];
+            if (self::isSecretKey($key)) {
+                // v1.9 — مقدار واقعی هرگز از API بیرون نمی‌رود؛ فقط وضعیت + ۴ کاراکتر آخر
+                $raw = (string) ($r['value'] ?? '');
+                $item['value'] = '';
+                $item['secret'] = [
+                    'isSet' => $raw !== '',
+                    'last4' => $raw !== '' ? mb_substr($raw, -4) : '',
+                ];
+            }
+            $items[] = $item;
         }
-        Response::ok(['items' => $items, 'editable' => array_keys(self::settingRules())]);
+        Response::ok([
+            'items' => $items,
+            'editable' => array_keys(self::settingRules()),
+            'secretKeys' => self::SECRET_SETTING_KEYS, // پنل برای رندر امن (v1.9)
+        ]);
     }
 
     /** PATCH /api/admin/settings — دسته‌ای {key: value} */
@@ -1331,8 +1397,20 @@ final class AdminController
             }
 
             $now = gmdate('Y-m-d H:i:s');
+
+            // v1.9 — گارد رازها: هر مقداری که نویسه‌ی ماسک (گلوله/سه‌نقطه) دارد رد می‌شود —
+            // راز واقعی هرگز «•» ندارد؛ این همان سناریوی echo-back مقدار ماسک‌شده است.
+            // راز فقط با مقدار جدید و واقعی تغییر می‌کند (خالی = پاک‌کردن آگاهانه — مجاز).
+            if (self::isSecretKey($key) && is_string($stored) && $stored !== ''
+                && preg_match('/[•…]/u', $stored) === 1) {
+                continue; // ادمین مقدار جدید نفرستاده — راز با زباله‌ی ماسک بازنویسی نمی‌شود
+            }
+
             $stmt->execute([':k' => $key, ':v' => $stored, ':now' => $now, ':v2' => $stored, ':now2' => $now]);
-            $changed[$key] = $stored;
+            // v1.9 — مقدار راز هرگز در Audit ثبت نمی‌شود
+            $changed[$key] = self::isSecretKey($key)
+                ? ($stored === '' ? '(پاک شد)' : '(تغییر کرد — مقدار پنهان)')
+                : $stored;
         }
 
         Audit::admin($ctx['admin']['id'], 'settings.update', 'settings', null, $changed);
@@ -1352,6 +1430,12 @@ final class AdminController
         }
 
         Response::ok(array_merge(['message' => 'تنظیمات ذخیره شد', 'changed' => array_keys($changed)], $extra));
+    }
+
+    /** آیا این کلید تنظیمات، راز است؟ (در GET ماسک می‌شود) */
+    private static function isSecretKey(string $key): bool
+    {
+        return in_array($key, self::SECRET_SETTING_KEYS, true);
     }
 
     /* ================= واریزی کارت‌به‌کارت (فاز ۸) ================= */

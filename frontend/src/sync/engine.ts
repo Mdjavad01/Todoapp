@@ -13,7 +13,7 @@
  * روی خود کار سینک می‌شود و fireAt در هر دستگاه به‌صورت قطعی از آن ساخته می‌شود (فاز ۴).
  */
 
-import { idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
+import { idbClear, idbDelete, idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
 import { dedupeSeedLists } from '@/db/dedupe';
 import { ensureAliveDefaultList } from '@/db/seed';
 import { setClockOffset } from '@/lib/clock';
@@ -61,13 +61,19 @@ export function getSyncState(): SyncState {
 interface SyncConfig {
   /** اندازه‌ی هر چانک push — از سقف سرور (bootstrap.sync.maxItems) می‌آید */
   chunkSize: number;
+  /** v1.9 — آستانه‌ی نگه‌داری تومب‌استون (روز) — از bootstrap.sync.tombstoneRetentionDays */
+  tombstoneRetentionDays: number;
 }
 
-const config: SyncConfig = { chunkSize: 500 };
+const config: SyncConfig = { chunkSize: 500, tombstoneRetentionDays: 180 };
 
 export function setSyncConfig(patch: Partial<SyncConfig>): void {
   if (patch.chunkSize !== undefined) {
     config.chunkSize = Math.max(50, Math.min(500, Math.floor(patch.chunkSize)));
+  }
+  if (patch.tombstoneRetentionDays !== undefined) {
+    // سقف پایین ۹۰ — با حداقلِ سمت سرور یکی است (کرون نگه‌داری هرگز زیر ۹۰ پاک نمی‌کند)
+    config.tombstoneRetentionDays = Math.max(90, Math.min(1095, Math.floor(patch.tombstoneRetentionDays)));
   }
 }
 
@@ -80,6 +86,54 @@ async function metaGet<T>(key: string): Promise<T | undefined> {
 
 async function metaSet(key: string, value: unknown): Promise<void> {
   await idbPut(STORES.meta, { key, value } satisfies PrefEntity);
+}
+
+/* ---------------- v1.9 — کلاینتِ دیر آمده: سینک کامل مجدد ----------------
+ *
+ * سرور تومب‌استون‌های قدیمی‌تر از آستانه‌ی نگه‌داری (حداقل ۹۰ روز) را پاک می‌کند.
+ * کلاینتی که بیشتر از آن مدت آفلاین بوده اگر فقط pull عادی بزند، هیچ‌وقت حذفِ آن
+ * رکوردها را نمی‌بیند و داده‌ی حذف‌شده روی دستگاهش «زنده می‌ماند» (شبح).
+ * راه‌حل: اگر آخرین سینک موفق قدیمی‌تر از آستانه باشد، انبارهای محلی خالی و کرسر
+ * صفر می‌شود — سینک کامل مجدد، بدون برگشتن هیچ داده‌ی حذف‌شده (سرور منبع حقیقت است).
+ */
+
+/**
+ * تصمیم خالص (قابل تست): آیا این دستگاه باید سینک کامل مجدد بگیرد؟
+ * null/خالی = هرگز (اولین سینک نیست مشکل — هرگز سینک نشده یعنی داده‌ای ندارد)
+ */
+export function shouldFullResync(lastSuccessIso: string | null | undefined, retentionDays: number, nowMs: number): boolean {
+  if (!lastSuccessIso) return false;
+  const t = Date.parse(lastSuccessIso);
+  if (Number.isNaN(t)) return false; // مقدار خراب = محتاطانه بدون پاک‌سازی ادامه بده
+  const days = Math.max(90, retentionDays); // با کفِ سمت سرور یکی است
+  return nowMs - t > days * 86_400_000;
+}
+
+/** پاک‌سازی انبارهای داده‌ی سرور + کرسرها (فقط داده — ترجیحات دستگاه می‌ماند) */
+async function wipeForFullResync(): Promise<void> {
+  await Promise.all([
+    idbClear(STORES.lists),
+    idbClear(STORES.tasks),
+    idbClear(STORES.subtasks),
+    idbClear(STORES.reminders),
+  ]);
+  await idbDelete(STORES.meta, 'sync-cursor');
+  await idbDelete(STORES.meta, 'sync-last-push');
+}
+
+/**
+ * قبل از چرخه‌ی سینک: اگر دستگاه بیش از آستانه آفلاین بوده، سینک کامل مجدد.
+ * بازگشت true یعنی پاک‌سازی انجام شد (لاگ/آمار).
+ */
+async function maybeFullResync(): Promise<boolean> {
+  const last = await metaGet<string>('sync-last-success');
+  if (!shouldFullResync(last, config.tombstoneRetentionDays, Date.now())) {
+    return false;
+  }
+  await wipeForFullResync();
+  await metaSet('sync-last-success', new Date().toISOString());
+  listeners.onNotice?.('بعد از غیبت طولانی، داده‌ها یک‌بار کامل از سرور تازه‌سازی می‌شوند…');
+  return true;
 }
 
 /* ---------------- گردآوری تغییرات محلی ---------------- */
@@ -175,6 +229,10 @@ export async function runSync(): Promise<SyncState> {
 
     // نقطه‌ی شروع چرخه (۱ ثانیه احتیاط برای رکوردهای هم‌میلی‌ثانیه‌ای)
     const cycleStart = new Date(Date.now() - 1000).toISOString();
+
+    // v1.9 — غیبت طولانی (بیشتر از آستانه‌ی تومب‌استون) = سینک کامل مجدد
+    await maybeFullResync();
+
     const storedCursor = (await metaGet<string>('sync-cursor')) ?? null;
     const changes = await collectChanges((await metaGet<string>('sync-last-push')) ?? null);
     const chunks = chunkChanges(changes, config.chunkSize);
@@ -257,6 +315,8 @@ export async function runSync(): Promise<SyncState> {
       lastSyncAt: new Date().toISOString(),
       error: res.rejected.length > 0 ? `${res.rejected.length} آیتم سینک نشد` : null,
     });
+    // v1.9 — زمان آخرین سینک موفق برای تصمیم «سینک کامل مجدد» در اجراهای بعدی
+    await metaSet('sync-last-success', new Date().toISOString());
     if (applied) listeners.onApplied?.();
     return state;
   } catch (e) {

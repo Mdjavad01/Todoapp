@@ -1,17 +1,17 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.29.16.46.18) */
-const CACHE_NAME = 'karam-cache-2026.10.29.16.46.18';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.10.29.19.28.26) */
+const CACHE_NAME = 'karam-cache-2026.10.29.19.28.26';
 const PRECACHE_URLS = [
   "./.htaccess",
-  "./assets/base-Ct68lH-T.js",
-  "./assets/index-BnjcWUk0.js",
-  "./assets/index-DcNKcmtk.js",
-  "./assets/index-Dco_XqPg.css",
-  "./assets/index-LUlct5Qs.js",
-  "./assets/native-Cry4epJ_.js",
-  "./assets/web-B8lzEJvX.js",
-  "./assets/web-BVTIA4dh.js",
-  "./assets/web-CzkZyqZ2.js",
-  "./assets/web-PumK2TeC.js",
+  "./assets/base-BmyDK2au.js",
+  "./assets/index-CBAKEQ97.js",
+  "./assets/index-CGcDhAWl.js",
+  "./assets/index-CvNI3ZLR.css",
+  "./assets/index-DJ0kfiwh.js",
+  "./assets/native-CG_3aFz3.js",
+  "./assets/web-C7eVrwvI.js",
+  "./assets/web-CRNesFsv.js",
+  "./assets/web-CRzc5yZ2.js",
+  "./assets/web-DwrIkRnn.js",
   "./fonts/Vazirmatn-Variable.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.svg",

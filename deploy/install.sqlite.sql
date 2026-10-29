@@ -360,4 +360,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('provider_email_enabled', '0'),
   ('telegram_bot_token', ''),
   ('telegram_bot_username', ''),
-  ('provider_sms_enabled', '0');
+  ('provider_sms_enabled', '0'),
+  -- v1.9 — نگه‌داری (کرون Retention) — همه از پنل قابل تغییر
+  ('retention_otp_days', '90'),
+  ('retention_provider_logs_days', '180'),
+  ('retention_audit_days', '365'),
+  ('retention_refresh_expired_days', '30'),
+  ('retention_tombstone_days', '180');

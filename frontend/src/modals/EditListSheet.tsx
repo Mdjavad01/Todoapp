@@ -31,6 +31,7 @@ export function EditListSheet() {
   const moveList = useAppStore((s) => s.moveList);
   const setListGroup = useAppStore((s) => s.setListGroup);
   const addGroup = useAppStore((s) => s.addGroup);
+  const session = useAppStore((s) => s.session);
 
   const list = lists.find((l) => l.id === editListId) ?? null;
   const isDefault = !!list && defaultListId(lists) === list.id;
@@ -229,6 +230,13 @@ export function EditListSheet() {
           <p className="text-xs font-bold text-red-700 dark:text-red-300">
             حذف «{list.name}»؟ همه‌ی کارهای این لیست هم حذف می‌شوند — تا ۶ ثانیه دکمه‌ی واگرد را دارد.
           </p>
+          {/* v1.9 — یادآوری هشدار داده‌ی مهمان هنگام حذف (داده‌ی مهمان بک‌آپ ابری ندارد) */}
+          {!session ? (
+            <p className="text-[11px] leading-5 text-amber-700 dark:text-amber-300">
+              یادآوری: شما در حالت مهمان هستید — این داده فقط روی همین گوشی است و بک‌آپ ابری ندارد؛ بعد از حذف
+              قابل بازیابی نیست. اگر مطمئن نیستید، اول از تنظیمات پشتیبان بگیرید یا وارد حساب شوید.
+            </p>
+          ) : null}
           <div className="flex gap-2">
             <button
               className="flex-1 py-2 bg-red-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-transform"

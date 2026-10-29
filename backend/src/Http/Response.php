@@ -19,9 +19,9 @@ final class Response
         self::json(array_merge(['ok' => false, 'error' => $message], $extra), $status);
     }
 
-    public static function ok(array $data = []): void
+    public static function ok(array $data = [], int $status = 200): void
     {
-        self::json(array_merge(['ok' => true], $data));
+        self::json(array_merge(['ok' => true], $data), $status);
     }
 
     /** هدرهای امنیتی مشترک همه‌ی پاسخ‌های API */

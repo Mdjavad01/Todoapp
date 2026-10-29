@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `otp_requests` (
   `identity_type`  ENUM('email','telegram','mobile') NOT NULL,
   `identity_value` VARCHAR(190) NOT NULL,
   `code_hash`      VARCHAR(255) NOT NULL,
-  `purpose`        ENUM('login','admin_2fa') NOT NULL DEFAULT 'login',
+  `purpose`        ENUM('login','admin_2fa','account_delete') NOT NULL DEFAULT 'login',
   `attempts`       TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `ip`             VARCHAR(45)  NULL,
   `expires_at`     DATETIME     NOT NULL,
@@ -498,7 +498,13 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('provider_sms_url', ''),
   ('provider_sms_method', 'POST'),
   ('provider_sms_headers', '{}'),
-  ('provider_sms_body', '')
+  ('provider_sms_body', ''),
+  -- v1.9 — نگه‌داری (کرون Retention) — همه از پنل قابل تغییر
+  ('retention_otp_days', '90'),
+  ('retention_provider_logs_days', '180'),
+  ('retention_audit_days', '365'),
+  ('retention_refresh_expired_days', '30'),
+  ('retention_tombstone_days', '180')
 ON DUPLICATE KEY UPDATE `key` = `key`;
 
 SET FOREIGN_KEY_CHECKS = 1;

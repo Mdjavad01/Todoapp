@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { toFa, formatToman } from '@/lib/format';
+import { PRO_BENEFITS, PRO_SOON } from '@/lib/proBenefits';
 import { fetchGiftQuote, fetchPlans, type GiftQuote } from '@/sync/payments';
 
 /**
@@ -17,12 +18,9 @@ import { fetchGiftQuote, fetchPlans, type GiftQuote } from '@/sync/payments';
  * هیچ کد خرید/درگاه/پلن در این فایل نیست؛ پس هیچ‌کدام وارد باندل بازار نمی‌شود.
  */
 
-const BENEFITS = [
-  'تبدیل نامحدود وویس به وظیفه هوشمند با هوش مصنوعی',
-  'دسترسی به تمامی بسته‌های شغلی تخصصی و مالی',
-  'همگام‌سازی ابری و بک‌آپ خودکار نامحدود',
-  'قفل امنیتی بیومتریک و تم‌های اختصاصی لوکس',
-];
+// v1.9 — صداقت پی‌وال: فقط مزایای واقعاً قفل‌شده + «به‌زودی» بدون قیمت (منبع واحد: lib/proBenefits.ts)
+const BENEFITS = PRO_BENEFITS;
+const SOON_FEATURES = PRO_SOON;
 
 export function PaywallView() {
   const session = useAppStore((s) => s.session);
@@ -120,6 +118,18 @@ export function PaywallView() {
             <span>{b}</span>
           </div>
         ))}
+        {/* v1.9 — قابلیت‌های در مسیر ساخت: برچسب «به‌زودی» بدون قیمت */}
+        <div className="pt-1.5 border-t border-outline-variant/20" />
+        <p className="text-[11px] text-on-surface-variant">به‌زودی (فعلاً در دسترس نیست — بدون قیمت):</p>
+        {SOON_FEATURES.map((b) => (
+          <div key={b} className="flex items-center gap-2 opacity-70">
+            <Icon name="schedule" size={18} className="text-on-surface-variant" />
+            <span className="text-on-surface-variant">{b} — به‌زودی</span>
+          </div>
+        ))}
+        <p className="text-[11px] text-on-surface-variant leading-5 pt-1">
+          سینک ابری و قفل بیومتریک برای همه‌ی کاربران رایگان است و جزو اشتراک پرو فروخته نمی‌شود.
+        </p>
       </div>
 
       {/* بیلد bazaar — پرداخت در این نسخه وجود ندارد؛ فقط پیام + کد هدیه مستقل */}
