@@ -5,10 +5,12 @@ import { toFa } from '@/lib/format';
 import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
 import { isNativeApp } from '@/lib/native';
 import { queueSync } from '@/sync/engine';
+import { syncReminders } from '@/lib/reminderScheduler';
+import { openExactAlarmSettings } from '@/lib/reminderBridge';
 
-const APP_VERSION = '۴.۲.۰';
+const APP_VERSION = '۴.۳.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '4.2.0';
+const APP_VERSION_RAW = '4.3.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {
@@ -383,6 +385,7 @@ export function SettingsView() {
             یادآور سررسید با اعلان بومی اندروید زده می‌شود. اگر یادآور نیامد: مجوز اعلان برنامه را بدهید، «آلارم‌ها و یادآورها» (زمان‌بندی دقیق) را فعال کنید و در گوشی‌های شیائومی/سامسونگ «شروع خودکار» و «بدون محدودیت باتری» را برای کارام روشن کنید.
           </p>
         ) : null}
+        {isNativeApp() ? <ReminderDiagCard /> : null}
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
           onClick={openAccountSheet}
@@ -462,5 +465,100 @@ export function SettingsView() {
         )}
       </p>
     </section>
+  );
+}
+
+/**
+ * فاز ۲ (ممیزی یادآور) — کارت «اطمینان از دریافت یادآور»:
+ * وضعیت واقعی مجوز اعلان، آلارم دقیق، زنگ‌های در صف سیستم‌عامل و آخرین خطا —
+ * هیچ‌چیز بی‌صدا نمی‌ماند؛ اگر ایرادی باشد همان‌جا با دکمه‌ی راه‌حل دیده می‌شود.
+ */
+function ReminderDiagCard() {
+  const diag = useAppStore((s) => s.reminderDiag);
+  const refreshReminderStatus = useAppStore((s) => s.refreshReminderStatus);
+  const showToast = useAppStore((s) => s.showToast);
+  const alerts = useAppStore((s) => s.alerts);
+
+  useEffect(() => {
+    void refreshReminderStatus();
+  }, [refreshReminderStatus, alerts]);
+
+  const permLabel =
+    diag === null
+      ? '…'
+      : diag.permission === 'granted'
+        ? 'داده شده ✓'
+        : diag.permission === 'denied'
+          ? 'رد شده ✗'
+          : diag.permission === 'prompt'
+            ? 'پرسیده نشده'
+            : '—';
+  const exactLabel =
+    diag === null ? '…' : diag.exactAlarm === 'granted' ? 'فعال ✓' : diag.exactAlarm === 'denied' ? 'غیرفعال ✗' : '—';
+
+  const recheck = () => {
+    void refreshReminderStatus();
+    // بازبینی اجباری زنگ‌ها هم انجام شود (مثلاً بعد از دادن مجوز در تنظیمات سیستم)
+    const st = useAppStore.getState();
+    void syncReminders(st.tasks, st.alerts, true);
+    showToast('وضعیت یادآور بررسی شد');
+  };
+
+  return (
+    <div className="px-3.5 pb-3.5 pt-1" id="reminder-diag">
+      <div className="rounded-xl border border-outline-variant/40 p-3 bg-surface-container dark:bg-slate-800/60">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-black text-on-surface dark:text-inverse-on-surface">اطمینان از دریافت یادآور</span>
+          <button
+            className="rounded-lg bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-bold active:scale-95 transition-transform"
+            onClick={recheck}
+            aria-label="بررسی دوباره وضعیت یادآور"
+          >
+            بررسی دوباره
+          </button>
+        </div>
+        <dl className="mt-2 space-y-1 text-[11px] leading-5 text-on-surface-variant">
+          <div className="flex justify-between gap-2">
+            <dt>مجوز اعلان:</dt>
+            <dd className="font-bold">{permLabel}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt>آلارم دقیق (زمان‌بندی دقیق اندروید):</dt>
+            <dd className="font-bold">{exactLabel}</dd>
+          </div>
+          {diag ? (
+            <div className="flex justify-between gap-2">
+              <dt>زنگ‌های در صف سیستم‌عامل / برنامه‌ی فعلی:</dt>
+              <dd className="font-bold">
+                {toFa(diag.pendingCount)} / {toFa(diag.plannedCount)}
+              </dd>
+            </div>
+          ) : null}
+          <div className="flex justify-between gap-2">
+            <dt>آخرین خطا:</dt>
+            <dd className="font-bold text-left">
+              {diag?.lastError
+                ? `${diag.lastError.message} (${toFa(new Date(diag.lastError.at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }))})`
+                : 'ندارد ✓'}
+            </dd>
+          </div>
+        </dl>
+        {diag?.exactAlarm === 'denied' ? (
+          <button
+            className="mt-2.5 w-full rounded-lg bg-amber-600 text-white px-3 py-2 text-[11px] font-black active:scale-95 transition-transform"
+            onClick={() => void openExactAlarmSettings()}
+            aria-label="فعال‌سازی آلارم دقیق اندروید"
+          >
+            فعال‌سازی «آلارم‌ها و یادآورها» (زمان‌بندی دقیق)
+          </button>
+        ) : null}
+        {diag?.permission === 'denied' ? (
+          <p className="mt-2 text-[11px] leading-5 text-amber-700 dark:text-amber-300">
+            مجوز اعلان رد شده است؛ از تنظیمات اندروید ← برنامه‌ها ← کارام ← اعلان‌ها آن را بدهید (اندروید اجازه‌ی
+            پرسش دوباره‌ی خودکار نمی‌دهد).
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }

@@ -27,8 +27,9 @@ import { GenderOnboardingSheet } from '@/modals/GenderOnboardingSheet';
 import { WelcomeOnboardingSheet } from '@/modals/WelcomeOnboardingSheet';
 import { useAppStore } from '@/store/useAppStore';
 import { Icon } from '@/components/Icon';
-import { onAppResume } from '@/lib/native';
+import { onAppResume, isNativeApp } from '@/lib/native';
 import { syncReminders } from '@/lib/reminderScheduler';
+import { openExactAlarmSettings } from '@/lib/reminderBridge';
 
 /** پوسته‌ی اپ — قاب موبایل مطابق طرح (فول‌اسکرین در موبایل، قاب ۴۱۰px در دسکتاپ) */
 export default function App() {
@@ -59,6 +60,8 @@ export default function App() {
       // فاز ۴ — یادآور: بازبینی اجباری زنگ‌ها (زمان گذشته ممکن است زنگ‌ها را عوض کند؛
       // کاربر شاید مجوز را از تنظیمات سیستم داده باشد)
       void syncReminders(st.tasks, st.alerts, true);
+      // فاز ۲ (ممیزی یادآور) — وضعیت مجوز/آلارم دقیق بعد از بازگشت (مثلاً از تنظیمات سیستم) تازه می‌شود
+      void st.refreshReminderStatus();
     });
     return off;
   }, []);
@@ -71,6 +74,7 @@ export default function App() {
       <div className="relative w-full max-w-[410px] h-[100dvh] sm:h-[calc(100dvh-2rem)] sm:max-h-[884px] bg-background dark:bg-inverse-surface rounded-none sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border-0 sm:border-[8px] sm:border-slate-800 transition-colors duration-200 pt-safe sm:pt-0">
         <StatusBar />
         <TopBar />
+        <ReminderWarningBanner />
 
         <main className="flex-1 overflow-y-auto no-scrollbar relative pb-36" id="appContent" ref={mainRef}>
           {!ready ? (
@@ -111,6 +115,53 @@ export default function App() {
         <TourOverlay />
         <GenderOnboardingSheet />
         <WelcomeOnboardingSheet />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * فاز ۲ (ممیزی یادآور) — بنر هشدار وضعیت یادآور (فقط اپ اندروید):
+ *  - «آلارم دقیق غیرفعال» (اندروید ۱۴+ پیش‌فرض رد است) → یادآور تقریبی می‌رسد، نه دقیق
+ *  - «مجوز اعلان رد شده» → یادآور اصلاً نمی‌رسد
+ * بستن بنر سطح نشست است؛ وضعیت در هر resume از سیستم بازخوانی می‌شود.
+ */
+function ReminderWarningBanner() {
+  const ready = useAppStore((s) => s.ready);
+  const warning = useAppStore((s) => s.reminderWarning);
+  const dismiss = useAppStore((s) => s.dismissReminderWarning);
+  const setView = useAppStore((s) => s.setView);
+  if (!ready || !warning || !isNativeApp()) return null;
+  const exact = warning === 'exact-denied';
+  return (
+    <div
+      className="px-3 pt-2 shrink-0"
+      role="status"
+      aria-label={exact ? 'هشدار: آلارم دقیق غیرفعال است' : 'هشدار: مجوز اعلان رد شده است'}
+    >
+      <div className="flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:text-amber-200">
+        <Icon name="notifications_active" size={16} className="shrink-0" />
+        <span className="flex-1 font-bold">
+          {exact
+            ? 'یادآورها ممکن است دیر برسند — «آلارم دقیق» اندروید برای کارام فعال نیست.'
+            : 'اعلان‌ها رد شده‌اند؛ یادآورها به دستگاه شما نمی‌رسند.'}
+        </span>
+        <button
+          className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-black text-white active:scale-95 transition-transform"
+          onClick={() => {
+            if (exact) void openExactAlarmSettings();
+            else setView('settings');
+          }}
+        >
+          {exact ? 'فعال‌سازی' : 'راهنما'}
+        </button>
+        <button
+          className="shrink-0 p-1 rounded-lg active:scale-95 transition-transform"
+          onClick={dismiss}
+          aria-label="بستن هشدار"
+        >
+          <Icon name="close" size={14} />
+        </button>
       </div>
     </div>
   );

@@ -13,7 +13,8 @@ import { refreshSession } from '@/sync/api';
 import * as auth from '@/sync/auth';
 import * as payments from '@/sync/payments';
 // فاز ۴ — یادآور بومی: فقط در اپ اندروید فعال می‌شود (وب بی‌عمل)
-import { syncReminders, clearReminders } from '@/lib/reminderScheduler';
+import { syncReminders, clearReminders, registerSnooze, reminderDiag, setReminderActionHandlers, handleReminderAction, type ReminderDiag } from '@/lib/reminderScheduler';
+import { onReminderAction } from '@/lib/reminderBridge';
 import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoScanResult, type DemoCleanupSnapshot } from '@/db/demoCleanup';
 
 /* فاز نصب تمیز — اسکن جاری و اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارند) */
@@ -101,6 +102,10 @@ interface AppState {
   coachAdd: boolean;
   /** فاز نصب تمیز — بنر یک‌بارمصرف «کارهای نمونه‌ی قدیمی» (اسکن demoCleanup) */
   demoCleanupBanner: { taskCount: number; listCount: number } | null;
+  /** فاز ۲ — هشدار یادآور (ممیزی آلارم): «آلارم دقیق غیرفعال» یا «مجوز اعلان رد شده» — سطح نشست */
+  reminderWarning: 'exact-denied' | 'permission-denied' | null;
+  /** فاز ۲ — وضعیت تشخیصی یادآور برای کارت «اطمینان از دریافت یادآور» در تنظیمات */
+  reminderDiag: ReminderDiag | null;
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
@@ -141,6 +146,12 @@ interface AppState {
   openTermsSheet(): void;
   /** شروع تور تعاملی (v12) — شیت راهنما و حباب آموزشی بسته می‌شوند */
   openTour(): void;
+  /** فاز ۲ (ممیزی یادآور) — خواندن وضعیت واقعی مجوز/آلارم دقیق/صف و به‌روزرسانی بنر و کارت تشخیص */
+  refreshReminderStatus(): Promise<void>;
+  /** بستن بنر هشدار یادآور (سطح نشست — در بازبینی بعدی اگر رفع نشده باشد دوباره می‌آید) */
+  dismissReminderWarning(): void;
+  /** فاز ۲ — دکمه‌ی «۱۰ دقیقه دیگر» روی اعلان */
+  snoozeReminderFromAction(taskId: string): Promise<void>;
   /** فاز نصب تمیز — اسکن داده‌ی نمونه‌ی قدیمی و نمایش بنر (اگر چیزی پیدا شد) */
   scanLegacyDemoBanner(): Promise<void>;
   /** «نگه دار» — دیگر هرگز پرسیده نمی‌شود */
@@ -275,6 +286,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   welcomeSheet: false,
   coachAdd: false,
   demoCleanupBanner: null,
+  reminderWarning: null,
+  reminderDiag: null,
   appSettings: {
     appName: 'کارام',
     paywallTitle: 'کارام پرو',
@@ -352,6 +365,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
     });
     startSyncLoop();
+
+    // فاز ۲ (ممیزی یادآور) — اقدام روی اعلان («انجام شد»/«۱۰ دقیقه دیگر»/ضربه به بدنه)
+    // یک‌بار در هر فرایند وصل می‌شود؛ شنونده‌ها به store می‌رسند (بدون چرخه‌ی import)
+    setReminderActionHandlers({
+      onDone: (taskId) => {
+        void useAppStore.getState().toggleTask(taskId);
+      },
+      onSnooze10: (taskId) => {
+        void useAppStore.getState().snoozeReminderFromAction(taskId);
+      },
+      onOpen: (taskId) => {
+        const st = useAppStore.getState();
+        if (st.tasks.some((t) => t.id === taskId && !t.deletedAt)) st.openModal('taskDetail', taskId);
+      },
+    });
+    onReminderAction((ev) => handleReminderAction(ev.actionId, ev.taskId));
     await get().reloadSession(false);
     // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳) — و فقط «یک» سینک در init
     if (get().session) {
@@ -425,6 +454,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     // فاز ۴ — همگام‌سازی زنگ‌های یادآور دستگاه با داده‌ی فعلی (هر مسیر تغییر داده از همین‌جا رد می‌شود:
     // افزودن/ویرایش/انجام/حذف کار، نوبت بعدی تکرار و اعمال رکوردهای سرور). اثر انگشت جلوی تماس اضافی را می‌گیرد.
     void syncReminders(tasks, get().alerts);
+  },
+
+  /* ---- فاز ۲ (ممیزی یادآور) — وضعیت، بنر و snooze ---- */
+
+  async refreshReminderStatus() {
+    try {
+      const diag = await reminderDiag(get().tasks, get().alerts);
+      let warning: 'exact-denied' | 'permission-denied' | null = null;
+      if (diag.native && diag.alertsOn) {
+        if (diag.permission === 'denied') warning = 'permission-denied';
+        else if (diag.exactAlarm === 'denied') warning = 'exact-denied';
+      }
+      set({ reminderDiag: diag, reminderWarning: warning });
+    } catch {
+      /* تشخیص حیاتی نیست */
+    }
+  },
+
+  dismissReminderWarning() {
+    set({ reminderWarning: null });
+  },
+
+  async snoozeReminderFromAction(taskId) {
+    const t = get().tasks.find((x) => x.id === taskId);
+    if (!t || t.deletedAt || t.completedAt || !t.dueDate) return;
+    // ۱۰ دقیقه از همین لحظه (پایدار در prefs — تا لغو در انجام/حذف کار از دست نرود)
+    registerSnooze(taskId, t.title, t.dueDate, t.dueTime, Date.now() + 10 * 60_000);
+    await get().refresh(); // فینگرپرینت عوض شده → دیفرانسول زنگ snooze را ثبت می‌کند
+    get().showToast('یادآور ۱۰ دقیقه دیگر زده می‌شود');
   },
 
   setView(v) {
@@ -620,6 +678,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (key === 'alerts') {
       if (value) void syncReminders(get().tasks, true, true);
       else void clearReminders();
+      // فاز ۲ — بنر/کارت تشخیص با وضعیت جدید هماهنگ شود
+      void get().refreshReminderStatus();
     }
   },
 
