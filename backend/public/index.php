@@ -117,6 +117,11 @@ $router->delete('/api/v1/me/sessions/{id}', [$auth, 'revokeSession']);
 $router->get('/api/v1/me/referral', [$auth, 'referralStatus']); // v20 — دعوت دوستان
 $router->post('/api/v1/me/referral', [$auth, 'referralRedeem']);
 
+// ---- حریم خصوصی: دریافت داده‌ی من و حذف حساب (P1 — نیازمند Bearer) ----
+$router->get('/api/v1/account/export', [$auth, 'accountExport']);
+$router->post('/api/v1/account/delete/request', [$auth, 'accountDeleteRequest']);
+$router->post('/api/v1/account/delete/confirm', [$auth, 'accountDeleteConfirm']);
+
 // ---- CRUD موجودیت‌ها (Bearer) ----
 $lists = new RestEntityController(Entities::ENTITY_LISTS);
 $tasks = new RestEntityController(Entities::ENTITY_TASKS);

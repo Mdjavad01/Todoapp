@@ -25,13 +25,23 @@ const RULES: TermItem[] = [
   { icon: 'auto_awesome', chip: 'bg-primary/10 text-primary', t: 'این قواعد با به‌روزرسانی اپ ممکن است تغییر کند؛ نسخه‌ی جدید در همین صفحه اعلام می‌شود.' },
 ];
 
-const PRIVACY: TermItem[] = [
-  { icon: 'home', chip: 'bg-teal-500/10 text-teal-700 dark:text-teal-300', t: 'داده‌های کارها همیشه روی دستگاه شما ذخیره می‌شوند و اپ بدون اینترنت هم کامل کار می‌کند.' },
-  { icon: 'person', chip: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', t: 'فقط اگر وارد حساب شوید داده‌ها برای سینک روی سرور کارام ذخیره می‌شود؛ در حالت مهمان هیچ داده‌ای از دستگاه خارج نمی‌شود.' },
-  { icon: 'shield', chip: 'bg-sky-500/10 text-sky-700 dark:text-sky-300', t: 'از محتوای کارهای شما برای تبلیغات یا فروش استفاده نمی‌کنیم؛ داده‌ی شما داده‌ی شماست.' },
-  { icon: 'mail', chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', t: 'برای ورود فقط ایمیل یا موبایل یا شناسه‌ی تلگرام شما نگهداری می‌شود؛ رمز عبوری وجود ندارد.' },
-  { icon: 'delete', chip: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', t: 'درخواست حذف حساب = حذف کامل داده‌های سمت سرور؛ کافی است به پشتیبانی پیام بدهید.' },
-];
+/**
+ * P1 — بندهای حریم خصوصی؛ متن حذف حساب صادقانه است:
+ * داده‌ی حذف‌شده تا N روز (BACKUP_KEEP سرور — پیش‌فرض ۷) در بکاپ‌های سروری می‌ماند.
+ */
+function privacyItems(keepDays: number): TermItem[] {
+  return [
+    { icon: 'home', chip: 'bg-teal-500/10 text-teal-700 dark:text-teal-300', t: 'داده‌های کارها همیشه روی دستگاه شما ذخیره می‌شوند و اپ بدون اینترنت هم کامل کار می‌کند.' },
+    { icon: 'person', chip: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', t: 'فقط اگر وارد حساب شوید داده‌ها برای سینک روی سرور کارام ذخیره می‌شود؛ در حالت مهمان هیچ داده‌ای از دستگاه خارج نمی‌شود.' },
+    { icon: 'shield', chip: 'bg-sky-500/10 text-sky-700 dark:text-sky-300', t: 'از محتوای کارهای شما برای تبلیغات یا فروش استفاده نمی‌کنیم؛ داده‌ی شما داده‌ی شماست.' },
+    { icon: 'mail', chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', t: 'برای ورود فقط ایمیل یا موبایل یا شناسه‌ی تلگرام شما نگهداری می‌شود؛ رمز عبوری وجود ندارد.' },
+    {
+      icon: 'delete',
+      chip: 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+      t: `حذف حساب از داخل اپ (حساب ← حذف حساب) همه‌ی داده‌های سمت سرور را برای همیشه پاک می‌کند؛ فقط نسخه‌های بکاپ سروری تا ${toFa(keepDays)} روز بعد آن را نگه می‌دارند و بعد خودکار برای همیشه پاک می‌شود. سوابق مالی (سفارش/واریز) بی‌نام‌شده برای حسابداری می‌ماند.`,
+    },
+  ];
+}
 
 function TermRow({ it }: { it: TermItem }) {
   return (
@@ -48,6 +58,9 @@ export function TermsSheet() {
   const open = useAppStore((s) => s.termsSheet);
   const appSettings = useAppStore((s) => s.appSettings);
   const onClose = () => useAppStore.setState({ termsSheet: false });
+  // P1 — N از BACKUP_KEEP سرور (bootstrap) — پیش‌فرض مطمئن ۷ روز
+  const keepDays = appSettings.backup?.keepDays ?? 7;
+  const PRIVACY = privacyItems(keepDays);
 
   useEffect(() => {
     if (!open) return;

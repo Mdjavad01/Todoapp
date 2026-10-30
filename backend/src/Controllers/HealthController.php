@@ -52,6 +52,11 @@ final class HealthController
             'sms' => Sms::enabled(),
             'botUsername' => TelegramBot::botUsername(),
         ];
+        // P1 — سقف نگه‌داری بکاپ (BACKUP_KEEP در .env — همان فرمول backup-db.php)
+        // اپ این عدد را در متن «حذف حساب» و «حریم خصوصی» صادقانه نشان می‌دهد:
+        // «داده‌ی حذف‌شده تا N روز در بکاپ‌های سروری می‌ماند»
+        $keep = (int) (Config::get('BACKUP_KEEP', '7') ?? 7);
+        $public['backup'] = ['keepDays' => max(3, min(60, $keep))];
         Response::ok($public);
     }
 }

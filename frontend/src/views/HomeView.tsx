@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { AdBanner } from '@/components/AdBanner';
 import { useAppStore } from '@/store/useAppStore';
+import { downloadBackup, localCounts } from '@/lib/backup';
 import {
   sortedLists,
   listProgress,
@@ -41,6 +42,28 @@ export function HomeView() {
   const demoCleanupBanner = useAppStore((s) => s.demoCleanupBanner);
   const dismissDemoCleanup = useAppStore((s) => s.dismissDemoCleanup);
   const cleanLegacyDemos = useAppStore((s) => s.cleanLegacyDemos);
+  // P1 — بنر هشدار داده‌ی مهمان
+  const session = useAppStore((s) => s.session);
+  const guestBanner = useAppStore((s) => s.guestBanner);
+  const dismissGuestBanner = useAppStore((s) => s.dismissGuestBanner);
+  const openAccountSheet = useAppStore((s) => s.openAccountSheet);
+  const showToast = useAppStore((s) => s.showToast);
+  const [guestBackupBusy, setGuestBackupBusy] = useState(false);
+
+  /** P1 — «بک‌آپ بگیر» در بنر مهمان: همان پشتیبان محلی تنظیمات */
+  const guestBackup = async () => {
+    if (guestBackupBusy) return;
+    setGuestBackupBusy(true);
+    try {
+      const total = Object.values(await localCounts()).reduce((a, b) => a + b, 0);
+      await downloadBackup();
+      showToast(`فایل پشتیبان (${toFa(total)} رکورد) دانلود شد؛ آن را در جای امن نگه دارید`);
+    } catch {
+      showToast('ساخت فایل پشتیبان ناموفق بود');
+    } finally {
+      setGuestBackupBusy(false);
+    }
+  };
 
   const today = new Date();
 
@@ -100,6 +123,53 @@ export function HomeView() {
   return (
     <section className="p-margin flex flex-col gap-4 pb-6" id="view-home">
       <AdBanner />
+
+      {/* P1 — بنر هشدار داده‌ی مهمان: صادقانه — داده فقط روی همین گوشی است */}
+      {!session && guestBanner ? (
+        <div
+          className="relative bg-sky-50 dark:bg-sky-950/40 border border-sky-300/60 dark:border-sky-800/60 rounded-2xl p-3.5"
+          role="status"
+          aria-label="هشدار داده‌ی مهمان"
+          id="guest-banner"
+        >
+          <button
+            className="absolute top-2 left-2 w-8 h-8 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-sky-700/70 dark:text-sky-300/70 hover:bg-sky-100 dark:hover:bg-sky-900/50 active:scale-95 transition-all"
+            onClick={dismissGuestBanner}
+            aria-label="بستن هشدار داده‌ی مهمان"
+          >
+            <Icon name="close" size={16} />
+          </button>
+          <div className="flex items-start gap-2.5 pe-10">
+            <span className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0">
+              <Icon name="home" size={20} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold text-sky-900 dark:text-sky-200">داده‌های شما فقط روی همین گوشی ذخیره می‌شود</p>
+              <p className="text-xs text-sky-800/80 dark:text-sky-300/80 mt-0.5 leading-relaxed">
+                در حالت مهمان، کارها و لیست‌ها فقط در همین دستگاه‌اند؛ با حذف اپ یا پاک‌کردن داده‌ی مرورگر از بین می‌روند.
+                برای نگه‌داری امن، بک‌آپ بگیر یا وارد حساب شو تا سینک ابری فعال شود.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              className="flex-1 min-h-[44px] rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-[13px] font-black active:scale-[0.98] transition-transform disabled:opacity-50"
+              onClick={() => void guestBackup()}
+              disabled={guestBackupBusy}
+              aria-label="بک‌آپ گرفتن از داده‌ی مهمان"
+            >
+              {guestBackupBusy ? '…' : 'بک‌آپ بگیر'}
+            </button>
+            <button
+              className="flex-1 min-h-[44px] rounded-xl bg-transparent border border-sky-400/70 dark:border-sky-700/60 text-sky-800 dark:text-sky-300 text-[13px] font-bold active:scale-[0.98] transition-transform"
+              onClick={openAccountSheet}
+              aria-label="وارد شو — سینک ابری"
+            >
+              وارد شو
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* فاز نصب تمیز — بنر یک‌بارمصرف پاک‌سازی داده‌ی نمونه‌ی نصب‌های قدیمی (هیچ‌چیز بی‌صدا حذف نمی‌شود) */}
       {demoCleanupBanner ? (

@@ -13,6 +13,9 @@ import {
   listSessions,
   revokeSession,
   updateProfile,
+  fetchMyData,
+  requestDeleteCode,
+  confirmAccountDeletion,
   type ActiveSession,
   type AuthChannels,
 } from '@/sync/auth';
@@ -25,6 +28,12 @@ import { fetchReferral, redeemReferral, referralShareText, type ReferralInfo } f
  */
 
 type Step = 'choose' | 'email' | 'telegram' | 'sms' | 'code';
+
+/** P1 — مراحل شیت حذف حساب */
+type DeleteStep = 'none' | 'warn' | 'code' | 'confirm';
+
+/** عبارت تأیید حذف — باید دقیقاً همین باشد (سمت سرور هم کنترل می‌شود) */
+const DELETE_CONFIRM_TEXT = 'حذف حساب';
 
 const toFaDigits = (v: string | number): string =>
   toFa(String(v)).replace(/,/g, '');
@@ -72,6 +81,18 @@ export function AccountSheet() {
   const [refError, setRefError] = useState<string | null>(null);
   const [refCopied, setRefCopied] = useState(false);
 
+  // P1 — دریافت داده و حذف حساب
+  const [exportBusy, setExportBusy] = useState(false);
+  const [delStep, setDelStep] = useState<DeleteStep>('none');
+  const [delChannel, setDelChannel] = useState<'email' | 'telegram' | 'sms' | null>(null);
+  const [delTarget, setDelTarget] = useState('');
+  const [delCode, setDelCode] = useState('');
+  const [delConfirmText, setDelConfirmText] = useState('');
+  const [delDevCode, setDelDevCode] = useState<string | null>(null);
+  const [delBusy, setDelBusy] = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
+  const delCodeRef = useRef<HTMLInputElement>(null);
+
   // باز شدن شیت: کانال‌ها + نشست‌ها را بگیر
   useEffect(() => {
     if (!open) return;
@@ -80,6 +101,12 @@ export function AccountSheet() {
     setCode('');
     setDevCode(null);
     setTgState('waiting');
+    // P1 — وضعیت حذف حساب هم صفر شود
+    setDelStep('none');
+    setDelError(null);
+    setDelCode('');
+    setDelConfirmText('');
+    setDelDevCode(null);
     void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
     if (useAppStore.getState().session) {
       void listSessions().then(setSessions).catch(() => setSessions([]));
@@ -286,6 +313,79 @@ export function AccountSheet() {
       showToast('نشست بسته شد');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'بستن نشست ناموفق بود');
+    }
+  };
+
+  /* ---------- P1 — دریافت داده‌های من (Export) ---------- */
+
+  const downloadMyData = async (): Promise<boolean> => {
+    setExportBusy(true);
+    try {
+      const data = await fetchMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `karam-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('داده‌های شما دانلود شد؛ فایل را در جای امن نگه دارید');
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'دریافت داده‌ها ناموفق بود');
+      return false;
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  /* ---------- P1 — حذف حساب (سه مرحله: هشدار ← کد ← تأیید متنی) ---------- */
+
+  const keepDays = useAppStore((s) => s.appSettings.backup?.keepDays ?? 7);
+
+  const requestDelete = async () => {
+    setDelError(null);
+    setDelBusy(true);
+    try {
+      const res = await requestDeleteCode();
+      setDelChannel(res.channel);
+      setDelTarget(res.target ?? '');
+      setDelDevCode(res.devCode ?? null);
+      setDelCode('');
+      setDelStep('code');
+      setTimeout(() => delCodeRef.current?.focus(), 50);
+    } catch (e) {
+      setDelError(e instanceof Error ? e.message : 'ارسال کد حذف ناموفق بود');
+    } finally {
+      setDelBusy(false);
+    }
+  };
+
+  const verifyDeleteCode = async () => {
+    // کد اینجا مصرف نمی‌شود؛ فقط غیرخالی بودنش برای رفتن به مرحله‌ی تأیید متنی چک می‌شود —
+    // راستی‌آزمایی واقعی فقط با confirm سمت سرور انجام می‌شود (تلاش ناموفق سعی را نمی‌سوزاند)
+    if (delCode.trim().length < 4) return;
+    setDelError(null);
+    setDelStep('confirm');
+  };
+
+  const doDeleteAccount = async () => {
+    if (delConfirmText.trim() !== DELETE_CONFIRM_TEXT) return;
+    setDelBusy(true);
+    setDelError(null);
+    try {
+      await confirmAccountDeletion(delCode.trim(), delConfirmText.trim());
+      // حساب سمت سرور حذف شد → پاک‌سازی کامل محلی (نشست + داده) مثل خروج
+      await signOut();
+      showToast('حساب شما حذف شد؛ داده‌های این دستگاه هم پاک شد');
+      setDelStep('none');
+      onClose();
+    } catch (e) {
+      setDelError(e instanceof Error ? e.message : 'حذف حساب ناموفق بود');
+    } finally {
+      setDelBusy(false);
     }
   };
 
@@ -531,6 +631,216 @@ export function AccountSheet() {
 
           {error ? (
             <p className="text-body-sm text-red-600 dark:text-red-300">{error}</p>
+          ) : null}
+
+          {/* ---------- P1 — داده و حریم خصوصی: دریافت داده + حذف حساب ---------- */}
+          {delStep === 'none' ? (
+            <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 divide-y divide-outline-variant/20 overflow-hidden">
+              <button
+                type="button"
+                aria-label="دریافت داده‌های من"
+                onClick={() => void downloadMyData()}
+                disabled={exportBusy}
+                className="w-full px-4 py-3.5 flex items-center gap-3 text-right active:bg-surface-container transition-colors disabled:opacity-50"
+              >
+                <Icon name="content_copy" size={18} className="text-primary shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-body-sm font-bold">دریافت داده‌های من</span>
+                  <span className="block text-xs text-on-surface-variant mt-0.5">
+                    فایل JSON همه‌ی لیست‌ها، کارها و زیرکارهای حساب شما
+                  </span>
+                </span>
+                {exportBusy ? <span className="text-xs text-on-surface-variant">…</span> : null}
+              </button>
+              <button
+                type="button"
+                aria-label="حذف حساب"
+                onClick={() => {
+                  setDelError(null);
+                  setDelStep('warn');
+                }}
+                className="w-full px-4 py-3.5 flex items-center gap-3 text-right text-red-600 dark:text-red-300 active:bg-red-50 dark:active:bg-red-950/30 transition-colors"
+              >
+                <Icon name="delete" size={18} className="shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-body-sm font-bold">حذف حساب</span>
+                  <span className="block text-xs text-on-surface-variant mt-0.5">
+                    حذف کامل حساب و همه‌ی داده‌های سمت سرور — غیرقابل بازگشت
+                  </span>
+                </span>
+              </button>
+            </div>
+          ) : null}
+
+          {delStep === 'warn' ? (
+            <div className="rounded-2xl border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 p-4 space-y-2.5" aria-label="هشدار حذف حساب" role="alertdialog">
+              <p className="text-body-sm font-black text-red-700 dark:text-red-300 flex items-center gap-2">
+                <Icon name="warning" size={18} />
+                حذف کامل حساب کارام
+              </p>
+              <ul className="text-xs leading-6 text-red-800/90 dark:text-red-200/90 list-disc ps-4 space-y-1">
+                <li>همه‌ی لیست‌ها، کارها، زیرکارها و یادآورهای سمت سرور برای همیشه پاک می‌شوند.</li>
+                <li>از همه‌ی دستگاه‌ها بیرون می‌افتید (همه‌ی نشست‌ها بی‌اعتبار می‌شوند).</li>
+                <li>داده‌ی حذف‌شده تا {toFa(keepDays)} روز در بکاپ‌های سروری می‌ماند و بعد برای همیشه پاک می‌شود.</li>
+                <li>سوابق مالی (سفارش و واریز) بی‌نام‌شده و بدون ارتباط با شما برای حسابداری می‌مانند.</li>
+              </ul>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  className="w-full py-2.5 rounded-xl bg-surface-container dark:bg-slate-800 text-on-surface dark:text-slate-100 text-body-sm font-bold active:scale-95 transition-transform disabled:opacity-50"
+                  onClick={() => void downloadMyData()}
+                  disabled={exportBusy}
+                >
+                  {exportBusy ? '…' : 'اول بک‌آپ بگیر (فایل JSON)'}
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    aria-label="ادامه — ارسال کد حذف"
+                    className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-body-sm font-bold active:scale-95 transition-transform disabled:opacity-50"
+                    onClick={() => void requestDelete()}
+                    disabled={delBusy || exportBusy}
+                  >
+                    {delBusy ? '…' : 'ادامه — ارسال کد حذف'}
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2.5 rounded-xl bg-surface-container dark:bg-slate-800 text-on-surface dark:text-slate-100 text-body-sm font-bold"
+                    onClick={() => {
+                      setDelStep('none');
+                      setDelError(null);
+                    }}
+                  >
+                    انصراف
+                  </button>
+                </div>
+              </div>
+              {delError ? <p className="text-xs text-red-700 dark:text-red-300">{delError}</p> : null}
+            </div>
+          ) : null}
+
+          {delStep === 'code' ? (
+            <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-4 space-y-3">
+              <p className="text-body-sm font-black flex items-center gap-2">
+                <Icon name="delete" size={17} className="text-red-600 dark:text-red-300" />
+                کد حذف حساب
+              </p>
+              <p className="text-xs text-on-surface-variant leading-6">
+                کد حذف به {delChannel === 'sms' ? 'شماره' : delChannel === 'telegram' ? 'چت تلگرام' : 'ایمیل'}{' '}
+                <span dir="ltr" className="font-bold">{delTarget}</span> ارسال شد.
+                این کد جدا از کد ورود است و فقط برای همین حذف کار می‌کند.
+              </p>
+              <input
+                id="karam-delete-code"
+                ref={delCodeRef}
+                aria-label="کد حذف حساب"
+                type="text"
+                dir="ltr"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="······"
+                value={delCode}
+                onChange={(e) => setDelCode(e.target.value.replace(/[^0-9۰-۹]/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && delCode.trim().length >= 4) void verifyDeleteCode();
+                }}
+                className="w-full px-4 py-3 rounded-xl bg-surface-container dark:bg-slate-700/60 text-headline-sm text-center tracking-[0.6em] outline-none border border-outline-variant/40 focus:border-primary text-on-surface dark:text-slate-100 placeholder:text-outline"
+              />
+              {delDevCode ? (
+                <p className="text-xs text-on-surface-variant bg-amber-50 dark:bg-amber-950/30 rounded-lg px-3 py-2" dir="ltr">
+                  dev: {delDevCode}
+                </p>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-label="ادامه به تأیید حذف"
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-body-sm font-bold active:scale-95 transition-transform disabled:opacity-50"
+                  onClick={() => void verifyDeleteCode()}
+                  disabled={delCode.trim().length < 4}
+                >
+                  ادامه
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2.5 rounded-xl bg-surface-container dark:bg-slate-700 text-on-surface dark:text-slate-100 text-body-sm font-bold"
+                  onClick={() => void requestDelete()}
+                  disabled={delBusy}
+                >
+                  {delBusy ? '…' : 'ارسال مجدد'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2.5 rounded-xl bg-surface-container dark:bg-slate-700 text-on-surface dark:text-slate-100 text-body-sm font-bold"
+                  onClick={() => {
+                    setDelStep('none');
+                    setDelError(null);
+                    setDelCode('');
+                  }}
+                >
+                  انصراف
+                </button>
+              </div>
+              {delError ? <p className="text-xs text-red-700 dark:text-red-300">{delError}</p> : null}
+            </div>
+          ) : null}
+
+          {delStep === 'confirm' ? (
+            <div className="rounded-2xl border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 p-4 space-y-3" role="alertdialog" aria-label="تأیید نهایی حذف حساب">
+              <p className="text-body-sm font-black text-red-700 dark:text-red-300">مرحله‌ی آخر — تصمیم غیرقابل بازگشت</p>
+              <p className="text-xs leading-6 text-red-800/90 dark:text-red-200/90">
+                برای تأیید، عبارت <span className="font-black">«حذف حساب»</span> را دقیقاً تایپ کنید و کد حذف را وارد کنید.
+                بعد از این مرحله همه‌ی داده‌های سمت سرور پاک و همه‌ی دستگاه‌ها بیرون می‌افتند.
+              </p>
+              <input
+                id="karam-delete-confirm"
+                aria-label="تایید حذف حساب"
+                type="text"
+                autoComplete="off"
+                maxLength={20}
+                placeholder="حذف حساب"
+                value={delConfirmText}
+                onChange={(e) => setDelConfirmText(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-surface dark:bg-slate-800 text-body-md outline-none border border-outline-variant/40 focus:border-red-500 text-on-surface dark:text-slate-100 placeholder:text-outline"
+              />
+              <input
+                id="karam-delete-code-final"
+                aria-label="کد حذف حساب نهایی"
+                type="text"
+                dir="ltr"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="کد ۶ رقمی"
+                value={delCode}
+                onChange={(e) => setDelCode(e.target.value.replace(/[^0-9۰-۹]/g, ''))}
+                className="w-full px-4 py-3 rounded-xl bg-surface dark:bg-slate-800 text-body-md text-center tracking-[0.4em] outline-none border border-outline-variant/40 focus:border-red-500 text-on-surface dark:text-slate-100 placeholder:text-outline"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-label="حذف کامل حساب"
+                  className="flex-1 py-3 rounded-xl bg-red-600 text-white text-body-sm font-black active:scale-95 transition-transform disabled:opacity-40"
+                  onClick={() => void doDeleteAccount()}
+                  disabled={delBusy || delConfirmText.trim() !== DELETE_CONFIRM_TEXT || delCode.trim().length < 4}
+                >
+                  {delBusy ? '…' : 'حذف کامل حساب'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-3 rounded-xl bg-surface-container dark:bg-slate-800 text-on-surface dark:text-slate-100 text-body-sm font-bold"
+                  onClick={() => {
+                    setDelStep('none');
+                    setDelError(null);
+                    setDelCode('');
+                    setDelConfirmText('');
+                  }}
+                >
+                  انصراف
+                </button>
+              </div>
+              {delError ? <p className="text-xs text-red-700 dark:text-red-300">{delError}</p> : null}
+            </div>
           ) : null}
 
           <p className="text-body-sm text-on-surface-variant leading-relaxed">

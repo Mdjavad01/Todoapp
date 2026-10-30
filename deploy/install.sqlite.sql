@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS coupons (
 CREATE TABLE IF NOT EXISTS orders (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid           TEXT(36) NOT NULL UNIQUE,
-  user_id        INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  -- P1: NULL = کاربر حذف‌شده (سوابق مالی بی‌نام می‌مانند)
+  user_id        INTEGER NULL REFERENCES users (id) ON DELETE CASCADE,
   plan_id        INTEGER NOT NULL REFERENCES plans (id),
   coupon_id      INTEGER REFERENCES coupons (id),
   amount_tomans   INTEGER NOT NULL,
@@ -208,7 +209,8 @@ CREATE INDEX IF NOT EXISTS idx_subs_user ON subscriptions (user_id, expires_at);
 CREATE TABLE IF NOT EXISTS deposit_requests (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid            TEXT(36) NOT NULL UNIQUE,
-  user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  -- P1: NULL = کاربر حذف‌شده (سوابق مالی بی‌نام می‌مانند)
+  user_id         INTEGER NULL REFERENCES users (id) ON DELETE CASCADE,
   plan_id         INTEGER REFERENCES plans (id),
   plan_code       TEXT(50) NOT NULL,
   amount_tomans    INTEGER NOT NULL DEFAULT 0,

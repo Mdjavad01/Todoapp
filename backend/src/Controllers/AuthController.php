@@ -21,6 +21,13 @@ declare(strict_types=1);
  *  GET    /api/v1/me/referral            → وضعیت دعوت دوستان (v20)
  *  POST   /api/v1/me/referral {code}     → فعال‌سازی کد دعوت (v20)
  *
+ * حریم خصوصی — P1 (نیازمند Bearer):
+ *  GET  /api/v1/account/export           → دریافت JSON کامل داده‌های خود کاربر
+ *  POST /api/v1/account/delete/request   → درخواست کد حذف حساب (purpose=delete — جدا از کد ورود)
+ *  POST /api/v1/account/delete/confirm   → تأیید حذف (کد حذف + تایپ عبارت «حذف حساب»)
+ *     حذف: لیست/کار/زیرکار/یادآور/هویت/نشست‌ها/OTP کامل پاک می‌شود؛ سوابق مالی
+ *     (سفارش‌ها و درخواست‌های واریز) بی‌نام‌شده (user_id=NULL) برای حسابداری می‌مانند.
+ *
  * POST /api/auth/session (ورود مستقیم بدون کد) از فاز ۲ باقی مانده و فقط وقتی
  * OPEN_SESSION=1 باشد کار می‌کند — پیش‌فرض فاز ۳: بسته (0).
  */
@@ -435,6 +442,256 @@ final class AuthController
             'days' => $res['days'],
             'premiumUntil' => $res['premiumUntil'],
         ]);
+    }
+
+    /* ================= حریم خصوصی: دریافت داده و حذف حساب (P1) ================= */
+
+    /**
+     * هویت اصلی (is_primary=1) کاربر — هدف ارسال کد حذف.
+     * @return array{type:string, value:string}|null
+     */
+    private static function primaryIdentity(PDO $pdo, int $userId): ?array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT type, value FROM user_identities WHERE user_id = :id ORDER BY is_primary DESC, id ASC LIMIT 1'
+        );
+        $stmt->execute([':id' => $userId]);
+        $row = $stmt->fetch();
+        return $row === false ? null : ['type' => (string) $row['type'], 'value' => (string) $row['value']];
+    }
+
+    /** GET /api/v1/account/export — JSON کامل داده‌های خود کاربر (لیست/کار/زیرکار + پروفایل) */
+    public function accountExport(): void
+    {
+        $user = Guard::requireUser();
+        $pdo = Database::pdo();
+
+        $stmt = $pdo->prepare('SELECT uuid, display_name, gender, status, created_at FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $user['id']]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            Response::error('حساب در دسترس نیست', 401, ['code' => 'unauthorized']);
+            return;
+        }
+
+        $ident = $pdo->prepare('SELECT type, value, verified_at FROM user_identities WHERE user_id = :id ORDER BY id ASC');
+        $ident->execute([':id' => $user['id']]);
+
+        $lists = $pdo->prepare('SELECT * FROM lists WHERE user_id = :id ORDER BY created_at ASC, id ASC');
+        $lists->execute([':id' => $user['id']]);
+
+        $tasks = $pdo->prepare('SELECT * FROM tasks WHERE user_id = :id ORDER BY created_at ASC, id ASC');
+        $tasks->execute([':id' => $user['id']]);
+
+        $subs = $pdo->prepare('SELECT * FROM subtasks WHERE user_id = :id ORDER BY created_at ASC, id ASC');
+        $subs->execute([':id' => $user['id']]);
+
+        // حذف ستون‌های داخلی سرور (id عددی و applied_at نگهداری سینک) — خروجی قابل‌فهم و قابل‌بازگشت
+        $clean = static function (array $rows): array {
+            return array_map(static function (array $r): array {
+                unset($r['id'], $r['user_id'], $r['applied_at']);
+                return $r;
+            }, $rows);
+        };
+
+        Response::ok([
+            'app' => 'کارام',
+            'exportedAt' => gmdate('Y-m-d\TH:i:s\Z'),
+            'user' => [
+                'uuid' => (string) $row['uuid'],
+                'displayName' => $row['display_name'],
+                'gender' => (string) ($row['gender'] ?? 'unset'),
+                'createdAt' => (string) $row['created_at'],
+            ],
+            'identities' => array_map(static fn (array $r): array => [
+                'type' => (string) $r['type'],
+                'value' => (string) $r['value'],
+                'verifiedAt' => $r['verified_at'] !== null
+                    ? gmdate('Y-m-d\TH:i:s\Z', strtotime((string) $r['verified_at']))
+                    : null,
+            ], (array) $ident->fetchAll()),
+            'lists' => $clean((array) $lists->fetchAll()),
+            'tasks' => $clean((array) $tasks->fetchAll()),
+            'subtasks' => $clean((array) $subs->fetchAll()),
+        ]);
+    }
+
+    /** POST /api/v1/account/delete/request — ارسال کد حذف حساب به هویت اصلی (purpose=delete) */
+    public function accountDeleteRequest(): void
+    {
+        $user = Guard::requireUser();
+        $pdo = Database::pdo();
+
+        $identity = self::primaryIdentity($pdo, (int) $user['id']);
+        if ($identity === null) {
+            Response::error('هویت تأییدشده‌ای برای این حساب ثبت نشده است', 409, ['code' => 'no_identity']);
+            return;
+        }
+        [$type, $value] = [$identity['type'], $identity['value']];
+        // نوع داخلی هویت تلگرام: telegram_chat_id — در otp_requests به‌عنوان telegram ثبت می‌شود
+        $otpType = $type === 'telegram_chat_id' ? 'telegram' : $type;
+        $ip = Request::ip();
+
+        $limit = Otp::checkRateLimit($pdo, $otpType, $value, $ip);
+        if (!$limit['ok']) {
+            Response::error($limit['reason'], 429, ['code' => 'rate_limited', 'retryAfter' => $limit['retryAfter'] ?? 60]);
+            return;
+        }
+
+        $created = Otp::createCode($pdo, $otpType, $value, $ip, Otp::PURPOSE_DELETE);
+
+        $subject = 'کد حذف حساب کارام: ' . $created['code'];
+        $sent = true;
+        if ($otpType === 'email') {
+            $sent = Mailer::send(
+                $value,
+                $subject,
+                Mailer::otpHtml($created['code'], (string) Otp::ttlMinutes()),
+            );
+            if (!$sent && Mailer::transport() !== 'log') {
+                Response::error('ارسال ایمیل ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'mail_failed']);
+                return;
+            }
+        } elseif ($otpType === 'sms') {
+            $res = Sms::sendCode($value, $created['code']);
+            $sent = (bool) ($res['ok'] ?? false);
+            if (!$sent) {
+                Response::error('ارسال پیامک ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'sms_failed']);
+                return;
+            }
+        } else {
+            $sent = TelegramBot::sendMessage(
+                $value,
+                "⚠️ درخواست حذف حساب کارام\n\nکد حذف حساب شما: " . $created['code']
+                . "\n\nاگر این درخواست کار شما نبود، همین حالا وارد اپ شوید و حذف را لغو کنید (کد تا "
+                . Otp::ttlMinutes() . " دقیقه اعتبار دارد)."
+            );
+            if (!$sent) {
+                Response::error('ارسال پیام تلگرام ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'telegram_failed']);
+                return;
+            }
+        }
+
+        $out = [
+            'channel' => $otpType,
+            'target' => $value,
+            'expiresIn' => Otp::ttlMinutes() * 60,
+            'resendAfter' => Otp::resendAfterSeconds(),
+        ];
+        if (Otp::debugEcho()) {
+            $out['devCode'] = $created['code']; // فقط در حالت توسعه!
+        }
+        Response::ok($out);
+    }
+
+    /** POST /api/v1/account/delete/confirm {code, confirmText} — تأیید نهایی حذف حساب (غیرقابل بازگشت) */
+    public function accountDeleteConfirm(): void
+    {
+        $user = Guard::requireUser();
+        $body = Request::json();
+        $code = Validator::str($body, 'code', 4, 8);
+        $confirmText = trim((string) Validator::str($body, 'confirmText', 1, 40));
+
+        // گام صادق‌گویی: عبارت باید دقیقاً «حذف حساب» باشد (ارقام/فاصله‌ها نرمال می‌شود)
+        $confirmText = preg_replace('/\s+/u', ' ', $confirmText) ?? $confirmText;
+        if ($confirmText !== 'حذف حساب') {
+            throw new ValidationError('برای تأیید، عبارت «حذف حساب» را دقیقاً تایپ کنید');
+        }
+
+        $pdo = Database::pdo();
+        $identity = self::primaryIdentity($pdo, (int) $user['id']);
+        if ($identity === null) {
+            Response::error('هویت تأییدشده‌ای برای این حساب ثبت نشده است', 409, ['code' => 'no_identity']);
+            return;
+        }
+        $otpType = $identity['type'] === 'telegram_chat_id' ? 'telegram' : $identity['type'];
+
+        // فقط کد با purpose=delete پذیرفته می‌شود — کد ورود عمداً رد می‌شود
+        $result = Otp::verifyCode($pdo, $otpType, $identity['value'], (string) $code, Otp::PURPOSE_DELETE);
+        if (!$result['ok']) {
+            Response::error($result['error'], 400, ['code' => $result['code']]);
+            return;
+        }
+
+        $this->deleteAccountData($pdo, (int) $user['id'], (string) $user['uuid'], $identity);
+
+        Response::ok([
+            'deleted' => true,
+            'message' => 'حساب شما و همه‌ی داده‌هایش حذف شد. سوابق مالی به‌صورت بی‌نام برای حسابداری می‌ماند.',
+        ]);
+    }
+
+    /**
+     * حذف قطعی داده‌های حساب در یک تراکنش:
+     *  - کامل: هویت‌ها، نشست‌ها، لیست/کار/زیرکار/یادآور، اشتراک‌ها، کدهای هدیه‌ی مصرفی،
+     *    رکوردهای OTP هویت و خود ردیف کاربر (رفرال در ستون‌های users است و با آن می‌رود).
+     *  - بی‌نام‌شده برای حسابداری: orders و deposit_requests فقط user_id=NULL و
+     *    یادداشت‌های متنی کاربر پاک می‌شود؛ مبلغ/وضعیت/تاریخ برای امور مالی می‌ماند.
+     *  - ثبت در audit (actor=user) قبل از حذف، تا ردپای رخداد بماند.
+     * بعد از این متد، هر توکن access/refresh موجود روی هر دستگاه فوراً ۴۰۱ می‌شود
+     * (Guard و refresh هر دو ردیف کاربر را می‌خوانند).
+     */
+    private function deleteAccountData(PDO $pdo, int $userId, string $userUuid, array $identity): void
+    {
+        $pdo->beginTransaction();
+        try {
+            // شمارش برای audit (قبل از حذف)
+            $counts = [];
+            foreach (['lists' => 'lists', 'tasks' => 'tasks', 'subtasks' => 'subtasks'] as $key => $tbl) {
+                $st = $pdo->prepare("SELECT COUNT(*) FROM {$tbl} WHERE user_id = :id");
+                $st->execute([':id' => $userId]);
+                $counts[$key] = (int) $st->fetchColumn();
+            }
+
+            Audit::log('user', $userId, 'account_deleted', 'user', $userUuid, [
+                'identityType' => $identity['type'],
+                'dataCounts' => $counts,
+                'financialRowsAnonymized' => true,
+            ]);
+
+            // --- بی‌نام‌سازی سوابق مالی (ستون‌ها با upgrade-v1.9.sql nullable شده‌اند) ---
+            $pdo->prepare('UPDATE orders SET user_id = NULL, description = NULL WHERE user_id = :id')
+                ->execute([':id' => $userId]);
+            $pdo->prepare('UPDATE deposit_requests SET user_id = NULL, note = NULL WHERE user_id = :id')
+                ->execute([':id' => $userId]);
+
+            // --- حذف کامل (صریح — در MySQL هم کسکید FK هست ولی برای سازگاری SQLite صریح می‌زنیم) ---
+            // فقط جداول موجود (نصب‌های SQLite توسعه ممکن است جدولی مثل reminders نداشته باشند)
+            $existing = Database::driver() === 'sqlite'
+                ? (array) $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN)
+                : (array) $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+            foreach (
+                [
+                    'user_identities',
+                    'refresh_tokens',
+                    'reminders',
+                    'subtasks',
+                    'tasks',
+                    'lists',
+                    'subscriptions',
+                    'coupon_redemptions',
+                ] as $tbl
+            ) {
+                if (!in_array($tbl, $existing, true)) {
+                    continue;
+                }
+                $pdo->prepare("DELETE FROM {$tbl} WHERE user_id = :id")->execute([':id' => $userId]);
+            }
+
+            // رکوردهای OTP (ورود و حذف) مربوط به هویت‌های این حساب — ارزش هویتی دارند و باید بروند
+            $pdo->prepare('DELETE FROM otp_requests WHERE identity_type = :t AND identity_value = :v')
+                ->execute([':t' => $identity['type'] === 'telegram_chat_id' ? 'telegram' : $identity['type'], ':v' => $identity['value']]);
+
+            // خود کاربر — آخر (توکن‌ها از همین لحظه در همه‌ی دستگاه‌ها ۴۰۱ می‌شوند)
+            $pdo->prepare('DELETE FROM users WHERE id = :id')->execute([':id' => $userId]);
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     /* ================= نشست بدون OTP (فاز ۲ — پیش‌فرض بسته) ================= */

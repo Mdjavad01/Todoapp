@@ -160,6 +160,8 @@ export interface BootstrapPayload {
   support?: { email: string | null; telegram: string | null } | null;
   /** ترمیم جریان — سقف آیتم سینک برای push تکه‌تکه (سرورهای قدیمی بدون این فیلد) */
   sync?: { maxItems?: number } | null;
+  /** P1 — سقف نگه‌داری بکاپ سرور (BACKUP_KEEP از .env) — برای متن صادقانه‌ی حذف حساب/حریم خصوصی */
+  backup?: { keepDays?: number } | null;
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {
@@ -176,4 +178,38 @@ export async function listSessions(): Promise<ActiveSession[]> {
 
 export async function revokeSession(id: number): Promise<void> {
   await authedFetch(`/v1/me/sessions/${id}`, { method: 'DELETE' });
+}
+
+/* ---------------- حریم خصوصی: دریافت داده و حذف حساب (P1) ---------------- */
+
+/** خروجی کامل GET /api/v1/account/export — داده‌های خود کاربر */
+export interface AccountExportPayload {
+  app: string;
+  exportedAt: string;
+  user: { uuid: string; displayName: string | null; gender: string; createdAt: string };
+  identities: { type: string; value: string; verifiedAt: string | null }[];
+  lists: Record<string, unknown>[];
+  tasks: Record<string, unknown>[];
+  subtasks: Record<string, unknown>[];
+}
+
+/** دریافت JSON کامل داده‌های حساب (لیست/کار/زیرکار + پروفایل) */
+export async function fetchMyData(): Promise<AccountExportPayload> {
+  return authedFetch<AccountExportPayload>('/v1/account/export');
+}
+
+/** درخواست کد حذف حساب — کد از هویت اصلی ارسال می‌شود (purpose=delete، جدا از کد ورود) */
+export async function requestDeleteCode(): Promise<OtpRequestResult> {
+  return authedFetch<OtpRequestResult>('/v1/account/delete/request', { method: 'POST', body: {} });
+}
+
+/**
+ * تأیید حذف حساب — کد «حذف» + تایپ دقیق عبارت «حذف حساب».
+ * بعد از موفقیت، همه‌ی توکن‌های همه‌ی دستگاه‌ها فوراً ۴۰۱ می‌شوند.
+ */
+export async function confirmAccountDeletion(code: string, confirmText: string): Promise<{ deleted: boolean; message: string }> {
+  return authedFetch<{ deleted: boolean; message: string }>('/v1/account/delete/confirm', {
+    method: 'POST',
+    body: { code: code.trim(), confirmText },
+  });
 }

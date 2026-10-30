@@ -44,6 +44,8 @@ export interface AppSettings {
   /** v17 — چک‌کننده به‌روزرسانی + پشتیبانی (پاسخ سرورهای قدیمی بدون این‌هاست) */
   update?: { latest: string | null; url: string | null; notes: string | null } | null;
   support?: { email: string | null; telegram: string | null } | null;
+  /** P1 — سقف نگه‌داری بکاپ سرور (BACKUP_KEEP از bootstrap؛ پاسخ سرورهای قدیمی بدون این است) */
+  backup?: { keepDays?: number } | null;
 }
 
 /** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription؛ source='trial' = دوره آزمایشی v18) */
@@ -101,6 +103,8 @@ interface AppState {
   coachAdd: boolean;
   /** فاز نصب تمیز — بنر یک‌بارمصرف «کارهای نمونه‌ی قدیمی» (اسکن demoCleanup) */
   demoCleanupBanner: { taskCount: number; listCount: number } | null;
+  /** P1 — بنر هشدار داده‌ی مهمان (فقط مهمان؛ بستنش با pref «guest-banner-dismissed» پایا است) */
+  guestBanner: boolean;
   appSettings: AppSettings;
   session: SyncSession | null;
   syncState: SyncState;
@@ -147,6 +151,8 @@ interface AppState {
   dismissDemoCleanup(): void;
   /** «پاک کن» — حذف نرم سینک‌پذیر با واگرد توست‌دار */
   cleanLegacyDemos(): Promise<void>;
+  /** P1 — بستن بنر هشدار داده‌ی مهمان (یک‌بار — در prefs دستگاه ثبت می‌شود) */
+  dismissGuestBanner(): void;
   /** واگرد پاک‌سازی نمونه‌ها */
   undoLegacyDemoCleanup(): Promise<void>;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
@@ -275,6 +281,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   welcomeSheet: false,
   coachAdd: false,
   demoCleanupBanner: null,
+  guestBanner: false,
   appSettings: {
     appName: 'کارام',
     paywallTitle: 'کارام پرو',
@@ -358,6 +365,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       await refreshSession();
       await get().reloadSession(false);
       void runSync();
+    }
+
+    // P1 — بنر هشدار داده‌ی مهمان: فقط مهمان و فقط اگر در این نصب نبسته باشد
+    {
+      const dismissed = await repo.prefsGet<string>('guest-banner-dismissed', '');
+      if (!get().session && dismissed !== '1') {
+        set({ guestBanner: true });
+      }
     }
 
     // فاز نصب تمیز — هیچ مودال مزاحمی در باز شدن اپ نیست؛ راهنمای ۳مرحله‌ای Tooltip
@@ -479,6 +494,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ demoCleanupBanner: null });
   },
 
+  /** P1 — بستن بنر داده‌ی مهمان — یک‌بار در هر نصب (pref دستگاه) */
+  dismissGuestBanner() {
+    void repo.prefsSet('guest-banner-dismissed', '1');
+    set({ guestBanner: false });
+  },
+
   async cleanLegacyDemos() {
     const scan = currentDemoScan;
     if (!scan) return;
@@ -553,6 +574,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       myDayIds: [],
       quickDraft: '',
       groupsCollapsed: [],
+      // P1 — کاربر دوباره مهمان است؛ pref بستن بنر هم با پاک‌سازی خروج رفته → بنر دوباره می‌آید
+      guestBanner: true,
     });
   },
 

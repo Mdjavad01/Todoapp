@@ -11,6 +11,8 @@ declare(strict_types=1);
  *  - محدودیت ارسال: فاصله‌ی حداقلی بین دو ارسال + سقف ساعتی برای هر هویت و هر IP.
  *  - سقف تلاش ناموفق؛ بعد از آن کد باطل می‌شود و باید کد جدید گرفت.
  *  - کد و بلیت تلگرام (ticket) هر دو در جدول otp_requests با purpose=login ذخیره می‌شوند.
+ *  - P1 — کد «حذف حساب» با purpose=delete ذخیره می‌شود و از کد ورود جداست:
+ *    کد ورود هرگز برای حذف حساب و کد حذف هرگز برای ورود پذیرفته نمی‌شود.
  */
 
 final class Otp
@@ -22,6 +24,9 @@ final class Otp
     private const TICKET_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     private const PURPOSE_LOGIN = 'login';
+
+    /** P1 — هدف کد حذف حساب (جدا از ورود — عمداً رشته‌ی دیگری است) */
+    public const PURPOSE_DELETE = 'delete';
 
     /* ---------------- تنظیمات قابل‌override با .env (برای تست سریع‌تر) ---------------- */
 
@@ -256,10 +261,11 @@ final class Otp
     /* ---------------- درج رکوردها ---------------- */
 
     /**
-     * ساخت کد ورود برای یک هویت — رکورد فقط با هش ذخیره می‌شود.
-     * @return array{expiresAt:string}
+     * ساخت کد برای یک هویت — رکورد فقط با هش ذخیره می‌شود.
+     * $purpose: 'login' (پیش‌فرض) یا 'delete' (P1 — کد حذف حساب؛ جدا از ورود).
+     * @return array{code:string, expiresAt:string}
      */
-    public static function createCode(PDO $pdo, string $type, string $value, string $ip): array
+    public static function createCode(PDO $pdo, string $type, string $value, string $ip, string $purpose = self::PURPOSE_LOGIN): array
     {
         $code = self::generateCode();
         $now = time();
@@ -271,12 +277,12 @@ final class Otp
             ':t' => $type,
             ':v' => $value,
             ':h' => self::hash($code, $type, $value),
-            ':p' => self::PURPOSE_LOGIN,
+            ':p' => $purpose === self::PURPOSE_DELETE ? self::PURPOSE_DELETE : self::PURPOSE_LOGIN,
             ':ip' => $ip !== '' ? $ip : null,
             ':exp' => gmdate('Y-m-d H:i:s', $now + self::ttlMinutes() * 60),
             ':now' => gmdate('Y-m-d H:i:s', $now),
         ]);
-        self::recordIssued(['type' => $type, 'value' => $value, 'code' => $code]);
+        self::recordIssued(['type' => $type, 'value' => $value, 'code' => $code, 'purpose' => $purpose]);
         return ['code' => $code, 'expiresAt' => gmdate('Y-m-d\TH:i:s\Z', $now + self::ttlMinutes() * 60)];
     }
 
@@ -357,11 +363,12 @@ final class Otp
     }
 
     /**
-     * تأیید کد برای یک هویت.
+     * تأیید کد برای یک هویت — فقط رکوردهای همان purpose بررسی می‌شوند؛
+     * یعنی کد ورود با کد حذف حساب به‌هیچ‌وجه جابه‌جا قابل استفاده نیست (P1).
      * @return array{ok:true}|array{ok:false, error:string, code:string}
      *         code: invalid | locked | expired
      */
-    public static function verifyCode(PDO $pdo, string $type, string $value, string $code): array
+    public static function verifyCode(PDO $pdo, string $type, string $value, string $code, string $purpose = self::PURPOSE_LOGIN): array
     {
         $now = gmdate('Y-m-d H:i:s');
         $stmt = $pdo->prepare(
@@ -369,7 +376,11 @@ final class Otp
              WHERE identity_type = :t AND identity_value = :v AND purpose = :p AND consumed_at IS NULL
              ORDER BY id DESC LIMIT 1'
         );
-        $stmt->execute([':t' => $type, ':v' => $value, ':p' => self::PURPOSE_LOGIN]);
+        $stmt->execute([
+            ':t' => $type,
+            ':v' => $value,
+            ':p' => $purpose === self::PURPOSE_DELETE ? self::PURPOSE_DELETE : self::PURPOSE_LOGIN,
+        ]);
         $row = $stmt->fetch();
 
         if ($row === false) {

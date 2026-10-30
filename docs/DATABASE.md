@@ -83,6 +83,8 @@ announcements        settings
 ### `orders`
 سفارش‌های خرید اشتراک: `user_id`، `plan_id`، `coupon_id`، `amount_rial` (مبلغ نهایی پس از تخفیف — ملاک verify)، `status` ∈ {`created`,`redirected`,`paid`,`failed`,`pending_review`,`approved`,`rejected`,`refunded`}، `tracking_code` (کد پیگیری کارت‌به‌کارت)، `gateway` ∈ {`zibal`,`aghaye_pardakht`,`card_to_card`,`admin_grant`, ...}. شمارنده‌ی کارت مقصد برای **چرخش چند کارت** در کارت‌به‌کارت در `settings` نگهداری می‌شود.
 
+> **P1 — حذف حساب:** `orders.user_id` و `deposit_requests.user_id` **nullable** هستند (مهاجرت تکرارپذیر `deploy/upgrade-v1.9.sql`). با حذف حساب، سوابق مالی با `user_id=NULL` و بدون یادداشت‌های کاربر بی‌نام می‌مانند (الزام حسابداری) و بقیه‌ی داده‌های کاربر کامل پاک می‌شود (کسکید FK + DELETEهای صریح در `AuthController::deleteAccountData`).
+
 ### `payments`
 تراکنش هر درگاه: `order_id`، `gateway`، `ref_id` (شناسه‌ی تراکنش درگاه)، `amount_rial`، `status`، `raw_response` (JSON پاسخ کامل درگاه برای ردیابی). **verify باید idempotent باشد** — پرداختِ `paid` دوباره verify نمی‌شود.
 

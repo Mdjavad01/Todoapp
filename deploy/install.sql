@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS `coupons` (
 CREATE TABLE IF NOT EXISTS `orders` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `uuid`            CHAR(36)  NOT NULL,
-  `user_id`         BIGINT UNSIGNED NOT NULL,
+  `user_id`         BIGINT UNSIGNED NULL DEFAULT NULL COMMENT 'P1: NULL = کاربر حذف‌شده (سوابق مالی بی‌نام می‌ماند)',
   `plan_id`         BIGINT UNSIGNED NOT NULL,
   `coupon_id`       BIGINT UNSIGNED NULL DEFAULT NULL,
   `amount_tomans`   BIGINT    NOT NULL COMMENT 'مبلغ نهایی پس از تخفیف (تومان)',
@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
 CREATE TABLE IF NOT EXISTS `deposit_requests` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `uuid`            CHAR(36)  NOT NULL,
-  `user_id`         BIGINT UNSIGNED NOT NULL,
+  `user_id`         BIGINT UNSIGNED NULL DEFAULT NULL COMMENT 'P1: NULL = کاربر حذف‌شده (سوابق مالی بی‌نام می‌مانند)',
   `plan_id`         BIGINT UNSIGNED NULL DEFAULT NULL,
   `plan_code`       VARCHAR(50) NOT NULL,
   `amount_tomans`   BIGINT    NOT NULL DEFAULT 0 COMMENT 'مبلغ قابل واریز (تومان)',
