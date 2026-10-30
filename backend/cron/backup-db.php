@@ -3,11 +3,15 @@
 declare(strict_types=1);
 
 /**
- * کارام — بکاپ خودکار روزانه دیتابیس (گام ۱۹ — عملیات)
+ * کارام — بکاپ خودکار روزانه دیتابیس (گام ۱۹ — عملیات) + ماسک رازها (P1)
  *
  * چه می‌کند:
  *   ۱) از کل دیتابیس (همه‌ی جداول) یک dump فشرده‌ی .sql.gz می‌سازد
  *      → در storage/backups (بیرون از webroot؛ .htaccess دسترسی وب را بسته است)
+ *      P1 — مقدار ۵ کلید راز جدول settings (فهرست رسمی INSTALL بخش ۱۹-۲:
+ *      smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url،
+ *      provider_sms_headers) در dump «خالی» می‌شود؛ بازیابی: پس از restore ادمین
+ *      همین کلیدها را یک‌بار در «پنل ← تنظیمات» دوباره وارد می‌کند.
  *   ۲) فقط ۷ نسخه‌ی آخر را نگه می‌دارد (BACKUP_KEEP در .env قابل تغییر)
  *   ۳) اگر ربات تلگرام + «شناسه چت ادمین» (پنل ← تنظیمات ← بکاپ) تنظیم شده باشد،
  *      فایل بکاپ را تا سقف ۴۵MB به تلگرام می‌فرستد (بزرگ‌تر = فقط پیام گزارش)
@@ -41,6 +45,7 @@ require $srcDir . '/Config.php';
 require $srcDir . '/Database.php';
 require $srcDir . '/Support/FileCache.php'; // ⚠️ الزامی — Settings::all به FileCache وابسته است (v17)
 require $srcDir . '/Support/Settings.php';
+require $srcDir . '/Support/BackupMask.php'; // P1 — ماسک رازهای settings در dump
 require $srcDir . '/Services/TelegramBot.php';
 
 $isCli = PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
@@ -115,18 +120,35 @@ function karam_backup_run(): array
     $driver = (string) (Config::get('DB_DRIVER', 'mysql') ?? 'mysql');
 
     if ($driver === 'sqlite') {
-        // توسعه‌ی محلی — کپی مستقیم فایل دیتابیس (کلید .env: SQLITE_PATH — هم‌نام Database.php)
+        // توسعه‌ی محلی — کپی فایل دیتابیس (کلید .env: SQLITE_PATH — هم‌نام Database.php)
+        // P1 — قبل از فشرده‌سازی، رازهای settings روی «کپی» خالی می‌شوند تا بکاپ محلی هم بدون راز باشد.
         $dbPath = (string) (Config::get('SQLITE_PATH', dirname(__DIR__) . '/storage/karam-dev.sqlite3') ?? '');
         if ($dbPath === '' || !is_file($dbPath)) {
             throw new RuntimeException('فایل دیتابیس SQLite پیدا نشد: ' . $dbPath);
         }
-        $bytes = filesize($dbPath) ?: 0;
-        $gz = gzencode((string) file_get_contents($dbPath), 6);
+        if (!@copy($dbPath, $tmpPath)) {
+            throw new RuntimeException('کپی فایل SQLite ناموفق بود');
+        }
+        try {
+            $cpdo = new PDO('sqlite:' . $tmpPath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            $ph = implode(',', array_fill(0, count(BackupMask::SECRET_KEYS), '?'));
+            $cpdo->prepare("UPDATE settings SET value = '' WHERE \"key\" IN ({$ph})")
+                ->execute(BackupMask::SECRET_KEYS);
+            // VACUUM — بدون آن، مقدار قدیمی رازها در صفحات آزاد فایل می‌ماند و
+            // با جست‌وجوی باینری قابل بازیابی است؛ VACUUM فایل را بازسازی می‌کند.
+            $cpdo->exec('VACUUM');
+            $cpdo = null;
+        } catch (Throwable $e) {
+            @unlink($tmpPath);
+            throw new RuntimeException('ماسک رازها در بکاپ SQLite ناموفق بود: ' . $e->getMessage());
+        }
+        $bytes = filesize($tmpPath) ?: 0;
+        $gz = gzencode((string) file_get_contents($tmpPath), 6);
         if ($gz === false) {
             throw new RuntimeException('فشرده‌سازی ناموفق بود');
         }
-        file_put_contents($tmpPath, $gz);
-        rename($tmpPath, $gzPath);
+        file_put_contents($gzPath, $gz);
+        @unlink($tmpPath);
         return ['file' => $gzPath, 'bytes' => strlen($gz), 'method' => 'sqlite-copy', 'tables' => 0];
     }
 
@@ -156,10 +178,35 @@ function karam_backup_run(): array
             . ' --user=' . escapeshellarg($user)
             . ' --password=' . escapeshellarg($pass)
             . ' --single-transaction --quick --routines --no-tablespaces '
-            . escapeshellarg($name)
+            // P1 — جدول settings را mysqldump نمی‌ریزد؛ بعداً با مقدار ماسک‌شده دستی اضافه می‌شود
+            . ' --ignore-table=' . escapeshellarg($name . '.settings')
+            . ' ' . escapeshellarg($name)
             . ' > ' . escapeshellarg($tmpPath) . ' 2> ' . escapeshellarg($dir . '/.mysqldump-err');
         @exec($cmd, $out, $code);
         if ($code === 0 && is_file($tmpPath) && filesize($tmpPath) > 200) {
+            // الحاق بخش settings با ماسک رازها (P1)
+            $settingsSql = "\n-- بخش تنظیمات (P1 — رازها ماسک شده‌اند): مقدار ۵ کلید راز خالی است؛"
+                . "\n-- بازیابی: پنل ← تنظیمات ← smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url، provider_sms_headers\n";
+            $create = $pdo->query('SHOW CREATE TABLE `' . $name . '`.`settings`')->fetch(PDO::FETCH_NUM);
+            if ($create !== false) {
+                $settingsSql .= "DROP TABLE IF EXISTS `settings`;\n" . (string) $create[1] . ";\n";
+                $rows = $pdo->query('SELECT * FROM `settings`');
+                while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+                    $rowKey = (string) ($row['key'] ?? '');
+                    $values = [];
+                    foreach ($row as $k => $v) {
+                        if ($v === null) {
+                            $values[] = 'NULL';
+                            continue;
+                        }
+                        // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بداند چه چیزی را دوباره وارد کند
+                        $masked = ((string) $k === 'value' && BackupMask::isSecret($rowKey)) ? '' : (string) $v;
+                        $values[] = $pdo->quote($masked);
+                    }
+                    $settingsSql .= 'INSERT INTO `settings` VALUES (' . implode(',', $values) . ");\n";
+                }
+                file_put_contents($tmpPath, $settingsSql, FILE_APPEND | LOCK_EX);
+            }
             $dumped = true;
         }
         @unlink($dir . '/.mysqldump-err');
@@ -187,10 +234,19 @@ function karam_backup_run(): array
             $rows = $pdo->query('SELECT * FROM `' . $t . '`');
             $buffer = '';
             $count = 0;
+            $isSettings = $t === 'settings'; // P1 — ردیف‌های رازدار ماسک می‌شوند
             while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+                $rowKey = (string) ($row['key'] ?? '');
+                $isSecretRow = $isSettings && BackupMask::isSecret($rowKey);
                 $values = [];
-                foreach ($row as $v) {
-                    $values[] = $v === null ? 'NULL' : $pdo->quote((string) $v);
+                foreach ($row as $k => $v) {
+                    if ($v === null) {
+                        $values[] = 'NULL';
+                        continue;
+                    }
+                    // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بعد از بازیابی بداند چه چیزی را دوباره وارد کند
+                    $masked = ($isSecretRow && (string) $k === 'value') ? '' : (string) $v;
+                    $values[] = $pdo->quote($masked);
                 }
                 $buffer .= 'INSERT INTO `' . $t . '` VALUES (' . implode(',', $values) . ");\n";
                 $count++;
@@ -457,6 +513,7 @@ function h(string $v): string
     <li>دستور (کپی کنید — مسیر php را اگر فرق داشت از راهنمای کرون تلگرام بگیرید):</li>
   </ol>
   <div class="pre"><?= h('/usr/local/bin/php ' . str_replace(dirname(__DIR__, 2), '', __FILE__)) ?></div>
+  <p class="muted">⚠️ در هر نسخه‌ی بکاپ، مقدار ۵ کلید راز جدول settings خالی می‌شود (smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url، provider_sms_headers) — بعد از بازیابی، همین کلیدها را در «پنل ← تنظیمات» دوباره وارد کنید. نسخه‌ی تلگرامی مشمول پاک‌سازی خودکار نسخه‌های محلی (BACKUP_KEEP) نیست؛ خودتان از گفتگوی ربات پاکش کنید.</p>
   <p class="muted">⚠️ اگر فایل را هنوز آپلود نکرده‌اید: فایل <code>backup-db.php</code> داخل پوشه‌ی <code>api/cron/</code> در پک v19 است.</p>
   <p class="muted">برای گزارش روزانه در تلگرام: پنل ← تنظیمات ← «بکاپ و پشتیبان» ← شناسه چت ادمین (عددی) را بنویسید؛ ربات همان فایل بکاپ را می‌فرستد (تا ۴۵MB، بزرگ‌تر = فقط گزارش).</p>
 </div>

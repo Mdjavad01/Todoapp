@@ -41,6 +41,8 @@ announcements        settings
 > **فاز ۴.۵:** ستون `gender ENUM(unset,male,female) DEFAULT unset` اضافه شد (انتخاب تم دخترانه/پسرانه بعد از ورود). برای نصب‌های موجود: `deploy/upgrade-v0.5.sql`.
 کاربران اپ. `uuid` شناسه‌ی سینک بین دستگاه‌ها؛ `status` شامل `active/blocked/deleted`؛ `premium_until` انقضای اشتراک (NULL = کاربر عادی).
 
+> **v1.9 — حذف حساب:** با حذف حساب (`Services/AccountDeletion.php`) داده‌های کاربر (لیست/کار/زیرکار/یادآور/هویت/توکن/نشست) سخت پاک می‌شود و ردیف `users` به «پوسته‌ی بی‌نام» با `status='deleted'` تبدیل می‌شود — فقط لنگر سوابق مالی (`orders`/`payments`/`deposit_requests`) برای الزام حسابداری می‌ماند؛ هیچ داده‌ی هویتی روی آن نمی‌ماند. سوابق مالی در بکاپ‌های سروری تا `BACKUP_KEEP` روز (پیش‌فرض ۷) می‌مانند و بعد خودکار پاک می‌شوند.
+
 ### `user_identities`
 هویت‌های ورود: `type` ∈ {`email`, `mobile`, `bale_chat_id`}؛ `value` یکتا به‌ازای هر نوع؛ `verified_at` زمان تأیید. یک کاربر می‌تواند چند هویت داشته باشد (یکتایی روی `(type, value)`).
 

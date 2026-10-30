@@ -41,3 +41,5 @@ keystore.properties
 backend/src/storage/
 tests/telegram-mock-state.json
 backend/storage/cache/retention-state.json
+backend/storage/backups/
+backend/storage/cron/

@@ -160,6 +160,8 @@ export interface BootstrapPayload {
   support?: { email: string | null; telegram: string | null } | null;
   /** ترمیم جریان — سقف آیتم سینک برای push تکه‌تکه (سرورهای قدیمی بدون این فیلد) */
   sync?: { maxItems?: number; tombstoneRetentionDays?: number } | null;
+  /** P1 — سقف نگه‌داری بکاپ سرور (BACKUP_KEEP از bootstrap؛ پاسخ سرورهای قدیمی بدون این است) */
+  backup?: { keepDays?: number } | null;
 }
 
 export async function fetchBootstrap(): Promise<BootstrapPayload> {

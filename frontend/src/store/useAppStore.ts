@@ -49,6 +49,8 @@ export interface AppSettings {
   /** v17 — چک‌کننده به‌روزرسانی + پشتیبانی (پاسخ سرورهای قدیمی بدون این‌هاست) */
   update?: { latest: string | null; url: string | null; notes: string | null } | null;
   support?: { email: string | null; telegram: string | null } | null;
+  /** P1 — سقف نگه‌داری بکاپ سرور (BACKUP_KEEP از bootstrap؛ پاسخ سرورهای قدیمی بدون این است) */
+  backup?: { keepDays?: number } | null;
 }
 
 /** وضعیت اشتراک پرو (فاز ۵ — از /api/v1/me/subscription؛ source='trial' = دوره آزمایشی v18) */
