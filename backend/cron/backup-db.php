@@ -20,7 +20,11 @@ declare(strict_types=1);
  * چرا سه روش dump؟
  *   - mysqldump اگر روی هاست موجود باشد (DirectAdmin معمولاً دارد) — سریع‌ترین راه
  *     (P1.1: رمز دیتابیس با --defaults-extra-file موقت chmod 600 داده می‌شود، نه خط فرمان)
+ *     (P1.2: خروجی mysqldump خط‌به‌خط اسکن می‌شود — اگر --ignore-table نادیده شده
+ *     باشد و settings داخل dump باشد، dump دور ریخته و به php-dump ماسک‌دار برمی‌گردیم)
  *   - وگرنه dump خالص PHP (SHOW CREATE TABLE + INSERT) — همیشه کار می‌کند، بدون exec
+ *     (P1.2: SHOW CREATE TABLE ناموفق/خالی برای هر جدولی = exception — هیچ جدولی
+ *     بی‌صدا از بکاپ رد نمی‌شود؛ شکست هم فایل‌های موقت را پاک می‌کند)
  *   - SQLite (توسعه‌ی محلی): کپی فایل + ماسک روی کپی + VACUUM
  *
  * راه‌اندازی (مثل کرون تلگرام — بدون SSH):
@@ -107,6 +111,41 @@ function karam_backup_fail(string $message, bool $cli): void
 /* ================= اجرای واقعی بکاپ ================= */
 
 /**
+ * P1.2 — آیا فایل dump حاوی تعریف/درج جدول settings است؟ (استریم خط‌به‌خط)
+ *
+ * چرا؟ اگر mysqldumpِ هاست (مثلاً نسخه‌ای از MariaDB) --ignore-table را نادیده
+ * بگیرد، جدول settings با راز واقعی داخل dump می‌آید و بعد دوباره (ماسک‌شده)
+ * الحاق می‌شود ⇒ فایل بکاپ راز لو می‌دهد. پس پس از هر mysqldump موفق، خروجی
+ * خط‌به‌خط اسکن می‌شود (بدون بار کردن کل فایل در حافظه)؛ اگر settings در آن بود،
+ * dump دور ریخته می‌شود و مسیر dump خالص PHP (که ماسک دارد) جای آن را می‌گیرد.
+ *
+ * ملاک فقط خط‌هایی است که دقیقاً با «CREATE TABLE `settings`» یا
+ * «INSERT INTO `settings`» شروع شوند — کلمه‌ی settings در کامنت یا نام جدول
+ * دیگر (مثل settings_log) ملاک نیست.
+ *
+ * جدا از karam_backup_run تا تست‌پذیر باشد (trust-test).
+ */
+function karam_backup_dump_contains_settings(string $path): bool
+{
+    $fh = @fopen($path, 'rb');
+    if ($fh === false) {
+        // نمی‌توانیم تضمین کنیم settings در dump نیست → شکست امن (بکاپ fail و ثبت در وضعیت)
+        throw new RuntimeException('اسکن امنیتی dump برای جدول settings ناموفق بود (فایل خوانا نیست)');
+    }
+    try {
+        while (($line = fgets($fh)) !== false) {
+            $t = ltrim($line);
+            if (str_starts_with($t, 'CREATE TABLE `settings`') || str_starts_with($t, 'INSERT INTO `settings`')) {
+                return true;
+            }
+        }
+    } finally {
+        fclose($fh);
+    }
+    return false;
+}
+
+/**
  * P1.1 — الحاق بخش settings (با ماسک رازها) به dump مسیر mysqldump.
  *
  * چرا جدول settings از mysqldump حذف و دستی اضافه می‌شود؟ تا مقدار ۵ کلید راز
@@ -156,8 +195,85 @@ function karam_backup_append_settings_section(PDO $pdo, string $dbName, string $
 }
 
 /**
- * @return array{file:string, bytes:int, method:string, tables:int}
+ * P1.2 — dump خالص PHP — از karam_backup_run جدا شد تا تست‌پذیر باشد (trust-test).
+ *
+ * قاعده: هیچ جدولی بی‌صدا از بکاپ رد نمی‌شود — SHOW CREATE TABLE برای هر جدولی
+ * خطا بدهد یا خالی برگرداند، RuntimeException با نام همان جدول پرتاب می‌شود تا
+ * بکاپ fail شود و در فایل وضعیت ثبت گردد (رفتار قدیمی «continue بی‌صدا» حذف شد).
+ *
+ * @return array{sql:string, tables:int}
  */
+function karam_backup_php_dump(PDO $pdo, string $dbName): array
+{
+    $sql = "-- کارام — بکاپ خالص PHP\n";
+    $sql .= "-- at " . gmdate('Y-m-d\TH:i:s\Z') . " db={$dbName}\n";
+    $sql .= "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+
+    $stmt = $pdo->query('SHOW TABLES');
+    $allTables = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $tables = count($allTables);
+
+    foreach ($allTables as $table) {
+        $t = (string) $table;
+        // P1.2 — نام جدول در SHOW CREATE TABLE با بک‌تیک امن می‌شود (مثل مسیر mysqldump)
+        $safeTable = str_replace('`', '', $t);
+        try {
+            $create = $pdo->query('SHOW CREATE TABLE `' . $safeTable . '`')->fetch(PDO::FETCH_NUM);
+        } catch (Throwable $e) {
+            throw new RuntimeException("خواندن ساختار جدول {$t} ناموفق بود (SHOW CREATE TABLE): " . $e->getMessage());
+        }
+        if ($create === false || !isset($create[1]) || trim((string) $create[1]) === '') {
+            // P1.2 — بدون این، جدول بی‌صدا از بکاپ می‌افتاد (رفتار قدیمی continue حذف شد)
+            throw new RuntimeException("ساختار جدول {$t} خوانده نشد (SHOW CREATE TABLE خالی) — بکاپ عمداً fail شد تا هیچ جدولی بی‌صدا از بکاپ نیفتد");
+        }
+        $sql .= "DROP TABLE IF EXISTS `" . $t . "`;\n";
+        $sql .= (string) $create[1] . ";\n";
+
+        $rows = $pdo->query('SELECT * FROM `' . $t . '`');
+        $buffer = '';
+        $count = 0;
+        $isSettings = $t === 'settings'; // P1 — ردیف‌های رازدار ماسک می‌شوند
+        while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+            $rowKey = (string) ($row['key'] ?? '');
+            $isSecretRow = $isSettings && BackupMask::isSecret($rowKey);
+            $values = [];
+            foreach ($row as $k => $v) {
+                if ($v === null) {
+                    $values[] = 'NULL';
+                    continue;
+                }
+                // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بعد از بازیابی بداند چه چیزی را دوباره وارد کند
+                $masked = ($isSecretRow && (string) $k === 'value') ? '' : (string) $v;
+                $values[] = $pdo->quote($masked);
+            }
+            $buffer .= 'INSERT INTO `' . $t . '` VALUES (' . implode(',', $values) . ");\n";
+            $count++;
+            if ($count % 200 === 0) {
+                $sql .= $buffer;
+                $buffer = '';
+            }
+        }
+        $sql .= $buffer . "\n";
+    }
+    $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
+
+    return ['sql' => $sql, 'tables' => $tables];
+}
+
+/**
+ * P1.2 — پاک‌سازی فایل‌های موقت پس از شکست بکاپ — عمداً با @unlink:
+ * پاک‌سازی هرگز خودش استثنا نمی‌دهد تا خطای اصلی گم نشود.
+ */
+function karam_backup_cleanup_failed(string $tmpPath, string $gzPath, bool $gzCreated, string $errPath): void
+{
+    @unlink($tmpPath);    // .sql.tmp ناقص
+    if ($gzCreated) {
+        @unlink($gzPath); // فقط .gz ناقصِ همین اجرا — نسخه‌های موفق قبلی دست نمی‌خورند
+    }
+    @unlink($errPath);    // .mysqldump-err
+}
+
+/** @return array{file:string, bytes:int, method:string, tables:int} */
 function karam_backup_run(): array
 {
     $dir = karam_backup_storageDir();
@@ -167,7 +283,38 @@ function karam_backup_run(): array
     $base = 'karam-backup-' . gmdate('Y-m-d-His');
     $tmpPath = $dir . '/' . $base . '.sql.tmp';
     $gzPath = $dir . '/' . $base . '.sql.gz';
+    $errPath = $dir . '/.mysqldump-err';
 
+    // P1.2 — هر شکستی (حتی استثنای الحاق settings یا شکست فشرده‌سازی) باید فایل‌های
+    // موقت را پاک بگذارد: .sql.tmp، .sql.gz ناقصِ همین اجرا و .mysqldump-err
+    $completed = false;
+    $gzCreated = false; // فقط .gz ناقصِ همین اجرا پاک می‌شود (نه نسخه‌های موفق قبلی)
+    try {
+        $result = karam_backup_build($dir, $tmpPath, $gzPath, $errPath, $gzCreated, $started);
+        $completed = true;
+        return $result;
+    } finally {
+        if (!$completed) {
+            karam_backup_cleanup_failed($tmpPath, $gzPath, $gzCreated, $errPath);
+        }
+    }
+}
+
+/**
+ * بدنه‌ی بکاپ (سه مسیر: sqlite-copy / mysqldump / php-dump) — از karam_backup_run
+ * جدا شد تا پاک‌سازی شکست (try/finally) یک‌جا بماند و توابع تست‌پذیر شوند (P1.2).
+ *
+ * @param bool $gzCreated خروجی با ارجاع: آیا فایل .gz همین اجرا نوشته شد؟ (برای پاک‌سازی ناقص)
+ * @return array{file:string, bytes:int, method:string, tables:int}
+ */
+function karam_backup_build(
+    string $dir,
+    string $tmpPath,
+    string $gzPath,
+    string $errPath,
+    bool &$gzCreated,
+    float $started
+): array {
     $driver = (string) (Config::get('DB_DRIVER', 'mysql') ?? 'mysql');
 
     if ($driver === 'sqlite') {
@@ -199,6 +346,7 @@ function karam_backup_run(): array
             throw new RuntimeException('فشرده‌سازی ناموفق بود');
         }
         file_put_contents($gzPath, $gz);
+        $gzCreated = true;
         @unlink($tmpPath);
         return ['file' => $gzPath, 'bytes' => strlen($gz), 'method' => 'sqlite-copy', 'tables' => 0];
     }
@@ -232,10 +380,21 @@ function karam_backup_run(): array
             . 'port=' . $noEol($port) . "\n"
             . 'user=' . $noEol($user) . "\n"
             . 'password="' . str_replace(['\\', '"', "\r", "\n"], ['\\\\', '\\"', '', ''], $pass) . "\"\n";
-        if (@file_put_contents($defaultsPath, $cnf) === false) {
-            throw new RuntimeException('نوشتن فایل موقت اعتبار mysqldump ناموفق بود');
+        // P1.2 — فایل از لحظه‌ی ساخت فقط برای مالک خوانا است: umask(0077) قبل از نوشتن
+        // (پنجره‌ی «ساخت با دسترسی باز → chmod» حذف می‌شود)؛ umask قبلی در finally برمی‌گردد.
+        $oldUmask = umask(0077);
+        try {
+            $ok = @file_put_contents($defaultsPath, $cnf);
+            if ($ok !== false) {
+                $ok = @chmod($defaultsPath, 0600); // chmod بعد از نوشتن هم نگه داشته می‌شود
+            }
+        } finally {
+            umask($oldUmask);
         }
-        @chmod($defaultsPath, 0600);
+        if ($ok === false) {
+            @unlink($defaultsPath);
+            throw new RuntimeException('ساخت فایل موقت اعتبار mysqldump (نوشتن یا chmod 600) ناموفق بود');
+        }
         try {
             // ⚠️ --defaults-extra-file باید اولین گزینه باشد (قاعده‌ی CLI های mysql/mariadb)
             // P1 — جدول settings را mysqldump نمی‌ریزد؛ بعداً با مقدار ماسک‌شده دستی اضافه می‌شود
@@ -244,14 +403,24 @@ function karam_backup_run(): array
                 . ' --single-transaction --quick --routines --no-tablespaces '
                 . ' --ignore-table=' . escapeshellarg($name . '.settings')
                 . ' ' . escapeshellarg($name)
-                . ' > ' . escapeshellarg($tmpPath) . ' 2> ' . escapeshellarg($dir . '/.mysqldump-err');
+                . ' > ' . escapeshellarg($tmpPath) . ' 2> ' . escapeshellarg($errPath);
             @exec($cmd, $out, $code);
             if ($code === 0 && is_file($tmpPath) && filesize($tmpPath) > 200) {
-                // الحاق بخش settings با ماسک رازها (P1) — شکست = exception (بکاپ fail می‌شود)
-                karam_backup_append_settings_section($pdo, $name, $tmpPath);
-                $dumped = true;
+                // P1.2 — گارد: اگر mysqldump هاست (مثلاً نسخه‌ای از MariaDB) --ignore-table را
+                // نادیده گرفته باشد، settings با راز واقعی داخل dump می‌آید و بعد دوباره
+                // (ماسک‌شده) الحاق می‌شود ⇒ راز در فایل بکاپ لو می‌رود. پس خروجی استریمی
+                // اسکن می‌شود؛ اگر settings بود: dump دور ریخته و به php-dump ماسک‌دار برمی‌گردیم
+                // (روش ثبت‌شده در فایل وضعیت همان php-dump می‌شود — همان چیزی که واقعاً استفاده شده).
+                if (karam_backup_dump_contains_settings($tmpPath)) {
+                    @unlink($tmpPath);
+                    error_log('[karam-backup] mysqldump جدول settings را ignore نکرد؛ fallback به php-dump');
+                } else {
+                    // الحاق بخش settings با ماسک رازها (P1) — شکست = exception (بکاپ fail می‌شود)
+                    karam_backup_append_settings_section($pdo, $name, $tmpPath);
+                    $dumped = true;
+                }
             }
-            @unlink($dir . '/.mysqldump-err');
+            @unlink($errPath);
         } finally {
             // رمز دیتابیس هرگز روی دیسک نمی‌ماند — حتی اگر mysqldump وسط کار کرش کند
             @unlink($defaultsPath);
@@ -259,52 +428,11 @@ function karam_backup_run(): array
     }
 
     // روش ۲: dump خالص PHP — بدون exec، همیشه در دسترس
+    // P1.2 — تابع جدا شد (تست‌پذیر) و هیچ جدولی بی‌صدا رد نمی‌شود
     if (!$dumped) {
-        $sql = "-- کارام — بکاپ خالص PHP\n";
-        $sql .= "-- at " . gmdate('Y-m-d\TH:i:s\Z') . " db={$name}\n";
-        $sql .= "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n";
-
-        $stmt = $pdo->query('SHOW TABLES');
-        $allTables = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        $tables = count($allTables);
-
-        foreach ($allTables as $table) {
-            $t = (string) $table;
-            $create = $pdo->query('SHOW CREATE TABLE ' . str_replace('`', '', $t))->fetch(PDO::FETCH_NUM);
-            if ($create === false) {
-                continue;
-            }
-            $sql .= "DROP TABLE IF EXISTS `" . $t . "`;\n";
-            $sql .= (string) $create[1] . ";\n";
-
-            $rows = $pdo->query('SELECT * FROM `' . $t . '`');
-            $buffer = '';
-            $count = 0;
-            $isSettings = $t === 'settings'; // P1 — ردیف‌های رازدار ماسک می‌شوند
-            while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
-                $rowKey = (string) ($row['key'] ?? '');
-                $isSecretRow = $isSettings && BackupMask::isSecret($rowKey);
-                $values = [];
-                foreach ($row as $k => $v) {
-                    if ($v === null) {
-                        $values[] = 'NULL';
-                        continue;
-                    }
-                    // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بعد از بازیابی بداند چه چیزی را دوباره وارد کند
-                    $masked = ($isSecretRow && (string) $k === 'value') ? '' : (string) $v;
-                    $values[] = $pdo->quote($masked);
-                }
-                $buffer .= 'INSERT INTO `' . $t . '` VALUES (' . implode(',', $values) . ");\n";
-                $count++;
-                if ($count % 200 === 0) {
-                    $sql .= $buffer;
-                    $buffer = '';
-                }
-            }
-            $sql .= $buffer . "\n";
-        }
-        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-        file_put_contents($tmpPath, $sql);
+        $dump = karam_backup_php_dump($pdo, $name);
+        $tables = $dump['tables'];
+        file_put_contents($tmpPath, $dump['sql']);
     }
 
     // فشرده‌سازی + جای‌گذاری اتمیک
@@ -313,6 +441,7 @@ function karam_backup_run(): array
         throw new RuntimeException('فشرده‌سازی gzip ناموفق بود');
     }
     file_put_contents($gzPath, $gz, LOCK_EX);
+    $gzCreated = true;
     @unlink($tmpPath);
 
     $bytes = strlen($gz);

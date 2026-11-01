@@ -16,6 +16,9 @@ declare(strict_types=1);
  *   ۵) حذف کاربر ادمینی: + Audit + 409 برای دوباره
  *   ۶) کرون نگه‌داری: 404 بدون کلید، dry-run حذف نمی‌کند، اجرای واقعی پاک می‌کند
  *      (لیستِ تومب‌استون با کار زنده حفظ می‌شود) و وضعیت ثبت می‌شود
+ *   ۷) بکاپ (P1.1/P1.2): هم‌نسازی فهرست رازها، کلید وضعیت، SHOW CREATE TABLE
+ *      ناموفق → fail، اسکنر settings در dump (fallback به php-dump)، php-dump
+ *      بدون ردّ بی‌صدا و پاک‌سازی فایل‌های موقت هنگام شکست
  *
  * پیش‌نیاز اجرا:
  *   /tmp/php -S 127.0.0.1:8099 -t backend/public        → API
@@ -405,6 +408,152 @@ check('SHOW CREATE TABLE ناموفق → RuntimeException (بکاپ fail)', $th
 $probeBody = (string) @file_get_contents($tmpProbe);
 check('در شکست SHOW CREATE، فایل dump دست‌نخورده ماند (settings اضافه نشد)', !str_contains($probeBody, 'CREATE TABLE') && !str_contains($probeBody, 'INSERT INTO `settings`'));
 @unlink($tmpProbe);
+
+/* ================= P1.2 — بکاپ: گارد settings در dump، بدون ردّ بی‌صدا، پاک‌سازی شکست ================= */
+
+echo "\n— P1.2: بکاپ — اسکن settings، SHOW CREATE بدون ردّ بی‌صدا، پاک‌سازی شکست —\n";
+
+// (backup-db.php بالا با KARAM_BACKUP_INCLUDE_ONLY به‌صورت «فقط تعریف» لود شده است)
+
+/** استاب PDO برای شبیه‌سازی رفتار MySQL در php-dump — SHOW TABLES/SHOW CREATE TABLE ساختگی روی SQLite واقعی */
+final class KaramBackupPdoStub extends PDO
+{
+    public ?string $brokenTable = null; // این جدول در SHOW CREATE TABLE خطا می‌دهد (شبیه‌سازی)
+
+    public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+    {
+        $q = ltrim($query);
+        if (str_starts_with($q, 'SHOW TABLES')) {
+            return parent::query('SELECT name FROM _karam_tables');
+        }
+        if (str_starts_with($q, 'SHOW CREATE TABLE')) {
+            preg_match('/SHOW CREATE TABLE `([^`]+)`/', $q, $m);
+            $tbl = (string) ($m[1] ?? '');
+            if ($this->brokenTable !== null && $tbl === $this->brokenTable) {
+                throw new PDOException('شبیه‌سازی تست: SHOW CREATE TABLE ناموفق بود');
+            }
+            return parent::query('SELECT tbl, ddl FROM _karam_create WHERE tbl = ' . $this->quote($tbl));
+        }
+        return parent::query($query);
+    }
+}
+
+// ۱) اسکنر dump — بند ۴ (تابع جدا برای تست‌پذیری)
+$scanFile = (string) tempnam(sys_get_temp_dir(), 'karam-scan');
+
+file_put_contents($scanFile, "-- dump\nCREATE TABLE `settings` (\n  `key` varchar(191) NOT NULL\n);\nINSERT INTO `tasks` VALUES (1);\n");
+check('اسکن dump: CREATE TABLE `settings` → true (fallback به php-dump لازم است)', karam_backup_dump_contains_settings($scanFile) === true);
+
+file_put_contents($scanFile, "-- dump تمیز\n-- CREATE TABLE `settings` (فقط کامنت — ملاک نیست)\nCREATE TABLE `settings_log` (\n  id int\n);\nINSERT INTO `settings_journal` VALUES (1);\nINSERT INTO `tasks` VALUES (1);\n");
+check('اسکن dump: کامنت و settings_log و settings_journal → false (فقط جدول واقعی settings ملاک است)', karam_backup_dump_contains_settings($scanFile) === false);
+
+file_put_contents($scanFile, "-- dump\nINSERT INTO `settings` VALUES ('k','v');\n");
+check('اسکن dump: INSERT INTO `settings` → true', karam_backup_dump_contains_settings($scanFile) === true);
+@unlink($scanFile);
+
+// ۲) مسیر dump خالص PHP — بند ۱: SHOW CREATE TABLE ناموفق → استثنا، نه ردّ بی‌صدا
+$stubOk = new KaramBackupPdoStub('sqlite::memory:');
+$stubOk->exec('CREATE TABLE _karam_tables (name TEXT)');
+$stubOk->exec('CREATE TABLE _karam_create (tbl TEXT, ddl TEXT)');
+$stubOk->exec('CREATE TABLE ok_table (id INTEGER, title TEXT)');
+$stubOk->exec("INSERT INTO _karam_tables (name) VALUES ('ok_table')");
+$stubOk->exec("INSERT INTO _karam_create (tbl, ddl) VALUES ('ok_table', 'CREATE TABLE `ok_table` (id INTEGER, title TEXT)')");
+$stubOk->exec("INSERT INTO ok_table (id, title) VALUES (1, 'کار اول')");
+
+$okDump = karam_backup_php_dump($stubOk, 'testdb');
+check('php-dump سالم: سرآغاز درست (SET NAMES utf8mb4 + FOREIGN_KEY_CHECKS)', str_starts_with($okDump['sql'], "-- کارام — بکاپ خالص PHP\n") && str_contains($okDump['sql'], 'SET NAMES utf8mb4;') && str_contains($okDump['sql'], 'SET FOREIGN_KEY_CHECKS=1;'));
+check('php-dump سالم: CREATE + INSERT جدول واقعی و شمارش درست', str_contains($okDump['sql'], 'CREATE TABLE `ok_table`') && str_contains($okDump['sql'], 'INSERT INTO `ok_table` VALUES (') && str_contains($okDump['sql'], "'کار اول');") && $okDump['tables'] === 1);
+
+// الف) خطای SHOW CREATE TABLE → RuntimeException با نام جدول
+$stubBroken = new KaramBackupPdoStub('sqlite::memory:');
+$stubBroken->exec('CREATE TABLE _karam_tables (name TEXT)');
+$stubBroken->exec('CREATE TABLE _karam_create (tbl TEXT, ddl TEXT)');
+$stubBroken->exec("INSERT INTO _karam_tables (name) VALUES ('boom_table'), ('ok_table')");
+$stubBroken->exec("INSERT INTO _karam_create (tbl, ddl) VALUES ('ok_table', 'CREATE TABLE `ok_table` (id INTEGER)')");
+$stubBroken->brokenTable = 'boom_table';
+$ex1 = null;
+try {
+    karam_backup_php_dump($stubBroken, 'testdb');
+} catch (Throwable $e) {
+    $ex1 = $e;
+}
+check('php-dump: SHOW CREATE ناموفق → RuntimeException با نام جدول (نه ردّ بی‌صدا)', $ex1 instanceof RuntimeException && str_contains($ex1->getMessage(), 'boom_table'), $ex1 === null ? 'هیچ استثنایی داده نشد' : get_class($ex1));
+
+// ب) نتیجه‌ی خالی SHOW CREATE TABLE (جدول فهرست‌شده بدون DDL) → RuntimeException
+$stubGhost = new KaramBackupPdoStub('sqlite::memory:');
+$stubGhost->exec('CREATE TABLE _karam_tables (name TEXT)');
+$stubGhost->exec('CREATE TABLE _karam_create (tbl TEXT, ddl TEXT)');
+$stubGhost->exec("INSERT INTO _karam_tables (name) VALUES ('ghost_table'), ('ok_table')");
+$stubGhost->exec("INSERT INTO _karam_create (tbl, ddl) VALUES ('ok_table', 'CREATE TABLE `ok_table` (id INTEGER)')");
+$ex2 = null;
+try {
+    karam_backup_php_dump($stubGhost, 'testdb');
+} catch (Throwable $e) {
+    $ex2 = $e;
+}
+check('php-dump: SHOW CREATE خالی → RuntimeException با نام جدول', $ex2 instanceof RuntimeException && str_contains($ex2->getMessage(), 'ghost_table'), $ex2 === null ? 'هیچ استثنایی داده نشد' : get_class($ex2));
+
+// ۳) پاک‌سازی فایل‌های موقت پس از شکست — بند ۲ (تابع helper)
+$cTmp = (string) tempnam(sys_get_temp_dir(), 'karam-clean') . '.sql.tmp';
+$cGz = (string) tempnam(sys_get_temp_dir(), 'karam-clean') . '.sql.gz';
+$cErr = (string) tempnam(sys_get_temp_dir(), 'karam-clean') . '.mysqldump-err';
+file_put_contents($cTmp, 'partial');
+file_put_contents($cGz, 'partial');
+file_put_contents($cErr, 'err-line');
+karam_backup_cleanup_failed($cTmp, $cGz, true, $cErr);
+check('پاک‌سازی شکست: .sql.tmp و .sql.gz و .mysqldump-err حذف شدند', !is_file($cTmp) && !is_file($cGz) && !is_file($cErr));
+
+file_put_contents($cGz, 'keep-me'); // شبیه‌سازی نسخه‌ی موفق قبلی — gzCreated=false نباید پاکش کند
+$noThrow = true;
+try {
+    karam_backup_cleanup_failed($cTmp, $cGz, false, $cErr); // فایل‌ها نیستند — نباید استثنا بدهد
+} catch (Throwable) {
+    $noThrow = false;
+}
+check('پاک‌سازی شکست: gzCreated=false نسخه‌ی موفق را دست نمی‌زند و روی فایل ناموجود استثنا نمی‌دهد', $noThrow && is_file($cGz));
+@unlink($cGz);
+
+// ۴) چرخه‌ی کامل شکست: اجرای واقعی بکاپ روی دیتابیس خراب → استثنا و پوشه‌ی بکاپ بدون فایل موقت
+$backupsDir = ROOT . '/backend/storage/backups';
+if (!is_dir($backupsDir)) {
+    @mkdir($backupsDir, 0775, true);
+}
+foreach ((glob($backupsDir . '/karam-backup-*.sql.tmp') ?: []) as $f) {
+    @unlink($f);
+}
+$gzCountBefore = count(glob($backupsDir . '/karam-backup-*.sql.gz') ?: []);
+$dbFile = dbPath();
+file_put_contents($dbFile, 'karam-test-garbage-' . str_repeat('x', 400)); // کپی می‌شود ولی PDO باز نمی‌شود
+$failRun = null;
+try {
+    karam_backup_run();
+} catch (Throwable $e) {
+    $failRun = $e;
+}
+check('اجرای بکاپ روی دیتابیس خراب → RuntimeException (شکست بلند، نه سکوت)', $failRun instanceof RuntimeException, $failRun === null ? 'هیچ استثنایی داده نشد' : get_class($failRun));
+check('پس از شکست وسط اجرا، هیچ .sql.tmp در پوشه‌ی بکاپ نمی‌ماند', (glob($backupsDir . '/karam-backup-*.sql.tmp') ?: []) === []);
+check('پس از شکست، .mysqldump-err هم باقی نمی‌ماند', !is_file($backupsDir . '/.mysqldump-err'));
+check('پس از شکست، .gz ناقصی ساخته نشده (شمار نسخه‌های موجود ثابت)', count(glob($backupsDir . '/karam-backup-*.sql.gz') ?: []) === $gzCountBefore);
+
+// ۵) چرخه‌ی کامل موفق (مسیر sqlite-copy) — بازسازی P1.2 مسیر خوش را نشکسته باشد + ماسک SQLite
+resetEnvironment();
+$fresh = new PDO('sqlite:' . dbPath(), null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$fresh->exec("UPDATE settings SET value = 'SuperSecret-123' WHERE \"key\" = 'smtp_pass'");
+$fresh->exec('PRAGMA wal_checkpoint(TRUNCATE)');
+$fresh = null;
+$okRun = null;
+$okThrew = null;
+try {
+    $okRun = karam_backup_run();
+} catch (Throwable $e) {
+    $okThrew = $e;
+}
+check('اجرای موفق بکاپ پس از بازسازی P1.2 (sqlite-copy)', $okThrew === null && is_array($okRun) && ($okRun['method'] ?? '') === 'sqlite-copy' && is_file((string) ($okRun['file'] ?? '')), $okThrew === null ? '' : (string) $okThrew->getMessage());
+$gzBody = is_array($okRun) && is_file((string) ($okRun['file'] ?? '')) ? (string) @gzdecode((string) @file_get_contents((string) ($okRun['file'] ?? ''))) : '';
+check('بکاپ موفق: راز ماسک شده ولی نام کلید smtp_pass می‌ماند (ادمین می‌داند چه چیزی را دوباره وارد کند)', $gzBody !== '' && strpos($gzBody, 'SuperSecret-123') === false && strpos($gzBody, 'smtp_pass') !== false);
+if (is_array($okRun) && is_file((string) ($okRun['file'] ?? ''))) {
+    @unlink((string) ($okRun['file'] ?? ''));
+}
 
 /* ================= نتیجه ================= */
 echo "\n———————————————\n";
