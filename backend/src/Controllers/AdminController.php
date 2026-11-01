@@ -44,6 +44,11 @@ final class AdminController
      * مقدار فقط وقتی تغییر می‌کند که ادمین مقدار جدید بفرستد؛ مقدار ماسک‌شده پذیرفته نمی‌شود.
      * مقدار رازها در Audit هم ثبت نمی‌شود (فقط نام کلید). فهرست رسمی: docs/INSTALL.md بخش ۱۹.
      */
+    /**
+     * P1.1 — بازبینی کامل ۵۵ کلید settings (install.sql ↔ settingRules()): فهرست
+     * تغییر نکرد — همین ۵ کلید تنها اعتبارنامه‌های جدولند. هم‌نسازی با
+     * BackupMask::SECRET_KEYS با تست (trust-test.php + trust.test.ts) گارد می‌شود.
+     */
     public const SECRET_SETTING_KEYS = [
         'smtp_pass',            // رمز SMTP
         'telegram_bot_token',   // توکن ربات تلگرام

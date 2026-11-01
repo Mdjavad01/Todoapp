@@ -233,6 +233,7 @@ php install/setup-admin.php "SETUP_TOKEN" "admin" "Ramz-e-Ghavi-123"
 **راستی‌آزمایی:** در مرورگر باز کنید:
 `https://app.hojre24shop.ir/api/cron/backup-db.php?check=karam-backup-check`
 همین صفحه وضعیت آخرین اجرا + فهرست نسخه‌ها + دستور کرون آماده‌ی کپی را نشان می‌دهد.
+کلید وضعیت با `.env: BACKUP_CHECK_KEY` قابل تغییر است (خالی/ناموجود = پیش‌فرض `karam-backup-check` — P1.1).
 
 **گزارش روزانه در تلگرام (اختیاری ولی توصیه‌شده):**
 - شناسه چت ادمین را پیدا کنید: به ربات `@userinfobot` پیام بدهید — عدد chat_id را می‌دهد.
@@ -448,6 +449,8 @@ CORS_EXTRA_ORIGINS="https://localhost"
 - پنل: فیلدهای راز ورودی «password» با placeholder «برای تغییر، مقدار جدید را وارد کنید» دارند؛ دکمه‌ی «پاک‌کردن» مقدار را خالی می‌کند (بازگشت به .env).
 - **بکاپ تلگرامی/دیتابیسی:** هر dump بکاپ (`backup-db.php` — هر سه مسیر mysqldump/PHP/SQLite) مقدار همین ۵ کلید راز را «خالی» می‌کند (P1)؛ پس از بازیابی، ادمین همین کلیدها را یک‌بار در «پنل ← تنظیمات» دوباره وارد می‌کند (بخش ۱۵). نسخه‌ی تلگرامی مشمول پاک‌سازی خودکار نسخه‌های محلی (BACKUP_KEEP) نیست و باید از گفتگوی ربات مدیریت شود. رمزنگاری بکاپ: انجام نشده (در ROADMAP).
 - کلیدهای رازِ داخل `.env` (زیر), هیچ‌وقت از API بیرون نمی‌روند: `APP_SECRET`, `DB_PASSWORD`, `ZIBAL_MERCHANT`, `TELEGRAM_BOT_TOKEN`.
+
+**بازبینی کامل کلیدها (P1.1):** هر ۵۵ کلید `settings` (install.sql ↔ `settingRules()`) بررسی شد — کلید راز دیگری وجود ندارد: درگاه یا ربات دیگری (بله، آقای‌پرداخت و…) در پروژه نیست و `zibal_merchant` تنها اعتبارنامه‌ی درگاه است. `smtp_user` (نام کاربری بدون رمز)، `deposit_card_number/holder` (عمومی به‌صورت عمدی — در اپ برای واریز به کاربر نمایش داده می‌شود)، `admin_otp_shortcuts` (شناسه‌ی تماس مالک برای پرکردن سریع، نه کد) و `backup_telegram_chat` (شناسه‌ی چت گزارش) راز نیستند. دو فهرست `BackupMask::SECRET_KEYS` و `AdminController::SECRET_SETTING_KEYS` با تست هم‌نسازی گارد شده‌اند (trust-test.php + trust.test.ts) و `mysqldump` رمز دیتابیس را با `--defaults-extra-file` موقت می‌گیرد، نه خط فرمان.
 
 ### ۱۹-۳) سلامت واقعی سرویس و مانیتورینگ بیرونی
 

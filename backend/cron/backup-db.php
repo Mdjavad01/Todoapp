@@ -17,14 +17,16 @@ declare(strict_types=1);
  *      فایل بکاپ را تا سقف ۴۵MB به تلگرام می‌فرستد (بزرگ‌تر = فقط پیام گزارش)
  *   ۴) وضعیت آخرین اجرا در storage/cache/backup-status.json ثبت می‌شود
  *
- * چرا دو روش dump؟
+ * چرا سه روش dump؟
  *   - mysqldump اگر روی هاست موجود باشد (DirectAdmin معمولاً دارد) — سریع‌ترین راه
+ *     (P1.1: رمز دیتابیس با --defaults-extra-file موقت chmod 600 داده می‌شود، نه خط فرمان)
  *   - وگرنه dump خالص PHP (SHOW CREATE TABLE + INSERT) — همیشه کار می‌کند، بدون exec
- *   - SQLite (توسعه‌ی محلی): کپی مستقیم فایل دیتابیس
+ *   - SQLite (توسعه‌ی محلی): کپی فایل + ماسک روی کپی + VACUUM
  *
  * راه‌اندازی (مثل کرون تلگرام — بدون SSH):
  *   ۱) فایل در مسیر api/cron/backup-db.php
  *   ۲) وضعیت/دستور کرون آماده: https://دامنه/api/cron/backup-db.php?check=karam-backup-check
+ *      (P1.1 — کلید وضعیت با .env: BACKUP_CHECK_KEY قابل تغییر است؛ خالی/ناموجود = همین پیش‌فرض)
  *   ۳) DirectAdmin ← Cron Jobs ← یک‌بار در روز (مثلاً 03:30) با همان دستور
  *
  * نکته‌های امنیتی:
@@ -41,12 +43,12 @@ date_default_timezone_set('UTC');
 
 /* ---------- بارگذاری هسته‌ی کارام (هر دو چیدمان: مخزن و هاست) ---------- */
 $srcDir = dirname(__DIR__) . '/src';
-require $srcDir . '/Config.php';
-require $srcDir . '/Database.php';
-require $srcDir . '/Support/FileCache.php'; // ⚠️ الزامی — Settings::all به FileCache وابسته است (v17)
-require $srcDir . '/Support/Settings.php';
-require $srcDir . '/Support/BackupMask.php'; // P1 — ماسک رازهای settings در dump
-require $srcDir . '/Services/TelegramBot.php';
+require_once $srcDir . '/Config.php';
+require_once $srcDir . '/Database.php';
+require_once $srcDir . '/Support/FileCache.php'; // ⚠️ الزامی — Settings::all به FileCache وابسته است (v17)
+require_once $srcDir . '/Support/Settings.php';
+require_once $srcDir . '/Support/BackupMask.php'; // P1 — ماسک رازهای settings در dump
+require_once $srcDir . '/Services/TelegramBot.php';
 
 $isCli = PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
 
@@ -103,6 +105,55 @@ function karam_backup_fail(string $message, bool $cli): void
 }
 
 /* ================= اجرای واقعی بکاپ ================= */
+
+/**
+ * P1.1 — الحاق بخش settings (با ماسک رازها) به dump مسیر mysqldump.
+ *
+ * چرا جدول settings از mysqldump حذف و دستی اضافه می‌شود؟ تا مقدار ۵ کلید راز
+ * هرگز وارد فایل بکاپ نشود (mysqldump امکان ماسک ستونی ندارد).
+ *
+ * شکست = exception (بکاپ fail و در فایل وضعیت ثبت می‌شود) — عمداً هیچ مسیر
+ * «بی‌صدا رد شو» وجود ندارد: بکاپِ بدون جدول settings بکاپ ناقص است و باید
+ * جایش را به روش dump خالص PHP بدهد یا کلاً fail کند، نه سکوت.
+ *
+ * بخش SQL تولیدی با «SET NAMES utf8mb4;» شروع می‌شود تا restore در هر کلاینت
+ * (mysql CLI / phpMyAdmin) با کدگذاری درست ردیف‌های فارسی بنشیند.
+ */
+function karam_backup_append_settings_section(PDO $pdo, string $dbName, string $tmpPath): void
+{
+    $settingsSql = "\n-- بخش تنظیمات (P1 — رازها ماسک شده‌اند): مقدار کلیدهای راز خالی است؛"
+        . "\n-- بازیابی: پنل ← تنظیمات ← smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url، provider_sms_headers"
+        . "\nSET NAMES utf8mb4;\n";
+
+    $safeDb = str_replace('`', '', $dbName);
+    try {
+        $create = $pdo->query('SHOW CREATE TABLE `' . $safeDb . '`.`settings`')->fetch(PDO::FETCH_NUM);
+    } catch (Throwable $e) {
+        throw new RuntimeException('خواندن ساختار جدول settings ناموفق بود: ' . $e->getMessage());
+    }
+    if ($create === false || !isset($create[1]) || trim((string) $create[1]) === '') {
+        // گارد P1.1 — بدون این، جدول settings بی‌صدا از بکاپ می‌افتاد (تنظیمات همه گم می‌شد)
+        throw new RuntimeException('ساختار جدول settings خوانده نشد (SHOW CREATE TABLE خالی) — بکاپ عمداً fail شد تا settings بی‌صدا از بکاپ نیفتد');
+    }
+
+    $settingsSql .= "DROP TABLE IF EXISTS `settings`;\n" . (string) $create[1] . ";\n";
+    $rows = $pdo->query('SELECT * FROM `settings`');
+    while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+        $rowKey = (string) ($row['key'] ?? '');
+        $values = [];
+        foreach ($row as $k => $v) {
+            if ($v === null) {
+                $values[] = 'NULL';
+                continue;
+            }
+            // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بداند چه چیزی را دوباره وارد کند
+            $masked = ((string) $k === 'value' && BackupMask::isSecret($rowKey)) ? '' : (string) $v;
+            $values[] = $pdo->quote($masked);
+        }
+        $settingsSql .= 'INSERT INTO `settings` VALUES (' . implode(',', $values) . ");\n";
+    }
+    file_put_contents($tmpPath, $settingsSql, FILE_APPEND | LOCK_EX);
+}
 
 /**
  * @return array{file:string, bytes:int, method:string, tables:int}
@@ -172,44 +223,39 @@ function karam_backup_run(): array
     $tables = 0;
     $dumped = false;
     if ($mysqldump !== null && $name !== '') {
-        $cmd = escapeshellarg($mysqldump)
-            . ' --host=' . escapeshellarg($host)
-            . ' --port=' . escapeshellarg($port)
-            . ' --user=' . escapeshellarg($user)
-            . ' --password=' . escapeshellarg($pass)
-            . ' --single-transaction --quick --routines --no-tablespaces '
-            // P1 — جدول settings را mysqldump نمی‌ریزد؛ بعداً با مقدار ماسک‌شده دستی اضافه می‌شود
-            . ' --ignore-table=' . escapeshellarg($name . '.settings')
-            . ' ' . escapeshellarg($name)
-            . ' > ' . escapeshellarg($tmpPath) . ' 2> ' . escapeshellarg($dir . '/.mysqldump-err');
-        @exec($cmd, $out, $code);
-        if ($code === 0 && is_file($tmpPath) && filesize($tmpPath) > 200) {
-            // الحاق بخش settings با ماسک رازها (P1)
-            $settingsSql = "\n-- بخش تنظیمات (P1 — رازها ماسک شده‌اند): مقدار ۵ کلید راز خالی است؛"
-                . "\n-- بازیابی: پنل ← تنظیمات ← smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url، provider_sms_headers\n";
-            $create = $pdo->query('SHOW CREATE TABLE `' . $name . '`.`settings`')->fetch(PDO::FETCH_NUM);
-            if ($create !== false) {
-                $settingsSql .= "DROP TABLE IF EXISTS `settings`;\n" . (string) $create[1] . ";\n";
-                $rows = $pdo->query('SELECT * FROM `settings`');
-                while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
-                    $rowKey = (string) ($row['key'] ?? '');
-                    $values = [];
-                    foreach ($row as $k => $v) {
-                        if ($v === null) {
-                            $values[] = 'NULL';
-                            continue;
-                        }
-                        // فقط ستون value رازها خالی می‌شود؛ نام کلید می‌ماند تا ادمین بداند چه چیزی را دوباره وارد کند
-                        $masked = ((string) $k === 'value' && BackupMask::isSecret($rowKey)) ? '' : (string) $v;
-                        $values[] = $pdo->quote($masked);
-                    }
-                    $settingsSql .= 'INSERT INTO `settings` VALUES (' . implode(',', $values) . ");\n";
-                }
-                file_put_contents($tmpPath, $settingsSql, FILE_APPEND | LOCK_EX);
-            }
-            $dumped = true;
+        // P1.1 — رمز دیتابیس با --defaults-extra-file داده می‌شود، نه --password= در خط فرمان
+        // (رمز در ps/لاگ کرون دیده نمی‌شود؛ فایل با chmod 600 ساخته و در finally حذف می‌شود)
+        $defaultsPath = $dir . '/.my-karam-backup-' . getmypid() . '.cnf';
+        $noEol = static fn (string $v): string => str_replace(["\r", "\n"], '', $v);
+        $cnf = "[client]\n"
+            . 'host=' . $noEol($host) . "\n"
+            . 'port=' . $noEol($port) . "\n"
+            . 'user=' . $noEol($user) . "\n"
+            . 'password="' . str_replace(['\\', '"', "\r", "\n"], ['\\\\', '\\"', '', ''], $pass) . "\"\n";
+        if (@file_put_contents($defaultsPath, $cnf) === false) {
+            throw new RuntimeException('نوشتن فایل موقت اعتبار mysqldump ناموفق بود');
         }
-        @unlink($dir . '/.mysqldump-err');
+        @chmod($defaultsPath, 0600);
+        try {
+            // ⚠️ --defaults-extra-file باید اولین گزینه باشد (قاعده‌ی CLI های mysql/mariadb)
+            // P1 — جدول settings را mysqldump نمی‌ریزد؛ بعداً با مقدار ماسک‌شده دستی اضافه می‌شود
+            $cmd = escapeshellarg($mysqldump)
+                . ' --defaults-extra-file=' . escapeshellarg($defaultsPath)
+                . ' --single-transaction --quick --routines --no-tablespaces '
+                . ' --ignore-table=' . escapeshellarg($name . '.settings')
+                . ' ' . escapeshellarg($name)
+                . ' > ' . escapeshellarg($tmpPath) . ' 2> ' . escapeshellarg($dir . '/.mysqldump-err');
+            @exec($cmd, $out, $code);
+            if ($code === 0 && is_file($tmpPath) && filesize($tmpPath) > 200) {
+                // الحاق بخش settings با ماسک رازها (P1) — شکست = exception (بکاپ fail می‌شود)
+                karam_backup_append_settings_section($pdo, $name, $tmpPath);
+                $dumped = true;
+            }
+            @unlink($dir . '/.mysqldump-err');
+        } finally {
+            // رمز دیتابیس هرگز روی دیسک نمی‌ماند — حتی اگر mysqldump وسط کار کرش کند
+            @unlink($defaultsPath);
+        }
     }
 
     // روش ۲: dump خالص PHP — بدون exec، همیشه در دسترس
@@ -370,6 +416,20 @@ function karam_backup_keep(): int
     return max(3, min(60, (int) (Config::get('BACKUP_KEEP', (string) KARAM_KEEP_DEFAULT) ?? KARAM_KEEP_DEFAULT)));
 }
 
+/** P1.1 — کلید صفحه‌ی وضعیت وب — .env: BACKUP_CHECK_KEY (خالی/ناموجود = پیش‌فرض سازگار با عقب) */
+function karam_backup_check_key(): string
+{
+    $fromEnv = trim((string) (Config::get('BACKUP_CHECK_KEY', '') ?? ''));
+    return $fromEnv !== '' ? $fromEnv : KARAM_BACKUP_CHECK_KEY;
+}
+
+/* ================= اجرا — فقط وقتی مستقیم اجرا می‌شود ================= */
+
+// P1.1 — حالت «فقط تعریف» برای تست واحد (trust-test): توابع load می‌شوند، بکاپ اجرا نمی‌شود
+if (defined('KARAM_BACKUP_INCLUDE_ONLY')) {
+    return;
+}
+
 /* ================= حالت CLI — اجرای کرون ================= */
 
 if ($isCli) {
@@ -418,7 +478,7 @@ if ($isCli) {
 /* ================= حالت وب — فقط صفحه‌ی وضعیت با کلید ================= */
 
 $check = (string) ($_GET['check'] ?? '');
-if (!hash_equals(KARAM_BACKUP_CHECK_KEY, $check)) {
+if (!hash_equals(karam_backup_check_key(), $check)) {
     http_response_code(404);
     exit('Not Found');
 }

@@ -14,6 +14,7 @@ import { describe, test, expect } from 'bun:test';
 import { shouldFullResync } from '@/sync/engine';
 import { isConfirmTextValid, shouldShowGuestBanner, GUEST_NOTICE_PREF } from '@/lib/account';
 import { PRO_BENEFITS, PRO_SOON } from '@/lib/proBenefits';
+import { readFileSync } from 'node:fs';
 
 const DAY = 86_400_000;
 const NOW = 1_800_000_000_000; // ثابت — بدون وابستگی به ساعت واقعی
@@ -118,5 +119,28 @@ describe('بنر هشدار داده‌ی مهمان (v1.9)', () => {
 
   test('کلید pref بنر ثابت است (مهاجرت/پاک‌سازی به آن وابسته است)', () => {
     expect(GUEST_NOTICE_PREF).toBe('guest-data-notice-dismissed');
+  });
+});
+
+// P1.1 — هم‌نسازی فهرست رازها بین BackupMask (بکاپ) و AdminController (پنل)
+// parse سبک از فایل PHP — اگر کسی یک فهرست را تغییر دهد، تست bun هم قرمز می‌شود
+describe('هم‌نسازی فهرست رازها (P1.1 — BackupMask ↔ AdminController)', () => {
+  const readPhp = (p: string): string => readFileSync(new URL(p, import.meta.url), 'utf8');
+  const phpSecretKeys = (src: string): string[] => {
+    const m = src.match(/SECRET_(?:SETTING_)?KEYS\s*=\s*\[([\s\S]*?)\]/);
+    if (!m) return [];
+    return [...m[1].matchAll(/'([a-z_0-9]+)'/g)].map((x) => x[1]);
+  };
+
+  test('دو فهرست دقیقاً یکی باشند (ترتیب هم مهم است)', () => {
+    const a = phpSecretKeys(readPhp('../../backend/src/Support/BackupMask.php'));
+    const b = phpSecretKeys(readPhp('../../backend/src/Controllers/AdminController.php'));
+    expect(a.length).toBeGreaterThan(0);
+    expect(b).toEqual(a);
+  });
+
+  test('فهرست رسمی ۵ کلید INSTALL ۱۹-۲', () => {
+    const a = phpSecretKeys(readPhp('../../backend/src/Support/BackupMask.php'));
+    expect(a).toEqual(['smtp_pass', 'telegram_bot_token', 'zibal_merchant', 'provider_sms_url', 'provider_sms_headers']);
   });
 });

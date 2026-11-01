@@ -373,6 +373,39 @@ check('فایل وضعیت کرون ساخته شد', is_file(ROOT . '/backend/s
 [$st, $j] = http('GET', '/api/admin/health', null, $bossToken);
 check('سلامت ادمین: کرون نگه‌داری حالا سالم است', ($j['checks']['crons']['retention']['ok'] ?? false) === true);
 
+/* ================= P1.1 — فهرست رازها و شکست امن بکاپ ================= */
+
+echo "\n— P1.1: فهرست رازها و شکست امن بکاپ —\n";
+
+require_once ROOT . '/backend/src/Support/BackupMask.php';
+require_once ROOT . '/backend/src/Controllers/AdminController.php';
+
+check('فهرست رازها: BackupMask === AdminController (هم‌نسازی دائمی)', BackupMask::SECRET_KEYS === AdminController::SECRET_SETTING_KEYS, var_export(BackupMask::SECRET_KEYS, true) . ' vs ' . var_export(AdminController::SECRET_SETTING_KEYS, true));
+check('فهرست رازها: بدون تکرار و دقیقاً ۵ کلید رسمی INSTALL ۱۹-۲', count(BackupMask::SECRET_KEYS) === 5 && count(array_unique(BackupMask::SECRET_KEYS)) === 5 && BackupMask::SECRET_KEYS === ['smtp_pass', 'telegram_bot_token', 'zibal_merchant', 'provider_sms_url', 'provider_sms_headers']);
+
+$installSql = (string) file_get_contents(ROOT . '/deploy/install.sql');
+$missingKeys = array_values(array_filter(BackupMask::SECRET_KEYS, fn ($k) => !str_contains($installSql, "('$k',")));
+check('هر ۵ کلید راز در install.sql سید شده‌اند (پس از نصب تازه ماسک‌پذیرند)', $missingKeys === [], implode(',', $missingKeys));
+
+// کلید وضعیت بکاپ — حالت «فقط تعریف» تا بکاپ اجرا نشود
+define('KARAM_BACKUP_INCLUDE_ONLY', 1);
+require_once ROOT . '/backend/cron/backup-db.php';
+check('کلید وضعیت بکاپ: بدون .env = پیش‌فرض سازگار با عقب karam-backup-check', karam_backup_check_key() === 'karam-backup-check', karam_backup_check_key());
+
+// شکست امن: SHOW CREATE TABLE ناموفق → exception (بکاپ fail و در فایل وضعیت ثبت می‌شود)
+// نه اینکه جدول settings بی‌صدا از dump بیفتد (رفتار قدیمی P1 — حذف شد)
+$threw = null;
+$tmpProbe = (string) tempnam(sys_get_temp_dir(), 'karam-showcreate');
+try {
+    karam_backup_append_settings_section(new PDO('sqlite::memory:'), 'testdb', $tmpProbe);
+} catch (Throwable $e) {
+    $threw = $e;
+}
+check('SHOW CREATE TABLE ناموفق → RuntimeException (بکاپ fail)', $threw instanceof RuntimeException, $threw === null ? 'هیچ exception‌ای داده نشد' : get_class($threw));
+$probeBody = (string) @file_get_contents($tmpProbe);
+check('در شکست SHOW CREATE، فایل dump دست‌نخورده ماند (settings اضافه نشد)', !str_contains($probeBody, 'CREATE TABLE') && !str_contains($probeBody, 'INSERT INTO `settings`'));
+@unlink($tmpProbe);
+
 /* ================= نتیجه ================= */
 echo "\n———————————————\n";
 echo $fail === 0 ? "✓ همه‌ی {$pass} بررسی سبز بود\n" : "✗ {$fail} بررسی شکست خورد ({$pass} سبز)\n";
