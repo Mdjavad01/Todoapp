@@ -144,3 +144,24 @@ describe('هم‌نسازی فهرست رازها (P1.1 — BackupMask ↔ Admin
     expect(a).toEqual(['smtp_pass', 'telegram_bot_token', 'zibal_merchant', 'provider_sms_url', 'provider_sms_headers']);
   });
 });
+
+// P1.3 — هم‌ترازی صداقت پلن‌ها: وویس/گفتار‌به‌متن ساخته نمی‌شود — نه «فروش»، نه حتی «به‌زودی»
+describe('هم‌ترازی متن پلن‌ها (P1.3 — بدون وعده‌ی وویس)', () => {
+  test('وویس/گفتار به کار از PRO_SOON حذف شده و دیگر در هیچ فهرست پرو نیست', () => {
+    for (const f of [...PRO_SOON, ...PRO_BENEFITS]) {
+      expect(f.includes('وویس')).toBe(false);
+      expect(f.includes('گفتار')).toBe(false);
+    }
+    // PRO_SOON فقط دو مورد نگه داشته: تم‌های لوکس + بک‌آپ خودکار ابری
+    expect(PRO_SOON).toEqual(['تم‌های اختصاصی لوکس', 'بک‌آپ خودکار ابری']);
+  });
+
+  test('دکمه‌ی میکروفون غیرفعال از سورس UI حذف شده است (نه دکمه، نه وعده‌ی «به‌زودی»)', () => {
+    const scan = (p: string): string => readFileSync(new URL(p, import.meta.url), 'utf8');
+    expect(scan('../src/components/Sheet.tsx').includes('MicButton')).toBe(false);
+    expect(scan('../src/components/QuickBar.tsx').includes('MicButton')).toBe(false);
+    expect(scan('../src/views/ListView.tsx').includes('MicButton')).toBe(false);
+    expect(scan('../src/modals/QuickAddSheet.tsx').includes('MicButton')).toBe(false);
+    expect(scan('../src/components/QuickBar.tsx').includes('به‌زودی فعال می‌شود')).toBe(false);
+  });
+});

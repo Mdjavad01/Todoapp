@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
+import { InfoPopover, ConfirmRestoreDialog, RestoreResultDialog } from '@/components/BackupDialogs';
 import { useAppStore, ACCENTS, type AccentColor, type FontScale } from '@/store/useAppStore';
 import { toFa } from '@/lib/format';
-import { downloadBackup, restoreBackup, localCounts } from '@/lib/backup';
+import {
+  downloadBackup,
+  restoreBackup,
+  localCounts,
+  parseBackupFile,
+  parseErrorText,
+  markLastBackupNow,
+  getLastBackupAt,
+  type BackupFile,
+  type RestoreReport,
+} from '@/lib/backup';
+import { saveFileForUser } from '@/lib/saveFile';
+import { faJalaliDate } from '@/lib/jalali';
 import { isNativeApp } from '@/lib/native';
 import { exportMyData } from '@/sync/auth';
 import { sendTestReminder } from '@/lib/reminderScheduler';
@@ -70,10 +83,16 @@ export function SettingsView() {
   const update = appSettings.update;
   const hasUpdate = isNewerVersion(update?.latest, APP_VERSION_RAW);
 
-  // پشتیبان‌گیری
+  // پشتیبان‌گیری و بازیابی (P1.3 — دو بلوک شماره‌دار + تأیید و نتیجه)
   const fileRef = useRef<HTMLInputElement>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [counts, setCounts] = useState<{ lists: number; tasks: number; subtasks: number; reminders: number } | null>(null);
+  // زمان آخرین پشتیبان موفق — فقط محلی (localStorage)، فقط بعد از ذخیره‌ی موفق
+  const [lastBackupAt, setLastBackupAtState] = useState<string | null>(() => getLastBackupAt());
+  // دیالوگ‌ها: تأیید بازیابی (با پیش‌نمایش) و نتیجه‌ی ماندگار
+  const [restoreConfirm, setRestoreConfirm] = useState<{ fileName: string; preview: BackupFile; raw: string } | null>(null);
+  const [restoreResult, setRestoreResult] = useState<{ fileName: string; report: RestoreReport } | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
 
   const refreshCounts = () => {
     void localCounts().then(setCounts).catch(() => setCounts(null));
@@ -96,8 +115,23 @@ export function SettingsView() {
   const doExport = async () => {
     setBackupBusy(true);
     try {
-      const total = await downloadBackup();
-      showToast(`فایل پشتیبان (${toFa(total)} رکورد) دانلود شد؛ آن را در جای امن نگه دارید`);
+      const { name, total, outcome } = await downloadBackup();
+      if (!outcome.ok) {
+        // ممیزی P1.3: انصراف/شکست هرگز «ذخیره شد» نمی‌گوید
+        showToast(
+          outcome.canceled
+            ? 'ذخیره نشد — مقصدی انتخاب نشد. دوباره تلاش کنید و در پنجره‌ی بازشده مقصد را انتخاب کنید'
+            : 'ذخیره‌ی فایل پشتیبان ناموفق بود',
+        );
+        return;
+      }
+      markLastBackupNow();
+      setLastBackupAtState(getLastBackupAt());
+      showToast(
+        outcome.method === 'share'
+          ? `فایل ${name} با ${toFa(total)} رکورد ذخیره شد`
+          : `فایل ${name} با ${toFa(total)} رکورد دانلود شد؛ آن را در جای امن نگه دارید`,
+      );
       refreshCounts();
     } catch {
       showToast('ساخت فایل پشتیبان ناموفق بود');
@@ -106,18 +140,17 @@ export function SettingsView() {
     }
   };
 
-  const doImport = async (file: File) => {
+  /** بعد از انتخاب فایل: اعتبارسنجی + پیش‌نمایش، بدون اعمال */
+  const onPickBackupFile = async (file: File) => {
     setBackupBusy(true);
     try {
       const raw = await file.text();
-      const report = await restoreBackup(raw);
-      if (report.invalid) {
-        showToast('این فایل پشتیبان کارام نیست');
+      const parsed = parseBackupFile(raw);
+      if (!parsed.ok) {
+        showToast(parseErrorText(parsed.reason));
         return;
       }
-      queueSync(); // اگر حساب ابری فعال باشد، داده‌ی بازیابی‌شده به سرور هم می‌رود
-      showToast(`بازیابی شد: ${toFa(report.added + report.updated)} رکورد افزوده/به‌روز شد${report.kept > 0 ? `، ${toFa(report.kept)} مورد محلی جدیدتر ماند` : ''}`);
-      refreshCounts();
+      setRestoreConfirm({ fileName: file.name, preview: parsed.file, raw });
     } catch {
       showToast('خواندن فایل پشتیبان ناموفق بود');
     } finally {
@@ -126,20 +159,50 @@ export function SettingsView() {
     }
   };
 
+  /** بعد از تأیید کاربر: اعمال ادغام LWW + دیالوگ نتیجه‌ی ماندگار */
+  const applyRestore = async () => {
+    if (!restoreConfirm) return;
+    setApplyBusy(true);
+    try {
+      const report = await restoreBackup(restoreConfirm.raw);
+      if (report.invalid) {
+        showToast(parseErrorText(report.reason ?? 'corrupt'));
+        setRestoreConfirm(null);
+        return;
+      }
+      queueSync(); // اگر حساب ابری فعال باشد، داده‌ی بازیابی‌شده به سرور هم می‌رود
+      setRestoreConfirm(null);
+      setRestoreResult({ fileName: restoreConfirm.fileName, report });
+      refreshCounts();
+    } catch {
+      showToast('اعمال بازیابی ناموفق بود');
+    } finally {
+      setApplyBusy(false);
+    }
+  };
+
   // v1.9 — دریافت داده از سرور (JSON کامل حساب — لیست/کار/زیرکار/یادآور)
+  // P1.3: ذخیره با helper واحد (اپ اندروید: منوی اشتراک، نه <a download> بی‌اثر)
   const [exportBusy, setExportBusy] = useState(false);
   const doServerExport = async () => {
     setExportBusy(true);
     try {
       const data = await exportMyData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `karam-data-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      showToast('داده‌های حساب شما (JSON) دانلود شد');
+      const name = `karam-data-${new Date().toISOString().slice(0, 10)}.json`;
+      const outcome = await saveFileForUser(name, JSON.stringify(data, null, 2), 'application/json');
+      if (!outcome.ok) {
+        showToast(
+          outcome.canceled
+            ? 'دریافت انجام نشد — مقصدی انتخاب نشد. دوباره تلاش کنید و مقصد را انتخاب کنید'
+            : 'دریافت داده از سرور ناموفق بود',
+        );
+        return;
+      }
+      showToast(
+        outcome.method === 'share'
+          ? `فایل ${name} (داده‌های حساب شما) ذخیره شد`
+          : `فایل ${name} (داده‌های حساب شما) دانلود شد`,
+      );
     } catch {
       showToast('دریافت داده از سرور ناموفق بود');
     } finally {
@@ -328,51 +391,99 @@ export function SettingsView() {
         </p>
       </div>
 
-      {/* پشتیبان‌گیری و بازیابی */}
+      {/* پشتیبان‌گیری و بازیابی (P1.3 — دو بلوک شماره‌دار، توضیح صادقانه، تأیید و نتیجه) */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-label-md font-bold flex items-center gap-2">
             <Icon name="cloud_sync" size={20} className="text-outline" />
-            پشتیبان‌گیری از داده‌ها
+            پشتیبان‌گیری و بازیابی
           </span>
-          {counts ? (
-            <span className="text-xs text-on-surface-variant">
-              {toFa(counts.lists)} لیست · {toFa(counts.tasks)} کار · {toFa(counts.subtasks)} زیرکار
-            </span>
+          {lastBackupAt ? (
+            <span className="text-[11px] text-on-surface-variant">آخرین پشتیبان: {faJalaliDate(new Date(lastBackupAt))}</span>
           ) : null}
         </div>
-        <p className="text-body-sm text-on-surface-variant leading-relaxed">
-          از همه‌ی داده‌های این دستگاه یک فایل پشتیبان بگیرید و هر وقت خواستید روی همین یا دستگاه دیگر بازیابی کنید.
-          {session ? ' چون وارد حساب شده‌اید، بعد از بازیابی خودکار به فضای ابری هم سینک می‌شود.' : ''}
-        </p>
-        <div className="flex gap-2">
+
+        {/* بلوک ۱ — ذخیره‌ی نسخه‌ی پشتیبان */}
+        <div className="rounded-2xl bg-surface-container dark:bg-slate-700/40 p-3.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-body-md flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary text-on-primary text-[12px] font-black flex items-center justify-center shrink-0">۱</span>
+              ذخیره‌ی نسخه‌ی پشتیبان
+            </span>
+            <InfoPopover label="راهنمای ذخیره‌ی نسخه‌ی پشتیبان">
+              <b className="text-on-surface dark:text-inverse-on-surface">فایل چه چیزی دارد؟</b>
+              <br />
+              همه‌ی داده‌های این دستگاه: لیست‌ها، کارها، زیرکارها و یادآورها — حتی حذف‌شده‌ها (برای بازیابی دقیق).
+              تنظیمات ظاهری اپ (تم، رنگ، فونت) داخل فایل نیست.
+              <br />
+              <br />
+              <b className="text-on-surface dark:text-inverse-on-surface">فایل کجا می‌رود؟</b>
+              <br />
+              {isNativeApp()
+                ? 'پنجره‌ی اشتراک گوشی باز می‌شود؛ مقصد را خودتان انتخاب کنید — پیشنهاد: «ذخیره در فایل‌ها» یا فرستادن به خودتان در تلگرام/بله.'
+                : 'فایل در پوشه‌ی دانلود مرورگر ذخیره می‌شود؛ آن را در جای امن (مثلاً تلگرام ذخیره‌شده‌ها یا درایو) نگه دارید.'}
+            </InfoPopover>
+          </div>
+          {counts ? (
+            <p className="text-[11px] text-on-surface-variant">
+              داده‌های فعلی این دستگاه: {toFa(counts.lists)} لیست · {toFa(counts.tasks)} کار · {toFa(counts.subtasks)} زیرکار · {toFa(counts.reminders)} یادآور
+            </p>
+          ) : null}
           <button
-            className="flex-1 py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
             onClick={() => void doExport()}
             disabled={backupBusy}
+            aria-label="ذخیره‌ی نسخه‌ی پشتیبان"
           >
             <Icon name="check_circle" size={18} />
-            دریافت فایل پشتیبان
+            {backupBusy ? 'در حال آماده‌سازی…' : 'ذخیره‌ی نسخه‌ی پشتیبان'}
           </button>
+        </div>
+
+        {/* بلوک ۲ — بازیابی از فایل */}
+        <div className="rounded-2xl bg-surface-container dark:bg-slate-700/40 p-3.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-body-md flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary text-on-primary text-[12px] font-black flex items-center justify-center shrink-0">۲</span>
+              بازیابی از فایل
+            </span>
+            <InfoPopover label="راهنمای بازیابی از فایل">
+              <b className="text-on-surface dark:text-inverse-on-surface">بازیابی چه می‌کند؟</b>
+              <br />
+              محتوای فایل با داده‌های فعلی شما <b>ادغام</b> می‌شود (جدیدترین نسخه‌ی هر مورد می‌ماند — قاعده‌ی LWW).
+              <b className="text-on-surface dark:text-inverse-on-surface">هیچ‌چیز حذف نمی‌شود</b>؛ قبل از اعمال هم پیش‌نمایش و تأیید می‌بینید.
+            </InfoPopover>
+          </div>
           <button
-            className="flex-1 py-3 rounded-2xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
+            className="w-full py-3 rounded-2xl bg-surface-container-high dark:bg-slate-700 text-on-surface font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
             onClick={() => fileRef.current?.click()}
             disabled={backupBusy}
+            aria-label="انتخاب فایل پشتیبان و بازیابی"
           >
-            بازیابی از فایل
+            <Icon name="refresh" size={18} />
+            انتخاب فایل پشتیبان
           </button>
+          {/* accept گشاده: انتخاب‌گر گوشی فایل‌های تلگرام/فایل‌منیجر را فیلتر نکند — اعتبارسنجی واقعی بعد از خواندن انجام می‌شود */}
           <input
             ref={fileRef}
             type="file"
-            accept="application/json,.json"
+            accept=".json,application/json,text/plain,application/octet-stream,*/*"
             className="hidden"
             aria-label="انتخاب فایل پشتیبان"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) void doImport(f);
+              if (f) void onPickBackupFile(f);
             }}
           />
         </div>
+
+        <p className="text-[11px] text-on-surface-variant leading-relaxed flex items-start gap-1.5">
+          <Icon name="smartphone" size={15} className="text-outline mt-0.5 shrink-0" />
+          <span>
+            برای گوشی جدید: فایل را منتقل کنید، کارام را نصب کنید، سپس <b>تنظیمات ← بازیابی از فایل</b>.
+            {session ? ' چون وارد حساب شده‌اید، داده‌های بازیابی‌شده خودکار به فضای ابری هم سینک می‌شود.' : ''}
+          </span>
+        </p>
       </div>
 
       {/* v1.9 — حساب و داده‌های من: دریافت داده از سرور + حذف حساب (فقط برای حساب‌دار) */}
@@ -509,6 +620,25 @@ export function SettingsView() {
           </>
         )}
       </p>
+
+      {/* P1.3 — دیالوگ‌های بازیابی (Portal داخل قاب اپ) */}
+      {restoreConfirm ? (
+        <ConfirmRestoreDialog
+          fileName={restoreConfirm.fileName}
+          preview={restoreConfirm.preview}
+          busy={applyBusy}
+          onCancel={() => setRestoreConfirm(null)}
+          onConfirm={() => void applyRestore()}
+        />
+      ) : null}
+      {restoreResult ? (
+        <RestoreResultDialog
+          fileName={restoreResult.fileName}
+          report={restoreResult.report}
+          willSync={Boolean(session)}
+          onClose={() => setRestoreResult(null)}
+        />
+      ) : null}
     </section>
   );
 }

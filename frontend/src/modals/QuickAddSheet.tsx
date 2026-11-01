@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sheet, SheetHeader, MicButton } from '@/components/Sheet';
+import { Sheet, SheetHeader } from '@/components/Sheet';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { detectSmartDate } from '@/lib/smartDate';
@@ -141,9 +141,6 @@ export function QuickAddSheet() {
           <Icon name="calendar_today" size={16} />
           <span>تقویم شمسی</span>
         </button>
-        <span className="w-12 py-2 bg-surface-container dark:bg-slate-800 rounded-xl text-xs font-bold text-on-surface flex items-center justify-center">
-          <MicButton size={20} />
-        </span>
       </div>
 
       <button

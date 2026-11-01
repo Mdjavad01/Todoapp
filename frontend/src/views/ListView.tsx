@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import { MicButton } from '@/components/Sheet';
 import { TaskCard, CompletedRow } from '@/components/TaskCard';
 import { useAppStore } from '@/store/useAppStore';
 import { listProgress, sortTasks, LIST_SORTS } from '@/lib/selectors';
@@ -281,7 +280,6 @@ export function ListView() {
           onKeyDown={(e) => e.key === 'Enter' && submitInline()}
           aria-label="افزودن سریع کار"
         />
-        <MicButton size={20} className="w-8 h-8" />
         <button
           className="w-8 h-8 rounded-full text-on-surface-variant hover:text-primary flex items-center justify-center"
           onClick={() => openCalendar('quickAdd')}

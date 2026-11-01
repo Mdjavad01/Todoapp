@@ -90,7 +90,8 @@ export default function App() {
   return (
     <div className="min-h-dvh sm:min-h-screen w-full flex items-center justify-center p-0 sm:p-4 transition-colors duration-300">
       {/* موبایل: تمام‌صفحه زیر نوار وضعیت واقعی (safe-area) — دسکتاپ: قاب تلفن با نوار شبیه‌سازی‌شده */}
-      <div className="relative w-full max-w-[410px] h-[100dvh] sm:h-[calc(100dvh-2rem)] sm:max-h-[884px] bg-background dark:bg-inverse-surface rounded-none sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border-0 sm:border-[8px] sm:border-slate-800 transition-colors duration-200 pt-safe sm:pt-0">
+      {/* id=appFrame — لنگر Portal لایه‌های مودال (دیالوگ‌های P1.3) — قاب ۴۱۰px در دسکتاپ */}
+      <div id="appFrame" className="relative w-full max-w-[410px] h-[100dvh] sm:h-[calc(100dvh-2rem)] sm:max-h-[884px] bg-background dark:bg-inverse-surface rounded-none sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border-0 sm:border-[8px] sm:border-slate-800 transition-colors duration-200 pt-safe sm:pt-0">
         <StatusBar />
         <TopBar />
         <ReminderWarningBanner />

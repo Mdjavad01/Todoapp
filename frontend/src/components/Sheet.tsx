@@ -58,15 +58,3 @@ export function SheetHeader({ title, onClose }: { title: ReactNode; onClose(): v
   );
 }
 
-/** دکمه‌ی میکروفون غیرفعال (سرویس وویس در فاز بعدی اضافه می‌شود) */
-export function MicButton({ size = 20, className = '' }: { size?: number; className?: string }) {
-  return (
-    <span
-      className={`inline-flex items-center justify-center opacity-40 cursor-not-allowed ${className}`}
-      title="ورودی صوتی به‌زودی فعال می‌شود"
-      aria-disabled="true"
-    >
-      <Icon name="mic" size={size} />
-    </span>
-  );
-}

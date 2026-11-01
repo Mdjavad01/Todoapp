@@ -1,16 +1,21 @@
 import { idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
 import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity } from '@/types';
+import { saveFileForUser, type SaveFileOutcome } from '@/lib/saveFile';
 
 /**
- * پشتیبان‌گیری و بازیابی داده‌های کاربر (فاز ۴.۵)
+ * پشتیبان‌گیری و بازیابی داده‌های کاربر (فاز ۴.۵ + P1.3)
  *
  * خروجی: یک فایل JSON شامل همه‌ی موجودیت‌های این دستگاه (حتی حذف‌شده‌های نرم،
  * تا بازیابی دقیق باشد). بازیابی با قاعده‌ی LWW (newer updatedAt برنده) ادغام
  * می‌شود؛ پس هیچ‌چیز از دست نمی‌رود و اگر حساب ابری فعال باشد، بعد از بازیابی
  * همه‌چیز خودکار به سرور هم سینک می‌شود.
+ *
+ * P1.3 — ذخیره با helper واحد lib/saveFile (در اپ اندروید با منوی اشتراک سیستم
+ * و انتخاب مقصد توسط کاربر)، اعتبارسنجی صریح فایل (parseBackupFile) با خطاهای
+ * فارسی تفکیک‌شده، و ثبت زمان آخرین پشتیبان موفق.
  */
 
-const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 1;
 
 export interface BackupFile {
   app: 'karam';
@@ -55,23 +60,70 @@ export async function createBackup(): Promise<BackupFile> {
   };
 }
 
-/** ساخت و دانلود فایل پشتیبان — خروجی: تعداد رکوردها برای پیام موفقیت */
-export async function downloadBackup(): Promise<string> {
+/** ساخت فایل پشتیبان و تحویل آن به کاربر (وب: دانلود؛ اپ: منوی اشتراک) — خروجی برای پیام موفقیت */
+export async function downloadBackup(): Promise<{ name: string; total: number; outcome: SaveFileOutcome }> {
   const backup = await createBackup();
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const content = JSON.stringify(backup, null, 2);
   // نام فایل با تاریخ میلادی — خوانا و مرتب‌شدنی
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  a.href = url;
-  a.download = `karam-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  const name = `karam-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  const outcome = await saveFileForUser(name, content, 'application/json');
   const total = backup.counts.lists + backup.counts.tasks + backup.counts.subtasks + backup.counts.reminders;
-  return `${total}`;
+  return { name, total, outcome };
+}
+
+/* ---------- P1.3 — اعتبارسنجی و پیش‌نمایش فایل پشتیبان ---------- */
+
+/** علت رد فایل — هر مورد یک پیام فارسی مشخص دارد */
+export type BackupParseError = 'not-karam' | 'corrupt' | 'newer-version';
+
+export type BackupParseResult =
+  | { ok: true; file: BackupFile }
+  | { ok: false; reason: BackupParseError };
+
+/** متن فارسی خطا برای نمایش به کاربر */
+export function parseErrorText(reason: BackupParseError): string {
+  switch (reason) {
+    case 'not-karam':
+      return 'فایل پشتیبان کارام نیست';
+    case 'newer-version':
+      return 'این فایل از نسخه‌ی جدیدتر کارام است؛ اول اپ را به‌روزرسانی کنید';
+    case 'corrupt':
+      return 'فایل خراب است یا ساختار پشتیبان کارام را ندارد';
+  }
+}
+
+/**
+ * اعتبارسنجی فایل پشتیبان بدون اعمال — برای پیش‌نمایش و دیالوگ تأیید.
+ * سالم: app=karam + kind=backup + version عددی ≤ BACKUP_VERSION.
+ */
+export function parseBackupFile(raw: string): BackupParseResult {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'corrupt' };
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, reason: 'corrupt' };
+  const b = data as Partial<BackupFile>;
+  if (b.app !== 'karam' || b.kind !== 'backup') return { ok: false, reason: 'not-karam' };
+  if (typeof b.version !== 'number' || !Number.isFinite(b.version) || b.version < 1) {
+    return { ok: false, reason: 'corrupt' };
+  }
+  if (b.version > BACKUP_VERSION) return { ok: false, reason: 'newer-version' };
+  return { ok: true, file: data as BackupFile };
+}
+
+/** شمارنده‌های پیش‌نمایش — اگر counts در فایل نبود از روی آرایه‌ها محاسبه می‌شود */
+export function backupCountsOf(file: BackupFile): { lists: number; tasks: number; subtasks: number; reminders: number } {
+  if (file.counts) return file.counts;
+  return {
+    lists: Array.isArray(file.lists) ? file.lists.length : 0,
+    tasks: Array.isArray(file.tasks) ? file.tasks.length : 0,
+    subtasks: Array.isArray(file.subtasks) ? file.subtasks.length : 0,
+    reminders: Array.isArray(file.reminders) ? file.reminders.length : 0,
+  };
 }
 
 export interface RestoreReport {
@@ -79,20 +131,18 @@ export interface RestoreReport {
   updated: number;
   kept: number; // نسخه‌ی محلی جدیدتر بود
   invalid: boolean;
+  /** وقتی invalid — علت دقیق برای پیام فارسی */
+  reason?: BackupParseError;
 }
 
 /** بازیابی از فایل پشتیبان با ادغام LWW — هیچ رکوردی حذف نمی‌شود */
 export async function restoreBackup(raw: string): Promise<RestoreReport> {
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return { added: 0, updated: 0, kept: 0, invalid: true };
+  // P1.3 — اعتبارسنجی یکسان با پیش‌نمایش (شامل گارد نسخه‌ی جدیدتر — دفاع دوم)
+  const parsed = parseBackupFile(raw);
+  if (!parsed.ok) {
+    return { added: 0, updated: 0, kept: 0, invalid: true, reason: parsed.reason };
   }
-  const b = data as Partial<BackupFile>;
-  if (!b || b.app !== 'karam' || b.kind !== 'backup' || typeof b !== 'object') {
-    return { added: 0, updated: 0, kept: 0, invalid: true };
-  }
+  const b = parsed.file;
 
   let added = 0;
   let updated = 0;
@@ -126,6 +176,29 @@ export async function restoreBackup(raw: string): Promise<RestoreReport> {
   await merge(STORES.reminders, b.reminders);
 
   return { added, updated, kept, invalid: false };
+}
+
+/* ---------- P1.3 — زمان آخرین پشتیبان موفق (فقط محلی، هرگز سینک نمی‌شود) ---------- */
+
+const LAST_BACKUP_KEY = 'karam-last-backup-at';
+
+/** زمان آخرین پشتیبان موفق (ISO) — null = هنوز پشتیبانی نگرفته */
+export function getLastBackupAt(): string | null {
+  try {
+    const v = localStorage.getItem(LAST_BACKUP_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** ثبت «الان» به‌عنوان آخرین پشتیبان — فقط بعد از ذخیره‌ی موفق صدا زده می‌شود */
+export function markLastBackupNow(): void {
+  try {
+    localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
+  } catch {
+    // حریم خصوصی/مرورگر محدود — نمایش تاریخ حیاتی نیست، حبس نشو
+  }
 }
 
 /** شمارش رکوردهای این دستگاه (برای نمایش در تنظیمات) */
