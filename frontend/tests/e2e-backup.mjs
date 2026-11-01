@@ -99,6 +99,8 @@ check('نام فایل با karam-backup- شروع می‌شود', /^karam-backu
 const saved = JSON.parse(readFileSync(dlPath, 'utf8'));
 check('فایل پشتیبان معتبر است (app/kind)', saved.app === 'karam' && saved.kind === 'backup');
 check('توست موفقیت با نام فایل و تعداد رکورد', await waitToast(page, 'karam-backup-'));
+// P1.4 — مسیر وب بدون تغییر ماند: توست وب همچنان «دانلود شد» است (متن share فقط مسیر بومی)
+check('مسیر وب بدون تغییر: توست «دانلود شد؛ آن را در جای امن نگه دارید»', await waitToast(page, 'دانلود شد؛ آن را در جای امن نگه دارید'));
 check('«آخرین پشتیبان» با تاریخ شمسی ظاهر شد', (await page.getByText('آخرین پشتیبان:').count()) > 0);
 
 console.log('— بلوک ۲: بازیابی با دیالوگ تأیید');

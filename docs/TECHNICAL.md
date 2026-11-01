@@ -476,7 +476,7 @@ POST /api/admin/otp/verify       {channel, target?|ticket?, code} → نشست �
 
 - خروجی: JSON کامل ۴ استور IndexedDB (lists/tasks/subtasks/reminders — شامل تومب‌استون‌ها) با `app:'karam'`, `kind:'backup'`, `version:1`.
 - بازیابی: ادغام LWW بر اساس `updatedAt` (newer wins) — هیچ رکوردی حذف نمی‌شود؛ گزارش «افزوده/به‌روز/محلیِ جدیدتر ماند».
-- بعد از بازیابی `queueSync()` → اگر حساب ابری فعال باشد، داده‌ی بازیابی‌شده به سرور سینک می‌شود.
+- بعد از بازیابی مؤثر (افزوده/به‌روز > ۰): نقطه‌های سینک (`sync-last-push` و `sync-cursor` در meta) با `resetSyncPointsAfterRestore` (engine.ts) ریست و سینک صف می‌شود — ممیزی P1.4: `collectChanges` فقط جدیدترهای `sync-last-push` را push می‌کند، پس رکورد بازیابی‌شده با `updatedAt` قدیمی‌تر از آخرین سینک هرگز به سرور نمی‌رفت. push دوباره‌ی همه‌چیز idempotent است (سرور با LWW ادغام می‌کند)؛ `updatedAt` رکوردها هرگز دستکاری نمی‌شود و هیچ‌چیز حذف نمی‌شود. تست رگرسیون: `frontend/tests/restore-sync.test.ts`. (مهمان — بدون نشست — ریستی نمی‌کند.)
 
 ### ۱۴.۷. ویس (خواندن صوتی کار)
 

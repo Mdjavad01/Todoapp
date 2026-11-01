@@ -5,7 +5,7 @@
  *
  * پوشش:
  *   ۱) parseBackupFile — سالم/خراب/غیرکارام/نسخه‌ی جدیدتر + متن فارسی خطاها
- *   ۲) backupCountsOf — fallback شمارش وقتی counts در فایل نیست
+ *   ۲) backupCountsOf — P1.4: همیشه از آرایه‌ها شمرده می‌شود؛ counts دست‌کاری‌شده بی‌اثر
  *   ۳) restoreBackup — added/updated/kept با قاعده‌ی LWW + هیچ‌چیز حذف نمی‌شود
  *   ۴) دفاع دوم: restore فایل نسخه‌ی جدیدتر → invalid با reason (بدون هیچ نوشتن)
  *   ۵) getLastBackupAt/markLastBackupNow — فقط بعد از ذخیره‌ی موفق ثبت می‌شود (فراخوانی از تست)
@@ -130,11 +130,51 @@ describe('parseBackupFile — اعتبارسنجی پیش‌نمایش', () => {
     expect(parseErrorText('corrupt')).toContain('خراب');
   });
 
-  test('backupCountsOf — counts موجود و fallback محاسبه از آرایه‌ها', () => {
+  test('backupCountsOf — counts هماهنگ و نبودش (هم‌الگوی P1.3)', () => {
     expect(backupCountsOf(healthyFile)).toEqual({ lists: 1, tasks: 2, subtasks: 1, reminders: 1 });
     const withoutCounts = { ...healthyFile } as Record<string, unknown>;
     delete withoutCounts.counts;
     expect(backupCountsOf(withoutCounts)).toEqual({ lists: 1, tasks: 2, subtasks: 1, reminders: 1 });
+  });
+
+  test('P1.4 — counts دست‌کاری‌شده هرگز در شمارش اثر نمی‌گذارد (همیشه از آرایه‌ها)', () => {
+    type BF = Parameters<typeof backupCountsOf>[0];
+    // counts به‌عنوان رشته / null — نباید اثر بگذارد و نباید undefined برگرداند
+    expect(backupCountsOf({ ...healthyFile, counts: '۲۰' } as unknown as BF)).toEqual({
+      lists: 1,
+      tasks: 2,
+      subtasks: 1,
+      reminders: 1,
+    });
+    expect(backupCountsOf({ ...healthyFile, counts: null } as unknown as BF)).toEqual({
+      lists: 1,
+      tasks: 2,
+      subtasks: 1,
+      reminders: 1,
+    });
+    // عدد منفی
+    expect(backupCountsOf({ ...healthyFile, counts: { lists: -5, tasks: -9, subtasks: -1, reminders: -3 } })).toEqual({
+      lists: 1,
+      tasks: 2,
+      subtasks: 1,
+      reminders: 1,
+    });
+    // عدد بزرگ ناهماهنگ با آرایه‌ها
+    expect(backupCountsOf({ ...healthyFile, counts: { lists: 999, tasks: 999, subtasks: 999, reminders: 999 } })).toEqual({
+      lists: 1,
+      tasks: 2,
+      subtasks: 1,
+      reminders: 1,
+    });
+    // آرایه‌ی نبودن = ۰ — حتی اگر counts عدد بزرگی ادعا کند
+    const noArrays = {
+      app: 'karam',
+      kind: 'backup',
+      version: 1,
+      exportedAt: '',
+      counts: { lists: 7, tasks: 7, subtasks: 7, reminders: 7 },
+    } as unknown as BF;
+    expect(backupCountsOf(noArrays)).toEqual({ lists: 0, tasks: 0, subtasks: 0, reminders: 0 });
   });
 });
 

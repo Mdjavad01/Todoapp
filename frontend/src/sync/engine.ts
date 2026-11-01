@@ -136,6 +136,33 @@ async function maybeFullResync(): Promise<boolean> {
   return true;
 }
 
+/* ---------------- P1.4 — بعد از بازیابی موفق از فایل پشتیبان ---------------- */
+
+/**
+ * بعد از restore مؤثر (افزوده/به‌روزشده > ۰): نقطه‌های سینک ریست می‌شود تا چرخه‌ی
+ * بعدی «همه‌ی» رکوردهای محلی را دوباره push کند و pull هم از صفر انجام شود.
+ *
+ * چرا لازم است (ممیزی P1.4 — با تست tests/restore-sync.test.ts اثبات شد):
+ * restoreBackup رکوردها را با updatedAt اصلیِ فایل می‌نویسد و collectChanges فقط
+ * ردیف‌های جدیدتر از «sync-last-push» را می‌فرستد ⇒ رکورد افزوده/به‌روزشده با
+ * updatedAt قدیمی‌تر از آخرین سینکِ موفق، روی دستگاهی که قبلاً سینک کرده، هرگز
+ * به سرور نمی‌رفت.
+ *
+ * چرا ایمن است:
+ *  - برخلاف wipeForFullResync هیچ انبار داده‌ای پاک نمی‌شود (داده‌ی تازه‌بازیابی‌شده
+ *    باید بماند تا push شود) — فقط همان دو کلید meta ریست می‌شوند.
+ *  - push دوباره‌ی همه‌چیز idempotent است؛ سرور با LWW ادغام می‌کند و هیچ‌چیز حذف نمی‌شود.
+ *  - updatedAt رکوردها هرگز دستکاری نمی‌شود (قاعده‌ی LWW به آن وابسته است).
+ *  - مهمان (بدون نشست) کاری نمی‌کند — سینکی در کار نیست.
+ */
+export async function resetSyncPointsAfterRestore(): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  await idbDelete(STORES.meta, 'sync-cursor');
+  await idbDelete(STORES.meta, 'sync-last-push');
+  queueSync(400);
+}
+
 /* ---------------- گردآوری تغییرات محلی ---------------- */
 
 interface SyncPayload {

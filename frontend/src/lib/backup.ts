@@ -1,6 +1,7 @@
 import { idbGet, idbGetAll, idbPut, STORES, type StoreName } from '@/db/idb';
 import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity } from '@/types';
 import { saveFileForUser, type SaveFileOutcome } from '@/lib/saveFile';
+import { resetSyncPointsAfterRestore } from '@/sync/engine';
 
 /**
  * پشتیبان‌گیری و بازیابی داده‌های کاربر (فاز ۴.۵ + P1.3)
@@ -115,9 +116,12 @@ export function parseBackupFile(raw: string): BackupParseResult {
   return { ok: true, file: data as BackupFile };
 }
 
-/** شمارنده‌های پیش‌نمایش — اگر counts در فایل نبود از روی آرایه‌ها محاسبه می‌شود */
+/**
+ * شمارنده‌های پیش‌نمایش — P1.4: همیشه از روی طول آرایه‌های واقعی شمرده می‌شود و
+ * فیلد counts فایل کاملاً نادیده گرفته می‌شود (فایل دست‌کاری‌شده نمی‌تواند دیالوگ
+ * تأیید را با عدد غلط یا undefined گمراه کند؛ آرایه نبودن هر فیلد = ۰).
+ */
 export function backupCountsOf(file: BackupFile): { lists: number; tasks: number; subtasks: number; reminders: number } {
-  if (file.counts) return file.counts;
   return {
     lists: Array.isArray(file.lists) ? file.lists.length : 0,
     tasks: Array.isArray(file.tasks) ? file.tasks.length : 0,
@@ -174,6 +178,15 @@ export async function restoreBackup(raw: string): Promise<RestoreReport> {
   await merge(STORES.tasks, b.tasks);
   await merge(STORES.subtasks, b.subtasks);
   await merge(STORES.reminders, b.reminders);
+
+  // P1.4 — ممیزی بازیابی ↔ سینک: رکوردهای بازیابی‌شده با updatedAt اصلی فایل نوشته
+  // می‌شوند و collectChanges فقط جدیدترهای «sync-last-push» را push می‌کند ⇒ رکورد
+  // افزوده/به‌روزشده با updatedAt قدیمی‌تر از آخرین سینک هرگز به سرور نمی‌رفت.
+  // اصلاح کم‌خطر: نقطه‌های سینک ریست می‌شود تا رکوردها صرفاً دوباره ارسال شوند
+  // (updatedAt هرگز دستکاری نمی‌شود — قاعده‌ی LWW به آن وابسته است؛ هیچ‌چیز حذف نمی‌شود).
+  if (added > 0 || updated > 0) {
+    await resetSyncPointsAfterRestore();
+  }
 
   return { added, updated, kept, invalid: false };
 }

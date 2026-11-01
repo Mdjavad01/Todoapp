@@ -9,6 +9,7 @@
  *   ۳) انصراف کاربر در منوی اشتراک («Share canceled») → ok=false و canceled=true
  *   ۴) خطای عمومی بومی → ok=false و canceled=false (هرگز «ذخیره شد» جعل نمی‌شود)
  *   ۵) uri بدون file:// → شکست صادقانه (پلاگین Share فقط file:// می‌پذیرد)
+ *   ۶) shareSuccessText (P1.4) — متن صداقت‌محور توست بومی: «آماده شد و سپرده شد»، هرگز «ذخیره شد»
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
@@ -75,7 +76,7 @@ globalThis.document = {
 };
 
 /* بعد از mock، ماژول تحت تست بارگذاری می‌شود */
-const { saveFileForUser } = await import('@/lib/saveFile');
+const { saveFileForUser, shareSuccessText } = await import('@/lib/saveFile');
 
 beforeEach(() => {
   nativeState.native = false;
@@ -140,5 +141,20 @@ describe('saveFileForUser — شاخه‌ی بومی (اپ اندروید)', () 
     writeUriImpl = () => 'content://ir.hojre24shop.app.fileprovider/cache/x.json';
     await expect(saveFileForUser('x.json', '{}')).rejects.toThrow('fs-uri-missing');
     expect(calls.share.length).toBe(0);
+  });
+});
+
+describe('shareSuccessText — صداقت توست مسیر بومی (P1.4)', () => {
+  test('متن دقیق share: «آماده شد و … سپرده شد» — هرگز «ذخیره شد»', () => {
+    const t = shareSuccessText('karam-backup-2026-01-05-1130.json', '۱۲ رکورد');
+    expect(t).toBe('فایل karam-backup-2026-01-05-1130.json (۱۲ رکورد) آماده شد و به مقصدی که انتخاب کردی سپرده شد');
+    expect(t).not.toContain('ذخیره شد');
+    expect(t).not.toContain('دانلود شد');
+  });
+
+  test('همین الگو برای «دریافت داده‌های من» (doServerExport)', () => {
+    const t = shareSuccessText('karam-data-2026-01-05.json', 'داده‌های حساب شما');
+    expect(t).toBe('فایل karam-data-2026-01-05.json (داده‌های حساب شما) آماده شد و به مقصدی که انتخاب کردی سپرده شد');
+    expect(t).not.toContain('ذخیره شد');
   });
 });

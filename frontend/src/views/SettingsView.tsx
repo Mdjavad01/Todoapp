@@ -14,7 +14,7 @@ import {
   type BackupFile,
   type RestoreReport,
 } from '@/lib/backup';
-import { saveFileForUser } from '@/lib/saveFile';
+import { saveFileForUser, shareSuccessText } from '@/lib/saveFile';
 import { faJalaliDate } from '@/lib/jalali';
 import { isNativeApp } from '@/lib/native';
 import { exportMyData } from '@/sync/auth';
@@ -129,7 +129,9 @@ export function SettingsView() {
       setLastBackupAtState(getLastBackupAt());
       showToast(
         outcome.method === 'share'
-          ? `فایل ${name} با ${toFa(total)} رکورد ذخیره شد`
+          ? // P1.4 — صداقت: resolve شدن منوی اشتراک فقط یعنی فایل به مقصد انتخابی سپرده شد؛
+            // لغو درون اپ مقصد قابل تشخیص نیست — پس «ذخیره شد» ادعا نمی‌شود
+            shareSuccessText(name, `${toFa(total)} رکورد`)
           : `فایل ${name} با ${toFa(total)} رکورد دانلود شد؛ آن را در جای امن نگه دارید`,
       );
       refreshCounts();
@@ -200,7 +202,8 @@ export function SettingsView() {
       }
       showToast(
         outcome.method === 'share'
-          ? `فایل ${name} (داده‌های حساب شما) ذخیره شد`
+          ? // P1.4 — همان الگوی صداقت مسیر بومی (فایل به مقصد انتخابی سپرده شد)
+            shareSuccessText(name, 'داده‌های حساب شما')
           : `فایل ${name} (داده‌های حساب شما) دانلود شد`,
       );
     } catch {
@@ -402,6 +405,12 @@ export function SettingsView() {
             <span className="text-[11px] text-on-surface-variant">آخرین پشتیبان: {faJalaliDate(new Date(lastBackupAt))}</span>
           ) : null}
         </div>
+        {/* P1.4 — صداقت معنای تاریخ در اپ: resolve شدن Share فقط = منوی اشتراک تکمیل شد */}
+        {lastBackupAt && isNativeApp() ? (
+          <p className="text-[11px] text-on-surface-variant leading-relaxed">
+            در اپ، این تاریخ یعنی منوی اشتراک تکمیل شد؛ از رسیدن فایل به مقصد باید خودت مطمئن شوی
+          </p>
+        ) : null}
 
         {/* بلوک ۱ — ذخیره‌ی نسخه‌ی پشتیبان */}
         <div className="rounded-2xl bg-surface-container dark:bg-slate-700/40 p-3.5 flex flex-col gap-2.5">
@@ -420,7 +429,7 @@ export function SettingsView() {
               <b className="text-on-surface dark:text-inverse-on-surface">فایل کجا می‌رود؟</b>
               <br />
               {isNativeApp()
-                ? 'پنجره‌ی اشتراک گوشی باز می‌شود؛ مقصد را خودتان انتخاب کنید — پیشنهاد: «ذخیره در فایل‌ها» یا فرستادن به خودتان در تلگرام/بله.'
+                ? 'پنجره‌ی اشتراک گوشی باز می‌شود؛ مقصد را خودتان انتخاب کنید — پیشنهاد: «ذخیره در فایل‌ها» یا فرستادن به خودتان در تلگرام/بله. «آخرین پشتیبان» در اپ یعنی منوی اشتراک تکمیل شد؛ از رسیدن فایل به مقصد باید خودت مطمئن شوی.'
                 : 'فایل در پوشه‌ی دانلود مرورگر ذخیره می‌شود؛ آن را در جای امن (مثلاً تلگرام ذخیره‌شده‌ها یا درایو) نگه دارید.'}
             </InfoPopover>
           </div>

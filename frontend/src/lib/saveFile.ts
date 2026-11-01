@@ -59,6 +59,18 @@ async function saveWeb(name: string, content: string, mime: string): Promise<Sav
   return { ok: true, canceled: false, method: 'download' };
 }
 
+/**
+ * P1.4 — متن توست موفقیتِ مسیر بومی (share) — صادقانه:
+ * resolve شدن Share فقط یعنی «منوی اشتراک با انتخاب مقصد بسته شد» — نه اینکه فایل
+ * واقعاً به مقصد رسیده باشد (لغو ارسال «درون» اپ مقصد مثل تلگرام از سمت اپ قابل
+ * تشخیص نیست). پس «آماده شد و سپرده شد» می‌گوییم، هرگز «ذخیره شد».
+ * @param name   نام کامل فایل
+ * @param detail توضیح داخل پرانتز — مثل «۱۲ رکورد» یا «داده‌های حساب شما»
+ */
+export function shareSuccessText(name: string, detail: string): string {
+  return `فایل ${name} (${detail}) آماده شد و به مقصدی که انتخاب کردی سپرده شد`;
+}
+
 /** اپ اندروید — نوشتن در Cache + منوی اشتراک سیستم (مقصد را کاربر انتخاب می‌کند) */
 async function saveNative(name: string, content: string): Promise<SaveFileOutcome> {
   const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
