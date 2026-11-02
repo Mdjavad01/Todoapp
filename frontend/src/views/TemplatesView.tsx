@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { TraderCard } from '@/components/TraderCard';
 import { useAppStore } from '@/store/useAppStore';
-import { TEMPLATES, JOB_KITS } from '@/db/catalog';
+import { TEMPLATES } from '@/db/catalog';
+import { JOB_PACKS, packItemCount, PACK_REPEAT_NOTICE, isPackActive } from '@/db/jobPacks';
 import { toFa } from '@/lib/format';
+import type { JobPackDef, JobPackItem, JobPackList } from '@/types';
 
 /** فاز الف — سربرگ مشترک صفحات داخلی: دکمه‌ی بازگشت + عنوان روشن */
 function InnerHeader({ title, subtitle }: { title: string; subtitle: string }) {
@@ -60,47 +63,219 @@ export function TemplatesView() {
   );
 }
 
-/** بخش ۱۰: بسته‌های شغلی تخصصی — برای کاربر پرو واقعاً فعال می‌شود (v16) */
+/** بخش ۱۰ — P2.0: بسته‌های شغلی تخصصی — پیش‌نمایش کامل برای همه، قفل فقط روی فعال‌سازی */
 export function JobKitsView() {
   const setView = useAppStore((s) => s.setView);
-  const applyJobKit = useAppStore((s) => s.applyJobKit);
+  const activateJobPack = useAppStore((s) => s.activateJobPack);
+  const resetJobPack = useAppStore((s) => s.resetJobPack);
   const premium = useAppStore((s) => s.premium);
   const isPro = premium.loaded && premium.isPremium;
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-jobkits">
-      <InnerHeader title="بسته‌های شغلی تخصصی" subtitle="روتین‌ها و فریم‌ورک‌های استاندارد برای حرفه‌ای‌ها" />
-      {JOB_KITS.map((kit) =>
-        kit.pro ? (
-          <div
-            key={kit.id}
-            className="p-4 rounded-2xl bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30 shadow-sm flex flex-col gap-3 relative"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="text-3xl">{kit.emoji}</span>
-              <div>
-                <h3 className="text-headline-sm font-bold">{kit.title}</h3>
-                <p className="text-xs text-outline">{kit.subtitle}</p>
-              </div>
-            </div>
-            {kit.features.length > 0 ? (
-              <div className="text-xs space-y-1 rounded-xl text-on-surface-variant bg-surface-container-low dark:bg-slate-800/60 p-2.5">
-                {kit.features.map((f) => (
-                  <div key={f}>✓ {f}</div>
-                ))}
-              </div>
-            ) : null}
-            <button
-              className={`w-full py-2 font-bold rounded-xl text-xs transition-colors ${
-                isPro ? 'bg-primary text-on-primary' : 'bg-primary/10 text-primary'
-              }`}
-              onClick={() => (isPro ? void applyJobKit(kit) : setView('paywall'))}
-            >
-              {isPro ? 'فعال‌سازی بسته' : `${kit.cta} (نیاز به پرو)`}
-            </button>
-          </div>
-        ) : null,
-      )}
+      <InnerHeader title="بسته‌های شغلی تخصصی" subtitle="روتین‌های چندلیستی آماده با یادآور — محتوای هر بسته را کامل ببین، فعال‌سازی مخصوص کارام پرو است" />
+      {JOB_PACKS.map((pack) => (
+        <PackCard
+          key={pack.id}
+          pack={pack}
+          isPro={isPro}
+          onLocked={() => setView('paywall')}
+          onActivate={() => void activateJobPack(pack)}
+          onReset={() => void resetJobPack(pack.id)}
+        />
+      ))}
     </section>
+  );
+}
+
+/* ---------------- P2.0 — کارت بسته با پیش‌نمایش کامل ---------------- */
+
+/** برچسب نوع آیتم — همان واژگان فاز تریدر */
+function itemTypeBadge(t: JobPackItem['type']): string | null {
+  switch (t) {
+    case 'num':
+      return 'عدد';
+    case 'note':
+      return 'یادداشت';
+    case 'choice':
+      return 'بله/نه';
+    case 'score':
+      return 'امتیاز';
+    default:
+      return null; // تیک ساده — نشان نمی‌خواهد
+  }
+}
+
+const JALALI_WEEKDAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'];
+
+/** برچسب تکرار/یادآور آیتم — صادقانه و کوتاه */
+function repeatBadge(t: JobPackItem): string | null {
+  if (t.dueTime) return `یادآور ${t.dueTime}`;
+  if (t.repeat === 'daily') return 'روزانه';
+  if (t.repeat === 'custom' && t.repeatMeta?.unit === 'week') {
+    const d = t.repeatMeta.days?.[0] ?? 6;
+    return `هفتگی (${JALALI_WEEKDAYS[d] ?? ''})`;
+  }
+  return null;
+}
+
+function PackListPreview({ list }: { list: JobPackList }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low dark:bg-slate-800/60 p-2.5">
+      <p className="text-xs font-bold mb-1">
+        {list.emoji} {list.name}
+      </p>
+      <p className="text-[11px] text-on-surface-variant leading-5 mb-1.5">{list.guide}</p>
+      <ul className="text-xs space-y-0.5 text-on-surface-variant">
+        {list.items.map((it) => {
+          const badge = itemTypeBadge(it.type);
+          const rep = repeatBadge(it);
+          return (
+            <li key={it.title} className="flex items-start gap-1">
+              <span className="shrink-0 text-primary">•</span>
+              <span className="flex-1">{it.title}</span>
+              {badge ? <span className="shrink-0 px-1.5 rounded-full bg-primary/10 text-primary text-[10px] leading-5">{badge}</span> : null}
+              {rep ? <span className="shrink-0 px-1.5 rounded-full bg-outline-variant/40 text-on-surface-variant text-[10px] leading-5">{rep}</span> : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function PackCard({
+  pack,
+  isPro,
+  onLocked,
+  onActivate,
+  onReset,
+}: {
+  pack: JobPackDef;
+  isPro: boolean;
+  onLocked: () => void;
+  onActivate: () => void;
+  onReset: () => void;
+}) {
+  const lists = useAppStore((s) => s.lists);
+  const active = isPackActive(lists, pack);
+  const [open, setOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+
+  return (
+    <div
+      className="p-4 rounded-2xl bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30 shadow-sm flex flex-col gap-3"
+      data-pack={pack.id}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="text-3xl">{pack.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-headline-sm font-bold">{pack.title}</h3>
+          <p className="text-xs text-outline">{pack.subtitle}</p>
+        </div>
+        {active ? (
+          <span className="shrink-0 px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold flex items-center gap-1">
+            <Icon name="check_circle" size={13} />
+            فعال است
+          </span>
+        ) : null}
+      </div>
+
+      <p className="text-xs text-on-surface-variant">
+        {toFa(pack.lists.length)} لیست · {toFa(packItemCount(pack))} آیتم — با پیش‌نمایش کامل پایین، همه‌چیز را قبل از فعال‌سازی ببین.
+      </p>
+
+      {/* پیش‌نمایش کامل — برای همه آزاد (داده در خود اپ است؛ پنهان‌کردنش صادقانه نیست) */}
+      <button
+        className="self-start px-3 py-1.5 rounded-xl text-xs font-bold bg-surface-container dark:bg-slate-700 text-on-surface-variant hover:bg-surface-container-high transition-colors flex items-center gap-1"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={open ? `بستن پیش‌نمایش ${pack.title}` : `نمایش پیش‌نمایش ${pack.title}`}
+      >
+        <Icon name={open ? 'expand_more' : 'arrow_back'} size={14} />
+        {open ? 'بستن پیش‌نمایش محتوا' : 'دیدن محتوای کامل بسته'}
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-2" data-pack-preview={pack.id}>
+          {pack.lists.map((l) => (
+            <PackListPreview key={l.name} list={l} />
+          ))}
+          <p className="text-[11px] text-outline leading-5 border-t border-outline-variant/30 pt-2">{PACK_REPEAT_NOTICE}</p>
+        </div>
+      ) : null}
+
+      {/* قفل فقط روی فعال‌سازی — متن خنثی بدون وعده خرید، یکسان در وب و بازار */}
+      {active ? (
+        <div className="flex gap-2">
+          <button
+            className="flex-1 py-2 font-bold rounded-xl text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            onClick={() => setOpen(true)}
+          >
+            دیدن لیست‌ها
+          </button>
+          <button
+            className="px-4 py-2 font-bold rounded-xl text-xs text-rose-500 hover:bg-rose-500/10 transition-colors"
+            onClick={() => setResetConfirm(true)}
+          >
+            بازنشانی بسته
+          </button>
+        </div>
+      ) : isPro ? (
+        <button
+          className="w-full py-2 font-bold rounded-xl text-xs bg-primary text-on-primary hover:opacity-90 transition-opacity"
+          onClick={onActivate}
+        >
+          {pack.cta}
+        </button>
+      ) : (
+        <button
+          className="w-full py-2 font-bold rounded-xl text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center justify-center gap-1.5"
+          onClick={onLocked}
+          data-pack-locked={pack.id}
+        >
+          <Icon name="lock" size={14} />
+          بازکردن با کارام پرو
+        </button>
+      )}
+
+      {/* دیالوگ تأیید بازنشانی — حذف نرم لیست‌های بسته (با کلید یا نام) */}
+      {resetConfirm ? (
+        <div
+          className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`تأیید بازنشانی ${pack.title}`}
+          onClick={() => setResetConfirm(false)}
+        >
+          <div
+            className="bg-surface-container-lowest dark:bg-slate-800 text-on-surface dark:text-inverse-on-surface w-full max-w-sm rounded-2xl p-4 shadow-xl flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-label-lg font-bold text-rose-500">بازنشانی {pack.title}؟</h4>
+            <p className="text-body-sm text-on-surface-variant leading-6">
+              هر {toFa(pack.lists.length)} لیست این بسته حذف می‌شود (لیست‌هایی که نامشان را عوض کرده‌ای هم — با کلید قالب شناخته می‌شوند).
+              ویرایش‌ها و تیک‌های فعلی از بین می‌رود؛ بعداً می‌توانی دوباره فعالش کنی.
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 py-2 rounded-xl text-sm font-bold bg-rose-500 hover:bg-rose-400 text-white"
+                onClick={() => {
+                  setResetConfirm(false);
+                  onReset();
+                }}
+              >
+                بازنشانی کن
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-surface-container dark:bg-slate-700 text-on-surface-variant"
+                onClick={() => setResetConfirm(false)}
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

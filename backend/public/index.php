@@ -29,6 +29,7 @@ require $srcDir . '/src/Support/TrialSchema.php'; // v18 — مهاجرت خود
 require $srcDir . '/src/Support/ReferralSchema.php'; // v20 — مهاجرت خودکار دعوت دوستان
 require $srcDir . '/src/Support/GiftSchema.php'; // v20 — مهاجرت خودکار کد هدیه
 require $srcDir . '/src/Support/TaskSchema.php'; // فاز ۳ — مهاجرت خودکار ستاره/تکرار سفارشی
+require $srcDir . '/src/Support/ListSchema.php'; // P2.0 — مهاجرت خودکار template_key + بک‌فیل تریدر
 require $srcDir . '/src/Support/AnnouncementsSchema.php';
 require $srcDir . '/src/Security/Validator.php';
 require $srcDir . '/src/Auth/AccessToken.php';

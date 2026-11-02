@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS lists (
   color      TEXT(16) NOT NULL DEFAULT 'teal',
   sort_order INTEGER NOT NULL DEFAULT 0,
   pinned     INTEGER NOT NULL DEFAULT 0,
+  template_key TEXT(32),
   created_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   updated_at TEXT(19) NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
   deleted_at TEXT(19),

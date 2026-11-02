@@ -19,6 +19,10 @@ final class RestEntityController
         if ($entity === Entities::ENTITY_TASKS) {
             TaskSchema::ensure();
         }
+        // P2.0 — اسکیمای لیست‌ها (template_key) فقط برای مسیرهای لیست‌ها؛ تکرارپذیر و ارزان
+        if ($entity === Entities::ENTITY_LISTS) {
+            ListSchema::ensure();
+        }
     }
 
     /** GET /api/v1/{entity} */

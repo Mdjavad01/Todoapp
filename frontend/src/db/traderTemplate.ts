@@ -1,5 +1,6 @@
 import type { ListEntity, TaskEntity, TaskItemType, RepeatMeta } from '@/types';
 import { toIsoDate } from '@/lib/format';
+import { templateListKey, findTemplateList, findTemplateLists, isTemplateActive } from '@/db/templateKey';
 
 /**
  * فاز تریدر — تعریف و منطق خالص «چک‌لیست تریدر»
@@ -9,10 +10,13 @@ import { toIsoDate } from '@/lib/format';
  *  - یادآور سشن = «کارِ لنگر» داخل خود لیست (repeat='daily' + dueTime + reminderMinutes) — از همان خط لوله‌ی یادآور بومی.
  *  - محدودیت صادقانه: نمونه‌ی تازه‌ی آیتم تکرارشونده فقط وقتی ساخته می‌شود که آیتم قبلی تیک بزند (repo.completeRecurring) —
  *    اگر روزی تیک نزنی، همان آیتم بی‌تیک می‌ماند. این متن در راهنمای کاربر هم آمده است.
- *  - ایدمپوتنس: تشخیص با نام دقیق لیست‌ها (سینک‌شونده بین دستگاه‌ها) + نشانگر pref سطح دستگاه برای حالت دکمه.
+ *  - ایدمپوتنس (P2.0): تشخیص با کلید پایدار «trader.<index>» (سینک‌شونده بین دستگاه‌ها) + فال‌بک نامی
+ *    برای داده‌ی قدیمیِ بدون کلید + نشانگر pref سطح دستگاه برای حالت دکمه — تغییر نام لیست دیگر فعال‌سازی
+ *    دوباره را تکراری نمی‌کند.
  */
 
-/** نام‌های دقیق ۵ لیست تریدر — کلید تشخیص ایدمپوتنس (بعد از تغییر نام توسط کاربر، آن لیست دیگر بخشی از تمپلیت حساب نمی‌شود) */
+/** نام‌های دقیق ۵ لیست تریدر — فال‌بک تشخیص برای داده‌ی قدیمیِ بدون کلید (بعد از تغییر نام توسط کاربر،
+ *  لیست همچنان با کلید پیدا می‌شود — نام دیگر هویت نیست) */
 export const TRADER_RULES_LIST = 'قوانین من';
 export const TRADER_PREMARKET_LIST = 'پیش از بازار';
 export const TRADER_PRETRADE_LIST = 'قبل از معامله';
@@ -25,6 +29,9 @@ export const TRADER_LIST_NAMES: readonly string[] = [
   TRADER_POSTMARKET_LIST,
   TRADER_REVIEW_LIST,
 ];
+
+/** P2.0 — کلیدهای پایدار ۵ لیست (سینک‌پذیر — بستن بدهی templateKey)؛ سمت سرور: lists.template_key */
+export const TRADER_LIST_KEYS: readonly string[] = TRADER_LIST_NAMES.map((_, i) => templateListKey('trader', i));
 
 /** عناوین کلیدی برای بنر «قوانین من» و آمار انضباط */
 export const TRADER_RULE_MAX_LOSS = 'حداکثر ضرر روزانه';
@@ -171,24 +178,22 @@ export function nextWeekdayIso(jalaliWeekday: number, now: Date = new Date()): s
   return toIsoDate(d);
 }
 
-/** لیست‌های تریدر موجود (با نام دقیق، زنده) — به ترتیب تعریف تمپلیت */
-export function findTraderLists(lists: ListEntity[]): ListEntity[] {
-  return TRADER_TEMPLATE.map((def) => lists.find((l) => !l.deletedAt && l.name === def.name)).filter(
-    (l): l is ListEntity => l !== undefined,
-  );
+/** لیست‌های تریدر موجود به ترتیب تعریف تمپلیت — تشخیص کلید-اول + فال‌بک نامی (P2.0)؛ جای خالی undefined */
+export function findTraderLists(lists: ListEntity[]): (ListEntity | undefined)[] {
+  return findTemplateLists(lists, TRADER_TEMPLATE, (i) => TRADER_LIST_KEYS[i]);
 }
 
-/** تمپلیت فعال است اگر هر ۵ لیست با نام دقیق موجود باشند (قاعده‌ی سینک‌پذیر بین دستگاه‌ها) */
+/** تمپلیت فعال است اگر هر ۵ لیست (با کلید یا نام) موجود باشند (قاعده‌ی سینک‌پذیر بین دستگاه‌ها) */
 export function isTraderActive(lists: ListEntity[]): boolean {
-  return findTraderLists(lists).length === TRADER_TEMPLATE.length;
+  return isTemplateActive(lists, TRADER_TEMPLATE, (i) => TRADER_LIST_KEYS[i]);
 }
 
-/** مقادیر فعلی «قوانین من» برای بنر فقط‌خواندنی بالای «پیش از بازار» */
+/** مقادیر فعلی «قوانین من» برای بنر فقط‌خواندنی بالای «پیش از بازار» (کلید-اول + فال‌بک نامی) */
 export function traderRulesValues(
   lists: ListEntity[],
   tasks: TaskEntity[],
 ): { maxLoss: string | null; risk: string | null } {
-  const rules = lists.find((l) => !l.deletedAt && l.name === TRADER_RULES_LIST);
+  const rules = findTemplateList(lists, TRADER_LIST_KEYS[0], TRADER_RULES_LIST);
   const pick = (title: string): string | null => {
     if (!rules) return null;
     const t = tasks.find((x) => x.listId === rules.id && !x.deletedAt && x.title === title);
@@ -221,7 +226,7 @@ export function traderDisciplineAvg(
   return { avg: Math.round(avg * 10) / 10, count: scores.length };
 }
 
-/** نشانی pref نشانگر فعال‌سازی (سطح دستگاه — نام لیست‌ها همان گارد بین دستگاهی است) */
+/** نشانی pref نشانگر فعال‌سازی (سطح دستگاه — هویت واقعی لیست‌ها کلید «trader.*» سینک‌شونده است) */
 export const TRADER_PREF_KEY = 'trader-template';
 
 export interface TraderPref {

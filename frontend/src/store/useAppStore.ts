@@ -1,14 +1,13 @@
 import { create } from 'zustand';
-import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef, TaskItemType } from '@/types';
+import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobPackDef, TaskItemType } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureDefaultData } from '@/db/seed';
 import {
   TRADER_TEMPLATE,
+  TRADER_LIST_KEYS,
   TRADER_ANCHOR_START,
   TRADER_ANCHOR_END,
-  TRADER_PREMARKET_LIST,
   TRADER_PRETRADE_LIST,
-  TRADER_POSTMARKET_LIST,
   TRADER_PREF_KEY,
   normalizeTime,
   addMinutesToTime,
@@ -16,6 +15,8 @@ import {
   findTraderLists,
   type TraderPref,
 } from '@/db/traderTemplate';
+import { JOB_PACKS, findPackLists } from '@/db/jobPacks';
+import { findTemplateList, templateListKey } from '@/db/templateKey';
 import { toIsoDate, faShort, toFa } from '@/lib/format';
 import { defaultListId, sortedLists } from '@/lib/selectors';
 import { pruneMyDay, type RepeatMeta } from '@/lib/repeat';
@@ -246,8 +247,12 @@ interface AppState {
   /** فاز ۳ — پیش‌نویس نوار افزودن سریع */
   setQuickDraft(text: string): void;
   createList(name: string, emoji: string): Promise<void>;
+  /** P2.0 — افزودن قالب رایگان — ایدمپوتنت با کلید (فعال‌سازی دوباره هیچ آیتم/لیست تکراری نمی‌سازد) */
   applyTemplate(tpl: TemplateDef): Promise<void>;
-  applyJobKit(kit: JobKitDef): Promise<void>;
+  /** P2.0 — فعال‌سازی ایدمپوتنت بسته‌ی شغلی (کلید-اول + فال‌بک نامی + ایدمپوتنس آیتمی کامل — الگوی فاز تریدر) */
+  activateJobPack(pack: JobPackDef): Promise<void>;
+  /** P2.0 — بازنشانی بسته: حذف نرم لیست‌های بسته (با کلید یا نام) + بازگشت لیست پیش‌فرض اگر همه رفتند (دیالوگ تأیید در UI) */
+  resetJobPack(packId: string): Promise<void>;
 
   /* ---- فاز تریدر — چک‌لیست تریدر ---- */
   /** فعال‌سازی تمپلیت تریدر با ساعت شروع/پایان سشن — ایدمپوتنت (لیست موجود = بدون تکرار) */
@@ -292,16 +297,16 @@ interface AppState {
   toggleGroupCollapsed(groupId: string): void;
 }
 
-/** فاز تریدر — ساخت/به‌روزرسانی کارِ لنگرِ یادآور سشن (داخل خود لیست؛ همان خط لوله‌ی یادآور بومی — بدون سیستم موازی) */
+/** فاز تریدر/P2.0 — ساخت/به‌روزرسانی کارِ لنگرِ یادآور (داخل خود لیست؛ همان خط لوله‌ی یادآور بومی — بدون سیستم موازی).
+ *  لیست با کلید/نام توسط صداکننده حل شده است — پیدا نشد = بی‌عمل (مثل قبل). */
 async function upsertTraderAnchor(
   get: () => Pick<AppState, 'lists' | 'tasks'>,
   title: string,
-  listName: string,
+  list: ListEntity | undefined,
   dueTime: string,
   reminderMinutes: number,
   dueDate: string,
 ): Promise<void> {
-  const list = get().lists.find((l) => !l.deletedAt && l.name === listName);
   if (!list) return;
   const existing = get().tasks.find((t) => !t.deletedAt && t.listId === list.id && t.title === title);
   if (existing) {
@@ -1088,11 +1093,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ quickDraft: text });
   },
 
+  /** P2.0 — افزودن قالب رایگان — ایدمپوتنت با کلید: لیست با کلید/نام پیدا یا با کلید ساخته می‌شود
+   *  و آیتم هم‌عنوانِ زنده دوباره ساخته نمی‌شود (قبلاً کلیک دوباره آیتم تکراری می‌ساخت — رفع شد) */
   async applyTemplate(tpl) {
-    // اگر لیستی با همین نام هست، آیتم‌ها به همان اضافه می‌شود؛ وگرنه لیست جدید ساخته می‌شود
-    const existing = get().lists.find((l) => l.name === tpl.listName);
-    const list = existing ?? (await repo.listsCreate({ name: tpl.listName, emoji: tpl.emoji, color: tpl.color }));
+    await get().refresh(); // state تازه — ایدمپوتنس آیتمی به داده‌ی واقعی تکیه می‌کند
+    let list = findTemplateList(get().lists, tpl.templateKey, tpl.listName);
+    if (!list) {
+      list = await repo.listsCreate({ name: tpl.listName, emoji: tpl.emoji, color: tpl.color, templateKey: tpl.templateKey });
+    } else if (list.templateKey !== tpl.templateKey) {
+      // تصاحب لیست قدیمی هم‌نام (داده‌ی پیش از کلید) — از این به بعد با کلید شناخته می‌شود
+      await repo.listsUpdate(list.id, { templateKey: tpl.templateKey });
+    }
     for (const item of tpl.items) {
+      // ایدمپوتنس آیتم: هم‌عنوانِ زنده (تیک‌شده یا نه) دوباره ساخته نمی‌شود
+      const dup = get().tasks.find((t) => t.listId === list!.id && !t.deletedAt && t.title === item);
+      if (dup) continue;
       await repo.tasksCreate({ listId: list.id, title: item, priority: 'normal' });
     }
     await get().refresh();
@@ -1101,21 +1116,77 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().showToast(`قالب «${tpl.title}» به لیست‌های شما افزوده شد!`);
   },
 
-  /** فعال‌سازی بسته‌ی شغلی (مخصوص کاربر پرو — v16) — ساخت لیست‌ها و آیتم‌های روتین بسته */
-  async applyJobKit(kit) {
-    for (const l of kit.lists) {
-      const existing = get().lists.find((x) => x.name === l.name);
-      const list = existing ?? (await repo.listsCreate({ name: l.name, emoji: l.emoji, color: l.color }));
-      for (const item of l.items) {
-        // جلوگیری از تکرار: آیتم هم‌عنوانِ ناتمام در همان لیست دوباره ساخته نمی‌شود
-        const dup = get().tasks.find((t) => t.listId === list.id && t.title === item && !t.completedAt);
-        if (dup) continue;
-        await repo.tasksCreate({ listId: list.id, title: item, priority: 'normal' });
+  /* ================= P2.0 — بسته‌های شغلی ================= */
+
+  /**
+   * فعال‌سازی ایدمپوتنت بسته‌ی شغلی (مخصوص کاربر پرو — قفل در JobKitsView).
+   * هر لیست: اول با کلید «kit-<id>.<index>»، بعد فال‌بک نام دقیق (داده‌ی قدیمی — تصاحب کلید)،
+   * وگرنه ساخت با کلید. آیتم هم‌عنوانِ زنده (تیک‌شده یا نه) دوباره ساخته نمی‌شود — الگوی فاز تریدر.
+   * لنگرهای یادآور = آیتمِ دارای dueTime از خود داده‌ی بسته (همان خط لوله‌ی یادآور بومی).
+   */
+  async activateJobPack(pack) {
+    await get().refresh(); // state تازه — ایدمپوتنس آیتمی به داده‌ی واقعی تکیه می‌کند
+    const today = toIsoDate(new Date());
+    const seen = new Set<string>(); // (listId,title) ساخته‌شده در همین اجرا — گارد دوم ایدمپوتنس
+    for (let i = 0; i < pack.lists.length; i++) {
+      const def = pack.lists[i]!;
+      const key = templateListKey(pack.id, i);
+      let list = findTemplateList(get().lists, key, def.name);
+      if (!list) {
+        list = await repo.listsCreate({
+          name: def.name,
+          emoji: def.emoji,
+          color: def.color,
+          pinned: def.pinned ?? false,
+          templateKey: key,
+        });
+      } else {
+        // تصاحب لیست قدیمی هم‌نام (داده‌ی پیش از کلید) + اعمال پینِ قول‌شده‌ی تمپلیت
+        if (list.templateKey !== key) await repo.listsUpdate(list.id, { templateKey: key });
+        if (def.pinned && !list.pinned) await repo.listsUpdate(list.id, { pinned: true });
+      }
+      for (const item of def.items) {
+        // ایدمپوتنس آیتم: هم‌عنوانِ زنده (تیک‌شده یا نه) دوباره ساخته نمی‌شود
+        const dup = get().tasks.find((t) => t.listId === list!.id && !t.deletedAt && t.title === item.title);
+        const mark = `${list.id} ${item.title}`;
+        if (dup || seen.has(mark)) continue;
+        seen.add(mark);
+        const repeat = item.repeat ?? 'none';
+        const weekly = repeat === 'custom' && item.repeatMeta?.unit === 'week';
+        await repo.tasksCreate({
+          listId: list.id,
+          title: item.title,
+          priority: 'normal',
+          itemType: item.type ?? null,
+          repeat,
+          repeatMeta: item.repeatMeta ?? null,
+          // سررسید اولیه: روزانه = امروز؛ هفتگی = نزدیک‌ترین روز انتخابی (نوبت بعدی با موتور تکرار)
+          dueDate: repeat !== 'none' ? (weekly ? nextWeekdayIso(item.repeatMeta!.days?.[0] ?? 6) : today) : null,
+          // لنگر یادآور — فقط آیتم‌های دارای ساعت در داده‌ی بسته
+          dueTime: item.dueTime ?? null,
+          reminderMinutes: item.dueTime ? (item.reminderMinutes ?? null) : null,
+        });
       }
     }
     await get().refresh();
     queueSync();
-    get().showToast(`بسته‌ی «${kit.title}» فعال شد و روتین‌هایش به لیست‌ها اضافه شد!`);
+    get().showToast(`بسته‌ی «${pack.title}» فعال شد — ${toFa(pack.lists.length)} لیست آماده است`);
+  },
+
+  /** بازنشانی بسته — حذف نرم لیست‌های بسته (با کلید یا نام) + بازگشت لیست پیش‌فرض اگر همه حذف شدند */
+  async resetJobPack(packId) {
+    const pack = JOB_PACKS.find((p) => p.id === packId);
+    if (!pack) return;
+    for (const l of findPackLists(get().lists, pack)) {
+      if (l) await repo.listsSoftDelete(l.id);
+    }
+    await get().refresh();
+    if (get().lists.length === 0) {
+      await ensureDefaultData();
+      await get().refresh();
+    }
+    queueSync();
+    get().showToast(`بسته‌ی «${pack.title}» بازنشانی شد — می‌توانی دوباره فعالش کنی`);
   },
 
   /* ================= فاز تریدر — چک‌لیست تریدر ================= */
@@ -1127,8 +1198,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   /**
    * فعال‌سازی ایدمپوتنت تمپلیت تریدر.
-   * گارد تکرار: هر ۵ لیست فقط با «نام دقیق» پیدا/ساخت می‌شوند و آیتم هم‌عنوانِ موجود در همان لیست دوباره ساخته نمی‌شود —
-   * یعنی حتی روی دستگاه دوم (بعد از سینک) فعال‌سازی دوباره هیچ تکراری نمی‌سازد.
+   * گارد تکرار (P2.0): هر ۵ لیست اول با کلید پایدار «trader.<index>» (فال‌بک نامی برای داده‌ی قدیمی)
+   * پیدا/ساخت می‌شود — تغییر نام لیست دیگر فعال‌سازی دوباره را تکراری نمی‌کند — و آیتم هم‌عنوانِ موجود
+   * در همان لیست دوباره ساخته نمی‌شود؛ حتی روی دستگاه دوم (بعد از سینک).
    */
   async activateTraderTemplate(sessionStart, sessionEnd) {
     const start = normalizeTime(sessionStart);
@@ -1138,15 +1210,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       return false;
     }
     const today = toIsoDate(new Date());
-    for (const def of TRADER_TEMPLATE) {
-      const existing = get().lists.find((x) => !x.deletedAt && x.name === def.name);
-      let list = existing;
+    const resolved: (ListEntity | undefined)[] = [];
+    for (let i = 0; i < TRADER_TEMPLATE.length; i++) {
+      const def = TRADER_TEMPLATE[i]!;
+      const key = TRADER_LIST_KEYS[i]!;
+      let list = findTemplateList(get().lists, key, def.name);
       if (!list) {
-        list = await repo.listsCreate({ name: def.name, emoji: def.emoji, color: def.color, pinned: def.pinned ?? false });
-      } else if (def.pinned && !list.pinned) {
-        // قول تمپلیت: «قوانین من» همیشه پین است — حتی اگر لیست از قبل وجود داشت
-        await repo.listsUpdate(list.id, { pinned: true });
+        list = await repo.listsCreate({
+          name: def.name,
+          emoji: def.emoji,
+          color: def.color,
+          pinned: def.pinned ?? false,
+          templateKey: key,
+        });
+      } else {
+        // تصاحب لیست قدیمی هم‌نام (داده‌ی پیش از کلید) + قول تمپلیت: «قوانین من» همیشه پین است
+        if (list.templateKey !== key) await repo.listsUpdate(list.id, { templateKey: key });
+        if (def.pinned && !list.pinned) await repo.listsUpdate(list.id, { pinned: true });
       }
+      resolved[i] = list;
       for (const item of def.items) {
         // ایدمپوتنس آیتم: هم‌عنوانِ زنده (تیک‌شده یا نه) دوباره ساخته نمی‌شود
         const dup = get().tasks.find((t) => t.listId === list!.id && !t.deletedAt && t.title === item.title);
@@ -1168,9 +1250,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // state تازه قبل از لنگرها — لنگر باید لیست تازه‌ساخته‌شده را ببیند
     await get().refresh();
     // کارهای لنگر یادآور سشن — از خط لوله‌ی یادآور بومی (dueTime + reminderMinutes + تکرار روزانه)
-    await upsertTraderAnchor(get, TRADER_ANCHOR_START, TRADER_PREMARKET_LIST, start, 30, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, resolved[1], start, 30, today);
     // «۳۰ دقیقه بعد از پایان» = سررسید پایان+۳۰ دقیقه با یادآور ۰ (Validator یادآور ≥ ۰ است)
-    await upsertTraderAnchor(get, TRADER_ANCHOR_END, TRADER_POSTMARKET_LIST, addMinutesToTime(end, 30), 0, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, resolved[3], addMinutesToTime(end, 30), 0, today);
     const pref: TraderPref = { activatedAt: new Date().toISOString(), start, end };
     await repo.prefsSet(TRADER_PREF_KEY, pref);
     await get().refresh();
@@ -1189,8 +1271,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     const today = toIsoDate(new Date());
-    await upsertTraderAnchor(get, TRADER_ANCHOR_START, TRADER_PREMARKET_LIST, start, 30, today);
-    await upsertTraderAnchor(get, TRADER_ANCHOR_END, TRADER_POSTMARKET_LIST, addMinutesToTime(end, 30), 0, today);
+    // لیست‌های لنگر با کلید/نام — تغییر نام توسط کاربر دیگر یادآورها را گم نمی‌کند
+    const found = findTraderLists(get().lists);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, found[1], start, 30, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, found[3], addMinutesToTime(end, 30), 0, today);
     const prev = get().traderPref;
     const pref: TraderPref = { activatedAt: prev?.activatedAt ?? new Date().toISOString(), start, end };
     await repo.prefsSet(TRADER_PREF_KEY, pref);
@@ -1200,11 +1284,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().showToast('ساعت سشن به‌روز شد — یادآورها دوباره برنامه‌ریزی شدند');
   },
 
-  /** بازنشانی به حالت پیش‌فرض: حذف نرم ۵ لیست (فقط با نام دقیق) + پاک‌کردن نشانگر — دیالوگ تأیید در UI */
+  /** بازنشانی به حالت پیش‌فرض: حذف نرم ۵ لیست (با کلید یا نام — حتی تغییرنام‌داده‌ها) + پاک‌کردن نشانگر — دیالوگ تأیید در UI */
   async resetTraderTemplate() {
     const lists = findTraderLists(get().lists);
     for (const l of lists) {
-      await repo.listsSoftDelete(l.id);
+      if (l) await repo.listsSoftDelete(l.id);
     }
     await repo.prefsSet(TRADER_PREF_KEY, null as unknown as TraderPref);
     await get().refresh();
@@ -1218,9 +1302,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().showToast('تمپلیت تریدر بازنشانی شد — می‌توانی دوباره فعال‌سازی کنی');
   },
 
-  /** ریست تیک‌های «قبل از معامله» — مقادیر و آیتم‌ها دست نمی‌خورند؛ فقط completedAt صفر می‌شود */
+  /** ریست تیک‌های «قبل از معامله» — مقادیر و آیتم‌ها دست نمی‌خورند؛ فقط completedAt صفر می‌شود (کلید-اول + فال‌بک نامی) */
   async resetPretradeTicks() {
-    const list = get().lists.find((l) => !l.deletedAt && l.name === TRADER_PRETRADE_LIST);
+    const list = findTemplateList(get().lists, TRADER_LIST_KEYS[2]!, TRADER_PRETRADE_LIST);
     if (!list) {
       get().showToast('لیست «قبل از معامله» پیدا نشد — اول تمپلیت را فعال کن');
       return;

@@ -132,7 +132,28 @@ final class Entities
         if (array_key_exists('pinned', $in)) {
             $cols['pinned'] = (int) (Validator::bool($in, 'pinned', false) ?? false);
         }
+        // P2.0 — کلید پایدار لیست قالبی: فقط وقتی کلید در ورودی باشد اعمال می‌شود (حتی در push کامل).
+        // APKهای قدیمی این کلید را نمی‌فرستند → مقدار سرور حفظ می‌شود (سازگاری پس‌رو — همان الگوی pinned)
+        if (array_key_exists('templateKey', $in)) {
+            $cols['template_key'] = self::templateKeyToSql($in['templateKey'] ?? null);
+        }
         return $cols;
+    }
+
+    /**
+     * P2.0 — کلید قالب: حروف کوچک لاتین/رقم/نقطه/خط‌تیره، حداکثر ۳۲ (هم‌قرارداد با db/templateKey.ts).
+     * ورودی نامعتبر = NULL — هیچ زباله‌ای وارد DB نمی‌شود و سینک هم رد نمی‌شود (همان رویکرد نوع آیتم ناشناخته).
+     */
+    private static function templateKeyToSql(mixed $raw): ?string
+    {
+        if (!is_string($raw)) {
+            return null;
+        }
+        $k = trim($raw);
+        if ($k === '' || strlen($k) > 32 || preg_match('/^[a-z0-9][a-z0-9.\-]*$/', $k) !== 1) {
+            return null;
+        }
+        return $k;
     }
 
     private static function normalizeTask(array $in, bool $partial): array
@@ -453,6 +474,10 @@ final class Entities
                     'sortOrder' => (int) $row['sort_order'],
                     // فاز تریدر — با ?? برای سازگاری با دیتابیسِ هنوز-مهاجرت‌نشده
                     'pinned' => (bool) ($row['pinned'] ?? 0),
+                    // P2.0 — کلید قالب (با ?? برای سازگاری با دیتابیسِ هنوز-مهاجرت‌نشده)
+                    'templateKey' => isset($row['template_key']) && $row['template_key'] !== null && $row['template_key'] !== ''
+                        ? (string) $row['template_key']
+                        : null,
                 ];
             case self::ENTITY_TASKS:
                 return $base + [

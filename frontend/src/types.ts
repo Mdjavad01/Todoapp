@@ -36,6 +36,13 @@ export interface ListEntity extends SyncBase {
   sortOrder: number;
   /** فاز تریدر — لیست پین‌شده: همیشه بالای فهرست (سطرهای قدیمی = undefined → ناپین) */
   pinned: boolean;
+  /**
+   * P2.0 — کلید داخلی قالب (هویت پایدار لیست قالبی — بدهی templateKey بسته شد).
+   * قالب «trader.0..4»، قالب‌های رایگان «tpl-*.0»، بسته‌های شغلی «kit-*.<index>» —
+   * حروف کوچک لاتین/رقم/نقطه/خط‌تیره، حداکثر ۳۲. سطرهای قدیمی/عادی = undefined/null.
+   * تشخیص همیشه اول با کلید، فال‌بک نامی برای داده‌ی قدیمی (db/templateKey.ts).
+   */
+  templateKey?: string | null;
 }
 
 /** گروه لیست‌ها (فاز ۲) — ترجیح نمایش سطح دستگاه؛ با خروج از حساب پاک می‌شود (wipe) */
@@ -105,7 +112,7 @@ export type ViewName =
   | 'planned'
   | 'all';
 
-/** قالب آماده — در فاز ۴ از سرور می‌آید؛ فعلاً کاتالوگ محلی برای حالت مهمان */
+/** قالب آماده — کاتالوگ محلی رایگان؛ فعال‌سازی ایدمپوتنت با کلید (P2.0) */
 export interface TemplateDef {
   id: string;
   emoji: string;
@@ -114,24 +121,44 @@ export interface TemplateDef {
   listName: string;
   color: ListColor;
   items: string[];
+  /** کلید پایدار لیست قالبی — «tpl-<id>.0» (db/templateKey.ts) */
+  templateKey: string;
 }
 
-/** بسته‌ی شغلی */
-export interface JobKitList {
+/* ---------------- P2.0 — بسته‌های شغلی (بازطراحی — داده‌ی خالص روی موتور فعلی) ---------------- */
+
+/** آیتم بسته — همان توانمندی‌های فاز تریدر: نوع آیتم + تکرار + (فقط لنگر یادآور) ساعت/یادآور */
+export interface JobPackItem {
+  title: string;
+  /** پیش‌فرض null = تیک ساده */
+  type?: TaskItemType;
+  /** پیش‌فرض 'none' */
+  repeat?: TaskEntity['repeat'];
+  /** فقط برای تکرار سفارشی هفتگی (روز شمسی ۰=شنبه…۶=جمعه) */
+  repeatMeta?: RepeatMeta | null;
+  /** فقط برای لنگر یادآور — «HH:mm» روی خود آیتم (همان خط لوله‌ی یادآور بومی) */
+  dueTime?: string;
+  /** چند دقیقه قبل از dueTime زنگ بزند (فقط لنگر) */
+  reminderMinutes?: number;
+}
+
+export interface JobPackList {
   name: string;
   emoji: string;
   color: ListColor;
-  items: string[];
+  pinned?: boolean;
+  /** شرح کوتاه لیست — در پیش‌نمایش بسته نمایش داده می‌شود */
+  guide: string;
+  items: JobPackItem[];
 }
 
-export interface JobKitDef {
+/** بسته‌ی شغلی — فقط داده؛ فعال‌سازی = ساخت لیست/کار با همان موتور فاز تریدر (هیچ موتور نو) */
+export interface JobPackDef {
   id: string;
   emoji: string;
   title: string;
   subtitle: string;
-  features: string[];
-  pro: boolean;
+  /** متن دکمه‌ی فعال‌سازی */
   cta: string;
-  /** روتین‌های واقعی بسته — با فعال‌سازی، به لیست‌های کاربر اضافه می‌شود (v16) */
-  lists: JobKitList[];
+  lists: JobPackList[];
 }

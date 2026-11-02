@@ -1,8 +1,9 @@
-import type { TemplateDef, JobKitDef } from '@/types';
+import type { TemplateDef } from '@/types';
 
 /**
- * کاتالوگ محلی قالب‌ها و بسته‌های شغلی (حالت مهمان).
- * در فاز ۴ این محتوا از سرور/پنل ادمین می‌آید.
+ * کاتالوگ محلی قالب‌های رایگان (حالت مهمان و همه).
+ * P2.0 — هر قالب یک کلید پایدار دارد («tpl-<id>.0») تا فعال‌سازی دوباره هیچ تکراری نسازد؛
+ * بسته‌های شغلی پرو به db/jobPacks.ts منتقل شدند (بازطراحی P2.0).
  */
 
 export const TEMPLATES: TemplateDef[] = [
@@ -13,6 +14,7 @@ export const TEMPLATES: TemplateDef[] = [
     subtitle: '۲۴ قلم کالای اساسی دسته‌بندی‌شده',
     listName: 'خرید سوپرمارکت',
     color: 'amber',
+    templateKey: 'tpl-market.0',
     items: [
       'نان سنگک',
       'شیر پرچرب',
@@ -47,6 +49,7 @@ export const TEMPLATES: TemplateDef[] = [
     subtitle: 'بودجه‌بندی دروس عمومی و اختصاصی',
     listName: 'برنامه کنکور',
     color: 'indigo',
+    templateKey: 'tpl-konkur.0',
     items: [
       'مرور تست ریاضی — فصل حد',
       'حل ۲۰ تست فیزیک حرکت‌شناسی',
@@ -67,6 +70,7 @@ export const TEMPLATES: TemplateDef[] = [
     subtitle: 'مدارک، دارو، شارژر و لوازم بهداشتی',
     listName: 'وسایل سفر',
     color: 'teal',
+    templateKey: 'tpl-travel.0',
     items: [
       'کارت ملی و شناسنامه',
       'بلیط و رزرو هتل',
@@ -89,6 +93,7 @@ export const TEMPLATES: TemplateDef[] = [
     subtitle: 'تفکیک اتاق به اتاق و نظافت عمیق',
     listName: 'خانه‌تکانی',
     color: 'rose',
+    templateKey: 'tpl-khanetakani.0',
     items: [
       'آشپزخانه: شست‌وشوی کابینت‌ها',
       'آشپزخانه: یخچال و فریزر',
@@ -101,55 +106,6 @@ export const TEMPLATES: TemplateDef[] = [
       'سالن: شست‌وشوی فرش و موکت',
       'بالکن: نظافت شیشه‌ها',
       'پارکینگ/انبار: مرتب‌سازی',
-    ],
-  },
-];
-
-export const JOB_KITS: JobKitDef[] = [
-  {
-    id: 'kit-student',
-    emoji: '🎓',
-    title: 'بسته‌ی دانش‌آموز و کنکوری',
-    subtitle: 'مرور منحنی فراموشی ابینگهاوس و تست‌زنی',
-    features: [],
-    pro: true,
-    cta: 'دریافت بسته آموزشی',
-    lists: [
-      {
-        name: 'برنامه مطالعه روزانه',
-        emoji: '🎓',
-        color: 'indigo',
-        items: [
-          'مرور کارت‌های لایتنر (۲۰ دقیقه)',
-          'تست‌زنی تایم‌دار درس اصلی امروز',
-          'مرور ابینگهاوس مطالب ۱/۷/۳۰ روز قبل',
-          'خلاصه‌نویسی نکات مهم درس جدید',
-          'رفع اشکال سوال‌های دشوار روز',
-        ],
-      },
-    ],
-  },
-  {
-    id: 'kit-freelance',
-    emoji: '💼',
-    title: 'بسته‌ی فریلنسر و دورکار',
-    subtitle: 'تایم‌شیت هفتگی، تسویه‌حساب پروژه‌ها و ددلاین‌ها',
-    features: [],
-    pro: true,
-    cta: 'دریافت بسته فریلنسر',
-    lists: [
-      {
-        name: 'روتین کاری روزانه',
-        emoji: '💼',
-        color: 'emerald',
-        items: [
-          'بررسی ایمیل و پیام‌های کارفرماها',
-          'آپدیت تایم‌شیت پروژه‌های جاری',
-          'پیگیری وضعیت فاکتورها و تسویه‌حساب‌ها',
-          'بررسی ددلاین‌های این هفته و تنظیم اولویت‌ها',
-          'بکاپ فایل‌های پروژه',
-        ],
-      },
     ],
   },
 ];

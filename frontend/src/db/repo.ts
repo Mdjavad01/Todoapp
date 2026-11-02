@@ -17,7 +17,14 @@ export async function listsAll(): Promise<ListEntity[]> {
   return rows.filter((r) => !r.deletedAt).sort(compareLists);
 }
 
-export async function listsCreate(input: { name: string; emoji: string; color: ListEntity['color']; pinned?: boolean }): Promise<ListEntity> {
+export async function listsCreate(input: {
+  name: string;
+  emoji: string;
+  color: ListEntity['color'];
+  pinned?: boolean;
+  /** P2.0 — کلید پایدار لیست قالبی (فقط فعال‌سازی قالب/بسته) */
+  templateKey?: string;
+}): Promise<ListEntity> {
   const now = nowIso();
   // انتهای ترتیب = بزرگ‌ترین sortOrder زنده + ۱ (تومب‌استون‌ها شمرده نمی‌شوند — فاز ۲)
   const live = (await idbGetAll<ListEntity>(STORES.lists)).filter((r) => !r.deletedAt);
@@ -29,6 +36,7 @@ export async function listsCreate(input: { name: string; emoji: string; color: L
     color: input.color,
     sortOrder,
     pinned: input.pinned ?? false,
+    ...(input.templateKey ? { templateKey: input.templateKey } : {}),
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -39,7 +47,7 @@ export async function listsCreate(input: { name: string; emoji: string; color: L
 
 export async function listsUpdate(
   id: string,
-  patch: Partial<Pick<ListEntity, 'name' | 'emoji' | 'color' | 'sortOrder' | 'pinned'>>,
+  patch: Partial<Pick<ListEntity, 'name' | 'emoji' | 'color' | 'sortOrder' | 'pinned' | 'templateKey'>>,
 ): Promise<void> {
   const row = await idbGet<ListEntity>(STORES.lists, id);
   if (!row) return;

@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS `lists` (
   `color`      VARCHAR(16)  NOT NULL DEFAULT 'teal',
   `sort_order` INT          NOT NULL DEFAULT 0,
   `pinned`     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'لیست پین‌شده — همیشه بالای فهرست (فاز تریدر)',
+  `template_key` VARCHAR(32) NULL DEFAULT NULL COMMENT 'کلید پایدار لیست قالبی — بستن بدهی templateKey (P2.0)',
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME     NULL DEFAULT NULL,
