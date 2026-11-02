@@ -184,7 +184,10 @@ await sleep(400);
 await page.locator(`[aria-label*="باز کردن لیست قوانین من"]`).click();
 await page.waitForSelector('#view-listView', { timeout: 8000 });
 await sleep(400);
-const noteField = page.locator('input[aria-label="یادداشت کوتاه"]').first();
+const noteField = page
+  .locator('#view-listView div.rounded-2xl', { hasText: 'حداکثر ضرر روزانه' })
+  .last() // درونی‌ترین = خود کارت (بزرگ‌ترها ظرف‌های بیرونی‌اند)
+  .locator('input[aria-label="یادداشت کوتاه"]');
 await noteField.fill('۲٪ سرمایه');
 await noteField.press('Enter'); // blur → ذخیره
 await sleep(600);
@@ -214,7 +217,10 @@ for (let i = 0; i < 10; i++) {
   if (probe === '۲٪ سرمایه') break;
   await sleep(300);
 }
-const numField = page.locator('input[aria-label="مقدار عددی"]').first();
+const numField = page
+  .locator('#view-listView div.rounded-2xl', { hasText: 'حداکثر تعداد معامله در روز' })
+  .last()
+  .locator('input[aria-label="مقدار عددی"]');
 await numField.fill('3');
 await numField.press('Enter');
 await sleep(400);
@@ -363,30 +369,34 @@ check('بازیابی pinned را هم برگرداند', idb.lists.find((l) => 
 
 /* ---------- ۸) سازگاری با داده‌ی قدیمی (بدون itemType/pinned) ---------- */
 console.log('— بلوک ۸: سازگاری با داده‌ی قدیمی');
-await page.evaluate(async () => {
-  const req = indexedDB.open('karam-db');
-  req.onsuccess = () => {
-    const db = req.result;
-    const tx = db.transaction(['lists', 'tasks'], 'readwrite');
-    const lists = tx.objectStore('lists');
-    const tasks = tx.objectStore('tasks');
-    const now = new Date().toISOString();
-    void lists; void tasks;
-    lists.put({
-      id: 'legacy-list-1', name: 'لیست قدیمی', emoji: '🧩', color: 'teal', sortOrder: 99,
-      createdAt: now, updatedAt: now, deletedAt: null,
-      // بدون pinned — سطر قدیمی
-    });
-    tasks.put({
-      id: 'legacy-task-1', listId: 'legacy-list-1', title: 'کار قدیمی بی‌نوع', notes: '',
-      priority: 'normal', dueDate: null, dueTime: null, reminderMinutes: null,
-      repeat: 'none', starred: false, repeatMeta: null, completedAt: null,
-      createdAt: now, updatedAt: now, deletedAt: null,
-      // بدون itemType/itemValue — سطر قدیمی
-    });
-    setTimeout(() => db.close(), 300);
-  };
-});
+await page.evaluate(() =>
+  new Promise((resolve, reject) => {
+    const req = indexedDB.open('karam-db');
+    req.onerror = () => reject(new Error('idb open failed'));
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(['lists', 'tasks'], 'readwrite');
+      const now = new Date().toISOString();
+      tx.objectStore('lists').put({
+        id: 'legacy-list-1', name: 'لیست قدیمی', emoji: '🧩', color: 'teal', sortOrder: 99,
+        createdAt: now, updatedAt: now, deletedAt: null,
+        // بدون pinned — سطر قدیمی
+      });
+      tx.objectStore('tasks').put({
+        id: 'legacy-task-1', listId: 'legacy-list-1', title: 'کار قدیمی بی‌نوع', notes: '',
+        priority: 'normal', dueDate: null, dueTime: null, reminderMinutes: null,
+        repeat: 'none', starred: false, repeatMeta: null, completedAt: null,
+        createdAt: now, updatedAt: now, deletedAt: null,
+        // بدون itemType/itemValue — سطر قدیمی
+      });
+      // ⚠️ قطعی: resolve فقط بعد از commit واقعی تراکنش — وگرنه reload قبل از commit
+      // نوشته‌ها را گم می‌کند (باگ flaky قبلی این بلوک)
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(new Error('legacy tx failed')); };
+      tx.onabort = () => { db.close(); reject(new Error('legacy tx aborted')); };
+    };
+  }),
+);
 await page.reload({ waitUntil: 'domcontentloaded' });
 await waitApp(page);
 await dismissFirstRunLayers(page);
