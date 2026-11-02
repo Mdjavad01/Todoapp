@@ -8,6 +8,12 @@ export type Priority = 'urgent' | 'high' | 'normal' | 'low';
 export type Repeat = 'none' | 'daily' | 'workdays' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 export type ListColor = 'teal' | 'amber' | 'indigo' | 'emerald' | 'rose' | 'purple';
 
+/** فاز تریدر — انواع آیتم چک‌لیست: تیک ساده / تیک+عدد / تیک+یادداشت کوتاه / انتخاب بله‑تا حدی‑نه / امتیاز ۱ تا ۱۰ */
+export type TaskItemType = 'check' | 'num' | 'note' | 'choice' | 'score';
+/** فاز تریدر — برچسب گزینه‌های «انتخاب» (قرارداد مقدار ذخیره‌شده در itemValue) */
+export const CHOICE_VALUES = ['yes', 'partial', 'no'] as const;
+export type TaskItemChoice = (typeof CHOICE_VALUES)[number];
+
 /** تنظیم تکرار سفارشی — هم‌شکل lib/repeat.ts RepeatMeta؛ سمت سرور JSON معتبر نگهداری می‌شود */
 export type RepeatMeta = import('./lib/repeat').RepeatMeta;
 
@@ -28,6 +34,8 @@ export interface ListEntity extends SyncBase {
   emoji: string;
   color: ListColor;
   sortOrder: number;
+  /** فاز تریدر — لیست پین‌شده: همیشه بالای فهرست (سطرهای قدیمی = undefined → ناپین) */
+  pinned: boolean;
 }
 
 /** گروه لیست‌ها (فاز ۲) — ترجیح نمایش سطح دستگاه؛ با خروج از حساب پاک می‌شود (wipe) */
@@ -57,6 +65,10 @@ export interface TaskEntity extends SyncBase {
   starred: boolean;
   /** فاز ۳ — تنظیم تکرار سفارشی (فقط با repeat='custom')؛ سمت سرور JSON معتبر */
   repeatMeta: import('./lib/repeat').RepeatMeta | null;
+  /** فاز تریدر — نوع آیتم؛ null = تیک ساده (سازگار با داده‌ی قدیمی و APKهای قدیمی) */
+  itemType: TaskItemType | null;
+  /** فاز تریدر — مقدار آیتم (عدد/انتخاب/امتیاز به‌صورت رشته لاتین)؛ یادداشتِ کوتاه هم همین‌جاست (notes = یادداشت بلند) */
+  itemValue: string | null;
   completedAt: string | null;
 }
 

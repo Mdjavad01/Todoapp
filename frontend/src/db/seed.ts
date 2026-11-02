@@ -37,6 +37,7 @@ export async function ensureDefaultData(): Promise<void> {
       emoji: '🗂️',
       color: 'teal',
       sortOrder: 0,
+      pinned: false,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

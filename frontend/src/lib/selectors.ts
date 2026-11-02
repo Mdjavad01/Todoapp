@@ -147,8 +147,12 @@ export const PRIORITY_ORDER: Record<TaskEntity['priority'], number> = { urgent: 
 
 const DUE_FAR = '9999-99-99';
 
-/** مقایسه‌ی قطعی لیست‌ها: sortOrder سپس createdAt سپس id — پایدار و یکسان بین دستگاه‌ها پس از سینک */
+/** مقایسه‌ی قطعی لیست‌ها: پین‌شده‌ها اول (فاز تریدر) سپس sortOrder سپس createdAt سپس id — پایدار و یکسان بین دستگاه‌ها پس از سینک */
 export function compareLists(a: ListEntity, b: ListEntity): number {
+  // سطرهای قدیمی/مهاجرت‌نشده pinned ندارند (undefined) = ناپین
+  const ap = a.pinned ? 1 : 0;
+  const bp = b.pinned ? 1 : 0;
+  if (ap !== bp) return bp - ap;
   return a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 

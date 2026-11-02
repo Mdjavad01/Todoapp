@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { TaskItemFields } from './TaskItemFields';
 import { useAppStore } from '@/store/useAppStore';
 import { relativeDayLabel, faShort, faTime, parseIsoDate, toFa } from '@/lib/format';
 import { PRIORITY_BADGE, REPEAT_LABEL } from '@/lib/selectors';
@@ -66,6 +67,8 @@ export function TaskCard({
           ) : null}
           {task.title}
         </h3>
+        {/* فاز تریدر — فیلدهای سریع مقدار (عدد/یادداشت/انتخاب/امتیاز) — تیک مستقل می‌ماند */}
+        <TaskItemFields task={task} />
         {task.notes ? <p className="text-body-sm text-on-surface-variant mt-0.5">{task.notes}</p> : null}
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
@@ -115,17 +118,20 @@ export function TaskCard({
   );
 }
 
-/** ردیف کار انجام‌شده (آکاردئون) */
-export function CompletedRow({ title, when }: { title: string; when: string }) {
+/** ردیف کار انجام‌شده (آکاردئون) — detail = خلاصه‌ی مقدار آیتم تریدر (اختیاری) */
+export function CompletedRow({ title, when, detail }: { title: string; when: string; detail?: string }) {
   return (
     <div className="p-3 bg-surface-container-low dark:bg-slate-800/50 rounded-xl flex items-center justify-between opacity-60">
-      <div className="flex items-center gap-2.5">
-        <div className="w-5 h-5 rounded-md bg-primary flex items-center justify-center text-white">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="w-5 h-5 rounded-md bg-primary flex items-center justify-center text-white shrink-0">
           <Icon name="check" size={13} />
         </div>
-        <span className="line-through text-body-sm font-semibold">{title}</span>
+        <span className="line-through text-body-sm font-semibold truncate">
+          {title}
+          {detail ? <span className="text-primary font-bold no-underline"> — {detail}</span> : null}
+        </span>
       </div>
-      <span className="text-[11px] text-outline">{when}</span>
+      <span className="text-[11px] text-outline shrink-0">{when}</span>
     </div>
   );
 }

@@ -1,7 +1,21 @@
 import { create } from 'zustand';
-import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef } from '@/types';
+import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobKitDef, TaskItemType } from '@/types';
 import * as repo from '@/db/repo';
 import { ensureDefaultData } from '@/db/seed';
+import {
+  TRADER_TEMPLATE,
+  TRADER_ANCHOR_START,
+  TRADER_ANCHOR_END,
+  TRADER_PREMARKET_LIST,
+  TRADER_PRETRADE_LIST,
+  TRADER_POSTMARKET_LIST,
+  TRADER_PREF_KEY,
+  normalizeTime,
+  addMinutesToTime,
+  nextWeekdayIso,
+  findTraderLists,
+  type TraderPref,
+} from '@/db/traderTemplate';
 import { toIsoDate, faShort, toFa } from '@/lib/format';
 import { defaultListId, sortedLists } from '@/lib/selectors';
 import { pruneMyDay, type RepeatMeta } from '@/lib/repeat';
@@ -212,7 +226,7 @@ interface AppState {
   toggleTask(id: string): Promise<void>;
   addQuickTask(input: { title: string; listId: string; dueDate: string | null; dueTime?: string | null; titleText?: string; priority?: TaskEntity['priority']; repeat?: TaskEntity['repeat']; repeatMeta?: RepeatMeta | null }): Promise<string | null>;
   addInlineTask(listId: string, title: string): Promise<void>;
-  updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat' | 'repeatMeta' | 'starred' | 'listId'>>): Promise<void>;
+  updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat' | 'repeatMeta' | 'starred' | 'listId' | 'itemType' | 'itemValue' | 'completedAt'>>): Promise<void>;
   deleteTask(id: string): Promise<void>;
   moveOverdueToToday(): Promise<void>;
   toggleSubtask(id: string): Promise<void>;
@@ -234,6 +248,24 @@ interface AppState {
   createList(name: string, emoji: string): Promise<void>;
   applyTemplate(tpl: TemplateDef): Promise<void>;
   applyJobKit(kit: JobKitDef): Promise<void>;
+
+  /* ---- فاز تریدر — چک‌لیست تریدر ---- */
+  /** فعال‌سازی تمپلیت تریدر با ساعت شروع/پایان سشن — ایدمپوتنت (لیست موجود = بدون تکرار) */
+  activateTraderTemplate(sessionStart: string, sessionEnd: string): Promise<boolean>;
+  /** تغییر ساعت سشن — فقط کارهای لنگر یادآور به‌روز می‌شوند */
+  setTraderSessionTimes(sessionStart: string, sessionEnd: string): Promise<void>;
+  /** بازنشانی به حالت پیش‌فرض: حذف نرم ۵ لیست تریدر + پاک‌کردن نشانگر (دیالوگ تأیید در UI) */
+  resetTraderTemplate(): Promise<void>;
+  /** ریست تیک‌های لیست «قبل از معامله» (مقادیر دست نمی‌خورند) */
+  resetPretradeTicks(): Promise<void>;
+  /** ذخیره‌ی نوع/مقدار آیتم (فیلدهای سریع چک‌لیست تریدر) */
+  updateTaskValue(id: string, patch: { itemType?: TaskItemType | null; itemValue?: string | null }): Promise<void>;
+  /** پین/رفع پین لیست — پین‌شده‌ها همیشه اول فهرست */
+  setListPinned(id: string, pinned: boolean): Promise<void>;
+  /** وضعیت نشانگر pref تریدر (برای حالت دکمه) */
+  traderPref: TraderPref | null;
+  /** تازه‌کردن pref تریدر از مخزن (بعد از init/refresh) */
+  reloadTraderPref(): Promise<void>;
 
   /* ---- فاز ۲ — قابلیت کامل لیست‌ها ---- */
   openEditList(id: string): void;
@@ -258,6 +290,35 @@ interface AppState {
   setListGroup(listId: string, groupId: string | null): void;
   /** فاز الف — جمع/باز کردن گروه در خانه */
   toggleGroupCollapsed(groupId: string): void;
+}
+
+/** فاز تریدر — ساخت/به‌روزرسانی کارِ لنگرِ یادآور سشن (داخل خود لیست؛ همان خط لوله‌ی یادآور بومی — بدون سیستم موازی) */
+async function upsertTraderAnchor(
+  get: () => Pick<AppState, 'lists' | 'tasks'>,
+  title: string,
+  listName: string,
+  dueTime: string,
+  reminderMinutes: number,
+  dueDate: string,
+): Promise<void> {
+  const list = get().lists.find((l) => !l.deletedAt && l.name === listName);
+  if (!list) return;
+  const existing = get().tasks.find((t) => !t.deletedAt && t.listId === list.id && t.title === title);
+  if (existing) {
+    if (existing.dueTime !== dueTime || existing.reminderMinutes !== reminderMinutes) {
+      await repo.tasksUpdate(existing.id, { dueTime, reminderMinutes, dueDate: existing.dueDate ?? dueDate });
+    }
+    return;
+  }
+  await repo.tasksCreate({
+    listId: list.id,
+    title,
+    priority: 'normal',
+    dueDate,
+    dueTime,
+    reminderMinutes,
+    repeat: 'daily', // تیکِ امروز → نوبت فردا با همان ساعت — زنگ ادامه دارد
+  });
 }
 
 function applyAccent(a: AccentColor): void {
@@ -340,6 +401,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   premium: { loaded: false, isPremium: false, lifetime: false, daysLeft: null, plan: null, source: null },
   paymentResult: null,
 
+  /* فاز تریدر — نشانگر فعال‌سازی (سطح دستگاه؛ گارد بین دستگاهی با نام دقیق لیست‌هاست) */
+  traderPref: null,
+
   groups: [],
   groupsCollapsed: [],
   hubHidden: [],
@@ -380,6 +444,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (myDayIds.length !== rawMyDay.length) {
       void repo.prefsSet('myday-ids', myDayIds);
     }
+    // فاز تریدر — نشانگر فعال‌سازی تمپلیت (ساعت سشن برای کارت تریدر)
+    const traderPref = (prefs.find((p) => p.key === TRADER_PREF_KEY)?.value as TraderPref | undefined) ?? null;
     // فاز ۳ — قفل واقعی: کلید «biometricLock» قبلاً کلید نمایشی بی‌اثری با پیش‌فرض روشن بود؛
     // کاربری که هرگز آن را لمس نکرده نباید ناگهان قفل ببیند → کلید نبودن = خاموش (فعال‌سازی صریح لازم است)
     const biometricRaw = prefs.find((p) => p.key === 'biometricLock');
@@ -390,7 +456,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (savedName === 'علی') {
       void repo.prefsSet('userName', '');
     }
-    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, groupsCollapsed, hubHidden, listSorts, taskOrders, myDayIds });
+    set({ dark, accent, fontScale, biometricLock: biometric, alerts, userName, coachAdd: !coachSeen, groups, groupsCollapsed, hubHidden, listSorts, taskOrders, myDayIds, traderPref });
     // فاز ۴ — ترجیح واقعی اعلان‌ها خوانده شد؛ بازبینی اجباری (اگر خاموش باشد زنگ‌های اولیه پاک می‌شوند)
     void syncReminders(get().tasks, alerts, true);
     applyDark(dark);
@@ -1050,6 +1116,136 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refresh();
     queueSync();
     get().showToast(`بسته‌ی «${kit.title}» فعال شد و روتین‌هایش به لیست‌ها اضافه شد!`);
+  },
+
+  /* ================= فاز تریدر — چک‌لیست تریدر ================= */
+
+  async reloadTraderPref() {
+    const p = await repo.prefsGet<TraderPref>(TRADER_PREF_KEY, null as unknown as TraderPref);
+    set({ traderPref: p ?? null });
+  },
+
+  /**
+   * فعال‌سازی ایدمپوتنت تمپلیت تریدر.
+   * گارد تکرار: هر ۵ لیست فقط با «نام دقیق» پیدا/ساخت می‌شوند و آیتم هم‌عنوانِ موجود در همان لیست دوباره ساخته نمی‌شود —
+   * یعنی حتی روی دستگاه دوم (بعد از سینک) فعال‌سازی دوباره هیچ تکراری نمی‌سازد.
+   */
+  async activateTraderTemplate(sessionStart, sessionEnd) {
+    const start = normalizeTime(sessionStart);
+    const end = normalizeTime(sessionEnd);
+    if (!start || !end) {
+      get().showToast('ساعت شروع و پایان سشن را درست وارد کنید (مثلاً ۰۹:۳۰)');
+      return false;
+    }
+    const today = toIsoDate(new Date());
+    for (const def of TRADER_TEMPLATE) {
+      const existing = get().lists.find((x) => !x.deletedAt && x.name === def.name);
+      let list = existing;
+      if (!list) {
+        list = await repo.listsCreate({ name: def.name, emoji: def.emoji, color: def.color, pinned: def.pinned ?? false });
+      } else if (def.pinned && !list.pinned) {
+        // قول تمپلیت: «قوانین من» همیشه پین است — حتی اگر لیست از قبل وجود داشت
+        await repo.listsUpdate(list.id, { pinned: true });
+      }
+      for (const item of def.items) {
+        // ایدمپوتنس آیتم: هم‌عنوانِ زنده (تیک‌شده یا نه) دوباره ساخته نمی‌شود
+        const dup = get().tasks.find((t) => t.listId === list!.id && !t.deletedAt && t.title === item.title);
+        if (dup) continue;
+        const repeat = item.repeat ?? 'none';
+        const weekly = repeat === 'custom' && item.repeatMeta?.unit === 'week';
+        await repo.tasksCreate({
+          listId: list.id,
+          title: item.title,
+          priority: 'normal',
+          itemType: item.type ?? null,
+          repeat,
+          repeatMeta: item.repeatMeta ?? null,
+          // سررسید اولیه: کارهای روزانه = امروز (نوبت بعدی بعد از تیک با موتور تکرار)؛ هفتگی = نزدیک‌ترین روز انتخابی
+          dueDate: repeat !== 'none' ? (weekly ? nextWeekdayIso(item.repeatMeta!.days?.[0] ?? 6) : today) : null,
+        });
+      }
+    }
+    // state تازه قبل از لنگرها — لنگر باید لیست تازه‌ساخته‌شده را ببیند
+    await get().refresh();
+    // کارهای لنگر یادآور سشن — از خط لوله‌ی یادآور بومی (dueTime + reminderMinutes + تکرار روزانه)
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, TRADER_PREMARKET_LIST, start, 30, today);
+    // «۳۰ دقیقه بعد از پایان» = سررسید پایان+۳۰ دقیقه با یادآور ۰ (Validator یادآور ≥ ۰ است)
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, TRADER_POSTMARKET_LIST, addMinutesToTime(end, 30), 0, today);
+    const pref: TraderPref = { activatedAt: new Date().toISOString(), start, end };
+    await repo.prefsSet(TRADER_PREF_KEY, pref);
+    await get().refresh();
+    await get().reloadTraderPref();
+    queueSync();
+    get().showToast('تمپلیت تریدر فعال شد — ۵ لیست چک‌لیست آماده است');
+    return true;
+  },
+
+  /** تغییر ساعت سشن — فقط کارهای لنگر (کاربر همان‌جا که همیشه است می‌تواند تک‌تک هم عوض کند) */
+  async setTraderSessionTimes(sessionStart, sessionEnd) {
+    const start = normalizeTime(sessionStart);
+    const end = normalizeTime(sessionEnd);
+    if (!start || !end) {
+      get().showToast('ساعت شروع و پایان سشن را درست وارد کنید (مثلاً ۰۹:۳۰)');
+      return;
+    }
+    const today = toIsoDate(new Date());
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, TRADER_PREMARKET_LIST, start, 30, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, TRADER_POSTMARKET_LIST, addMinutesToTime(end, 30), 0, today);
+    const prev = get().traderPref;
+    const pref: TraderPref = { activatedAt: prev?.activatedAt ?? new Date().toISOString(), start, end };
+    await repo.prefsSet(TRADER_PREF_KEY, pref);
+    await get().refresh();
+    await get().reloadTraderPref();
+    queueSync();
+    get().showToast('ساعت سشن به‌روز شد — یادآورها دوباره برنامه‌ریزی شدند');
+  },
+
+  /** بازنشانی به حالت پیش‌فرض: حذف نرم ۵ لیست (فقط با نام دقیق) + پاک‌کردن نشانگر — دیالوگ تأیید در UI */
+  async resetTraderTemplate() {
+    const lists = findTraderLists(get().lists);
+    for (const l of lists) {
+      await repo.listsSoftDelete(l.id);
+    }
+    await repo.prefsSet(TRADER_PREF_KEY, null as unknown as TraderPref);
+    await get().refresh();
+    // اگر همه‌ی لیست‌ها همین ۵ تا بودند، حداقل یک لیست پیش‌فرض برمی‌گردد (قاعده‌ی همیشه-یک-لیست) — چک بعد از refresh
+    if (get().lists.length === 0) {
+      await ensureDefaultData();
+      await get().refresh();
+    }
+    await get().reloadTraderPref();
+    queueSync();
+    get().showToast('تمپلیت تریدر بازنشانی شد — می‌توانی دوباره فعال‌سازی کنی');
+  },
+
+  /** ریست تیک‌های «قبل از معامله» — مقادیر و آیتم‌ها دست نمی‌خورند؛ فقط completedAt صفر می‌شود */
+  async resetPretradeTicks() {
+    const list = get().lists.find((l) => !l.deletedAt && l.name === TRADER_PRETRADE_LIST);
+    if (!list) {
+      get().showToast('لیست «قبل از معامله» پیدا نشد — اول تمپلیت را فعال کن');
+      return;
+    }
+    const done = get().tasks.filter((t) => t.listId === list.id && !t.deletedAt && t.completedAt);
+    for (const t of done) {
+      await repo.tasksUpdate(t.id, { completedAt: null });
+    }
+    await get().refresh();
+    queueSync();
+    get().showToast(done.length > 0 ? `تیک‌های «قبل از معامله» صفر شد (${toFa(done.length)} آیتم)` : 'همه‌ی تیک‌ها از قبل صفر بودند');
+  },
+
+  /** ذخیره‌ی سریع نوع/مقدار آیتم (فیلدهای عدد/یادداشت/انتخاب/امتیاز) */
+  async updateTaskValue(id, patch) {
+    await repo.tasksUpdate(id, patch);
+    await get().refresh();
+    queueSync();
+  },
+
+  /** پین/رفع پین لیست — پین‌شده‌ها همیشه اول فهرست (selectors.compareLists) */
+  async setListPinned(id, pinned) {
+    await repo.listsUpdate(id, { pinned });
+    await get().refresh();
+    queueSync();
   },
 
   /* ================= فاز ۲ — قابلیت کامل لیست‌ها ================= */

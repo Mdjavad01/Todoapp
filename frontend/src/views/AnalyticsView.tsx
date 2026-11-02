@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { weekBars as weekBarsOf, weekCompletionRate, currentStreak } from '@/lib/selectors';
+import { traderDisciplineAvg } from '@/db/traderTemplate';
 import { toFa } from '@/lib/format';
 import type { TaskEntity } from '@/types';
 
@@ -104,6 +106,8 @@ export function AnalyticsView() {
   const streak = currentStreak(tasks, today);
   const isPro = premium.loaded && premium.isPremium;
   const deep = deepAnalysis(tasks, today);
+  // فاز تریدر — میانگین امتیاز انضباط ۷ روز اخیر (آیتم‌های «امتیاز انضباط امروز» چک‌لیست تریدر) — داخل همان گیت پرو
+  const discipline = useMemo(() => traderDisciplineAvg(tasks, today), [tasks, today]);
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-analytics">
@@ -199,6 +203,20 @@ export function AnalyticsView() {
               برای تحلیل دقیق‌تر، چند کار دیگر را کامل کنید — ساعات اوج تمرکز، بهترین روز هفته و روند شما این‌جا خودکار ساخته می‌شود.
             </p>
           )}
+          {/* فاز تریدر — میانگین انضباط هفته از آیتم‌های امتیاز «بعد از بازار» (همان قفل «تحلیل عمقی») */}
+          <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-on-surface-variant">میانگین امتیاز انضباط تریدر (۷ روز اخیر)</span>
+              {discipline.avg !== null ? (
+                <span className="text-[10px] text-on-surface-variant">از {toFa(discipline.count)} روز ثبت‌شده در «بعد از بازار»</span>
+              ) : (
+                <span className="text-[10px] text-on-surface-variant">هنوز داده‌ای نیست — با پرکردن «بعد از بازار» ساخته می‌شود</span>
+              )}
+            </div>
+            <span className="text-headline-sm font-black text-secondary shrink-0">
+              {discipline.avg !== null ? `${toFa(discipline.avg)} از ${toFa(10)}` : '—'}
+            </span>
+          </div>
         </div>
       ) : (
         <div

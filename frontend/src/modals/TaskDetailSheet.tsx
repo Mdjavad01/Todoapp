@@ -15,7 +15,7 @@ import {
 } from '@/lib/repeat';
 import { faShort, parseIsoDate, faTime } from '@/lib/format';
 import { ensureRemindersPermissionNow } from '@/lib/reminderScheduler';
-import type { TaskEntity } from '@/types';
+import type { TaskEntity, TaskItemType } from '@/types';
 
 const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: null, label: 'بدون یادآور' },
@@ -28,6 +28,15 @@ const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
 
 /** فاز ۳ — هفت نوع تکرار (ماهانه/سالانه شمسی + سفارشی) */
 const REPEAT_OPTIONS: TaskEntity['repeat'][] = ['none', 'daily', 'workdays', 'weekly', 'monthly', 'yearly', 'custom'];
+
+/** فاز تریدر — انواع آیتم چک‌لیست (null = تیک ساده) */
+const ITEM_TYPE_OPTIONS: { value: TaskItemType; label: string }[] = [
+  { value: 'check', label: 'تیک ساده' },
+  { value: 'num', label: 'عدد' },
+  { value: 'note', label: 'یادداشت کوتاه' },
+  { value: 'choice', label: 'بله/تا حدی/نه' },
+  { value: 'score', label: 'امتیاز ۱–۱۰' },
+];
 
 /** مودال ۵: جزئیات و ویرایش کار — نسخه‌ی کامل فاز ۳:
  *  سررسید+ساعت، اولویت، ستاره، روزهای من، انتقال به لیست، تکرار شمسی با سفارشی، زیرکار حذف/ویرایش.
@@ -233,6 +242,38 @@ export function TaskDetailSheet() {
             onChange={(e) => setNotes(e.target.value)}
             aria-label="یادداشت"
           />
+
+          {/* فاز تریدر — نوع آیتم: تیک ساده / عدد / یادداشت کوتاه / انتخاب / امتیاز — ذخیره‌ی فوری */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] text-outline">نوع آیتم (چک‌لیست تریدر):</span>
+            <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="نوع آیتم">
+              {ITEM_TYPE_OPTIONS.map((o) => {
+                const current = task?.itemType ?? 'check';
+                const active = current === o.value;
+                return (
+                  <button
+                    key={o.value}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                      active
+                        ? 'bg-primary text-on-primary border-primary'
+                        : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant border-outline-variant/40 hover:border-primary/50'
+                    }`}
+                    onClick={() => {
+                      if (!task || active) return;
+                      updateTask(task.id, {
+                        itemType: o.value === 'check' ? null : o.value,
+                        itemValue: o.value === 'check' ? null : task.itemValue,
+                      });
+                    }}
+                    role="radio"
+                    aria-checked={active}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {voiceAvailable ? (
             <button

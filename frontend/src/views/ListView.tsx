@@ -5,6 +5,8 @@ import { useAppStore } from '@/store/useAppStore';
 import { listProgress, sortTasks, LIST_SORTS } from '@/lib/selectors';
 import { useDragSort } from '@/lib/dragSort';
 import { toFa, relativeDayLabel } from '@/lib/format';
+import { TRADER_PREMARKET_LIST, TRADER_PRETRADE_LIST, TRADER_PRETRADE_FOOTER, traderRulesValues } from '@/db/traderTemplate';
+import { itemValueSummary } from '@/components/TaskItemFields';
 import type { TaskEntity } from '@/types';
 
 type ListFilter = 'all' | 'urgent' | 'done';
@@ -37,6 +39,10 @@ export function ListView() {
   const sortKey = list ? (listSorts[list.id] ?? 'importance') : 'importance';
 
   const listTasks = useMemo(() => tasks.filter((t) => t.listId === list?.id), [tasks, list]);
+  // فاز تریدر — مقادیر فعلی «قوانین من» برای بنر فقط‌خواندنی بالای «پیش از بازار» (اگر لیست تغییر نام دهد، بنر بی‌صدا مخفی می‌شود)
+  const rules = useMemo(() => traderRulesValues(lists, tasks), [lists, tasks]);
+  const isPremarket = list?.name === TRADER_PREMARKET_LIST;
+  const isPretrade = list?.name === TRADER_PRETRADE_LIST;
   const pending = useMemo(
     () =>
       sortTasks(
@@ -199,6 +205,26 @@ export function ListView() {
         </div>
       </div>
 
+      {/* فاز تریدر — مقادیر «قوانین من» فقط‌خواندنی بالای «پیش از بازار» تا کاربر دوباره تایپ نکند */}
+      {isPremarket && (rules.maxLoss || rules.risk) ? (
+        <div
+          className="bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-xl text-xs font-bold text-on-surface dark:text-inverse-on-surface flex flex-wrap gap-x-4 gap-y-1"
+          role="note"
+          aria-label="قوانین فعلی شما"
+        >
+          {rules.maxLoss ? (
+            <span>
+              🔒 حداکثر ضرر روزانه (از قوانین من): <span className="text-amber-600 dark:text-amber-300">{rules.maxLoss}</span>
+            </span>
+          ) : null}
+          {rules.risk ? (
+            <span>
+              🔒 ریسک هر معامله (از قوانین من): <span className="text-amber-600 dark:text-amber-300">{rules.risk}</span>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* کارهای در انتظار */}
       {filter !== 'done' ? (
         <div className="flex flex-col gap-2.5">
@@ -230,6 +256,15 @@ export function ListView() {
                   </div>
                 );
               })}
+              {/* فاز تریدر — متن ثابت برجسته‌ی پایین لیست «قبل از معامله» */}
+              {isPretrade && pendingSorted.length > 0 ? (
+                <p
+                  className="text-center text-label-md font-black text-rose-600 dark:text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2.5"
+                  role="note"
+                >
+                  ⚠️ {TRADER_PRETRADE_FOOTER}
+                </p>
+              ) : null}
             </div>
           )}
         </div>
@@ -262,6 +297,7 @@ export function ListView() {
                   key={t.id}
                   title={t.title}
                   when={relativeDayLabel(t.completedAt!.slice(0, 10), new Date())}
+                  detail={itemValueSummary(t) ?? undefined}
                 />
               ))}
             </div>

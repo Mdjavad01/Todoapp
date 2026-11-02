@@ -21,6 +21,8 @@ final class Entities
     public const PRIORITIES = ['urgent', 'high', 'normal', 'low'];
     /** فاز ۳ — انواع تکرار (ماهانه/سالانه شمسی + روزهای کاری + سفارشی با repeat_meta) */
     public const REPEATS = ['none', 'daily', 'workdays', 'weekly', 'monthly', 'yearly', 'custom'];
+    /** فاز تریدر — انواع آیتم چک‌لیست (null = تیک ساده؛ سازگار با داده‌ی قدیمی و APKهای قدیمی) */
+    public const ITEM_TYPES = ['check', 'num', 'note', 'choice', 'score'];
     /** واحدهای تکرار سفارشی — همان lib/repeat.ts سمت کلاینت */
     private const REPEAT_UNITS = ['day', 'week', 'month', 'year'];
 
@@ -125,6 +127,11 @@ final class Entities
                 unset($cols['sort_order']);
             }
         }
+        // فاز تریدر — لیست پین‌شده: فقط وقتی کلید در ورودی باشد اعمال می‌شود (حتی در push کامل).
+        // APKهای قدیمی این کلید را نمی‌فرستند → مقدار سرور حفظ می‌شود (سازگاری پس‌رو — همان الگوی starred)
+        if (array_key_exists('pinned', $in)) {
+            $cols['pinned'] = (int) (Validator::bool($in, 'pinned', false) ?? false);
+        }
         return $cols;
     }
 
@@ -168,6 +175,14 @@ final class Entities
         }
         if (array_key_exists('repeatMeta', $in)) {
             $cols['repeat_meta'] = self::repeatMetaToSql($in['repeatMeta'] ?? null);
+        }
+        // فاز تریدر — نوع/مقدار آیتم چک‌لیست تریدر: فقط وقتی کلید در ورودی باشد اعمال می‌شود (حتی در push کامل).
+        // APKهای قدیمی این کلیدها را نمی‌فرستند → مقادیر سرور حفظ می‌شود (سازگاری پس‌رو — همان الگوی starred)
+        if (array_key_exists('itemType', $in)) {
+            $cols['item_type'] = Validator::enum($in, 'itemType', self::ITEM_TYPES, null, false);
+        }
+        if (array_key_exists('itemValue', $in)) {
+            $cols['item_value'] = Validator::str($in, 'itemValue', 0, 255, false);
         }
         if (!$partial || array_key_exists('completedAt', $in)) {
             $cols['completed_at'] = Validator::isoDateTime($in, 'completedAt', false);
@@ -436,6 +451,8 @@ final class Entities
                     'emoji' => (string) ($row['emoji'] ?? ''),
                     'color' => (string) $row['color'],
                     'sortOrder' => (int) $row['sort_order'],
+                    // فاز تریدر — با ?? برای سازگاری با دیتابیسِ هنوز-مهاجرت‌نشده
+                    'pinned' => (bool) ($row['pinned'] ?? 0),
                 ];
             case self::ENTITY_TASKS:
                 return $base + [
@@ -453,6 +470,13 @@ final class Entities
                         ? (json_decode((string) $row['repeat_meta'], true) ?? null)
                         : null,
                     'completedAt' => self::sqlToIso($row['completed_at'] ?? null),
+                    // فاز تریدر — نوع/مقدار آیتم (با ?? برای سازگاری با دیتابیسِ هنوز-مهاجرت‌نشده)
+                    'itemType' => isset($row['item_type']) && $row['item_type'] !== null && $row['item_type'] !== ''
+                        ? (string) $row['item_type']
+                        : null,
+                    'itemValue' => isset($row['item_value']) && $row['item_value'] !== null && $row['item_value'] !== ''
+                        ? (string) $row['item_value']
+                        : null,
                 ];
             case self::ENTITY_SUBTASKS:
                 return $base + [

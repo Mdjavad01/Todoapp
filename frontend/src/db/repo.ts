@@ -2,7 +2,7 @@ import { idbGetAll, idbGet, idbPut, idbDelete, STORES } from './idb';
 import { uuid, nowIso } from '@/lib/uuid';
 import { compareLists } from '@/lib/selectors';
 import { nextOccurrence, type RepeatKind, type RepeatMeta } from '@/lib/repeat';
-import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity } from '@/types';
+import type { ListEntity, TaskEntity, SubtaskEntity, ReminderEntity, PrefEntity, TaskItemType } from '@/types';
 
 /**
  * مخازن داده‌ی حالت مهمان — تمام عملیات روی IndexedDB.
@@ -17,7 +17,7 @@ export async function listsAll(): Promise<ListEntity[]> {
   return rows.filter((r) => !r.deletedAt).sort(compareLists);
 }
 
-export async function listsCreate(input: { name: string; emoji: string; color: ListEntity['color'] }): Promise<ListEntity> {
+export async function listsCreate(input: { name: string; emoji: string; color: ListEntity['color']; pinned?: boolean }): Promise<ListEntity> {
   const now = nowIso();
   // انتهای ترتیب = بزرگ‌ترین sortOrder زنده + ۱ (تومب‌استون‌ها شمرده نمی‌شوند — فاز ۲)
   const live = (await idbGetAll<ListEntity>(STORES.lists)).filter((r) => !r.deletedAt);
@@ -28,6 +28,7 @@ export async function listsCreate(input: { name: string; emoji: string; color: L
     emoji: input.emoji,
     color: input.color,
     sortOrder,
+    pinned: input.pinned ?? false,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -36,7 +37,10 @@ export async function listsCreate(input: { name: string; emoji: string; color: L
   return entity;
 }
 
-export async function listsUpdate(id: string, patch: Partial<Pick<ListEntity, 'name' | 'emoji' | 'color' | 'sortOrder'>>): Promise<void> {
+export async function listsUpdate(
+  id: string,
+  patch: Partial<Pick<ListEntity, 'name' | 'emoji' | 'color' | 'sortOrder' | 'pinned'>>,
+): Promise<void> {
   const row = await idbGet<ListEntity>(STORES.lists, id);
   if (!row) return;
   await idbPut(STORES.lists, { ...row, ...patch, updatedAt: nowIso() });
@@ -128,6 +132,10 @@ export interface TaskInput {
   starred?: boolean;
   /** فاز ۳ — تنظیم تکرار سفارشی */
   repeatMeta?: RepeatMeta | null;
+  /** فاز تریدر — نوع آیتم (پیش‌فرض null = تیک ساده) */
+  itemType?: TaskItemType | null;
+  /** فاز تریدر — مقدار آیتم */
+  itemValue?: string | null;
 }
 
 export async function tasksCreate(input: TaskInput): Promise<TaskEntity> {
@@ -144,6 +152,8 @@ export async function tasksCreate(input: TaskInput): Promise<TaskEntity> {
     repeat: input.repeat ?? 'none',
     starred: input.starred ?? false,
     repeatMeta: input.repeatMeta ?? null,
+    itemType: input.itemType ?? null,
+    itemValue: input.itemValue ?? null,
     completedAt: null,
     createdAt: now,
     updatedAt: now,

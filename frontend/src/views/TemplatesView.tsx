@@ -1,4 +1,5 @@
 import { Icon } from '@/components/Icon';
+import { TraderCard } from '@/components/TraderCard';
 import { useAppStore } from '@/store/useAppStore';
 import { TEMPLATES, JOB_KITS } from '@/db/catalog';
 import { toFa } from '@/lib/format';
@@ -29,6 +30,8 @@ export function TemplatesView() {
   return (
     <section className="p-margin flex flex-col gap-4" id="view-templates">
       <InnerHeader title="قالب‌های آماده" subtitle="چک‌لیست‌های تخصصی آماده برای شروع بدون اتلاف وقت" />
+      {/* فاز تریدر — کارت چک‌لیست تریدر (رایگان — چندلیستی با یادآور سشن) */}
+      <TraderCard />
       <div className="grid grid-cols-1 gap-3">
         {TEMPLATES.map((tpl) => (
           <div
@@ -71,35 +74,17 @@ export function JobKitsView() {
         kit.pro ? (
           <div
             key={kit.id}
-            className={`p-4 rounded-2xl shadow-md flex flex-col gap-3 relative ${
-              kit.id === 'kit-trader'
-                ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white border border-amber-500/30'
-                : 'bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30 shadow-sm'
-            }`}
+            className="p-4 rounded-2xl bg-surface-container-lowest dark:bg-slate-800 border border-outline-variant/30 shadow-sm flex flex-col gap-3 relative"
           >
-            {kit.id === 'kit-trader' ? (
-              <span
-                className={`absolute top-3 left-3 font-black text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  isPro ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-slate-950'
-                }`}
-              >
-                <Icon name={isPro ? 'check_circle' : 'star'} size={12} />
-                {isPro ? 'پرو فعال' : 'پرو'}
-              </span>
-            ) : null}
             <div className="flex items-center gap-2.5">
               <span className="text-3xl">{kit.emoji}</span>
               <div>
-                <h3 className={`text-headline-sm font-bold ${kit.id === 'kit-trader' ? 'text-amber-400' : ''}`}>{kit.title}</h3>
-                <p className={`text-xs ${kit.id === 'kit-trader' ? 'text-slate-300' : 'text-outline'}`}>{kit.subtitle}</p>
+                <h3 className="text-headline-sm font-bold">{kit.title}</h3>
+                <p className="text-xs text-outline">{kit.subtitle}</p>
               </div>
             </div>
             {kit.features.length > 0 ? (
-              <div
-                className={`text-xs space-y-1 rounded-xl ${
-                  kit.id === 'kit-trader' ? 'text-slate-300 bg-white/5 p-2.5' : 'text-on-surface-variant bg-surface-container-low dark:bg-slate-800/60 p-2.5'
-                }`}
-              >
+              <div className="text-xs space-y-1 rounded-xl text-on-surface-variant bg-surface-container-low dark:bg-slate-800/60 p-2.5">
                 {kit.features.map((f) => (
                   <div key={f}>✓ {f}</div>
                 ))}
@@ -107,13 +92,7 @@ export function JobKitsView() {
             ) : null}
             <button
               className={`w-full py-2 font-bold rounded-xl text-xs transition-colors ${
-                kit.id === 'kit-trader'
-                  ? isPro
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
-                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                  : isPro
-                    ? 'bg-primary text-on-primary'
-                    : 'bg-primary/10 text-primary'
+                isPro ? 'bg-primary text-on-primary' : 'bg-primary/10 text-primary'
               }`}
               onClick={() => (isPro ? void applyJobKit(kit) : setView('paywall'))}
             >
