@@ -223,8 +223,24 @@ final class SyncService
             }
             $cols['rev'] = $clientRev + 1;
             $cols['rev_device'] = $clientDevice;
-            Entities::insertClient($entity, $userId, $uuid, $cols);
-            return null;
+            try {
+                Entities::insertClient($entity, $userId, $uuid, $cols);
+                return null;
+            } catch (PDOException $e) {
+                // نقض یونیک (MySQL 1062 / SQLite 19) — دو علت ممکن:
+                //   ۱) رقابت دو دستگاه هم‌زمانِ یک کاربر (هر دو «نداشتن» دیدند) → رکورد تازه پیدا
+                //      می‌شود و جریان به مقایسه‌ی LWW پایین می‌رود — بدون 500
+                //   ۲) uuid مشترکِ بین دو کاربر روی ایندکسِ سراسریِ قدیمی (هاست‌های قبل از
+                //      مهاجرت v1.10.1 — لیست پیش‌فرض 00000000-…-0001) → رد تمیز آیتم به‌جای HTTP 500
+                $driverCode = (int) ($e->errorInfo[1] ?? 0);
+                if ($driverCode !== 1062 && $driverCode !== 19) {
+                    throw $e;
+                }
+                $existing = Entities::findByUuid($entity, $userId, $uuid);
+                if ($existing === null) {
+                    throw new EntityReject('duplicate_uuid');
+                }
+            }
         }
 
         $clientTsRaw = Entities::isoToSql(Validator::isoDateTime($item, 'updatedAt'));

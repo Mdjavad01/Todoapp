@@ -87,11 +87,15 @@ final class Subscription
         $days = max(1, min(30, $days));
         $premiumUntil = gmdate('Y-m-d H:i:s', $now + $days * 86400);
 
+        // ⚠️ هر placeholder فقط یک بار — با Prepare بومی MySQL (EMULATE_PREPARES=false)
+        // پارامتر تکراری HY093 «Invalid parameter number» می‌دهد (لاگ واقعی هاست ۰۱-۰۲ نوامبر:
+        // «[trial] فعال‌سازی دوره آزمایشی برای کاربر 11/12 ناموفق»)
         $pdo->prepare(
             'UPDATE users SET premium_until = :pu, updated_at = :now
-             WHERE id = :id AND (premium_until IS NULL OR premium_until < :pu)'
+             WHERE id = :id AND (premium_until IS NULL OR premium_until < :pu_min)'
         )->execute([
             ':pu' => $premiumUntil,
+            ':pu_min' => $premiumUntil,
             ':now' => gmdate('Y-m-d H:i:s', $now),
             ':id' => $userId,
         ]);

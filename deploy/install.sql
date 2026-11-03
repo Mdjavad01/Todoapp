@@ -99,7 +99,10 @@ CREATE TABLE IF NOT EXISTS `lists` (
   `rev`        INT          NOT NULL DEFAULT 0 COMMENT 'شماره‌ی نسخه‌ی سرور — شکستن تساوی LWW',
   `rev_device` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'شناسه‌ی دستگاه آخرین نویسنده — شکستن تساوی LWW',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_lists_uuid` (`uuid`),
+  -- v1.10.1: یونیک به‌ازای هر کاربر — DEFAULT_LIST_ID لیست پیش‌فرض بین کاربران مشترک است
+  -- (چنددستگاهی پیش از ورود باید به یک رکورد ادغام شود)؛ یونیکِ سراسری uuid یک‌زمان push
+  -- کاربر دوم را با 1062 → HTTP 500 می‌شکست (برای هاست‌های موجود: deploy/upgrade-v1.10.1.sql)
+  UNIQUE KEY `uq_lists_user_uuid` (`user_id`,`uuid`),
   KEY `idx_lists_user` (`user_id`,`deleted_at`),
   KEY `idx_lists_applied` (`user_id`,`applied_at`),
   CONSTRAINT `fk_lists_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE

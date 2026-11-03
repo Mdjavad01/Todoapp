@@ -1,5 +1,5 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.02.17.25.31) */
-const CACHE_NAME = 'karam-cache-2026.11.02.17.25.31';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.03.16.39.51) */
+const CACHE_NAME = 'karam-cache-2026.11.03.16.39.51';
 const PRECACHE_URLS = [
   "./.htaccess",
   "./assets/base-DnVZuu9h.js",

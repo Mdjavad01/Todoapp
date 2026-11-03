@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens (expires_at);
 
 CREATE TABLE IF NOT EXISTS lists (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  uuid       TEXT(36) NOT NULL UNIQUE,
+  uuid       TEXT(36) NOT NULL,
   user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   name       TEXT(120) NOT NULL,
   emoji      TEXT(16),
@@ -77,7 +77,10 @@ CREATE TABLE IF NOT EXISTS lists (
   deleted_at TEXT(19),
   applied_at TEXT(19),
   rev          INTEGER NOT NULL DEFAULT 0,
-  rev_device   TEXT(64) NOT NULL DEFAULT ''
+  rev_device   TEXT(64) NOT NULL DEFAULT '',
+  -- v1.10.1: یونیک به‌ازای هر کاربر — DEFAULT_LIST_ID لیست پیش‌فرض بین کاربران مشترک است
+  -- (یونیکِ سراسری uuid یک‌زمان push کاربر دوم را با خطای تکرار می‌شکست)
+  UNIQUE (user_id, uuid)
 );
 CREATE INDEX IF NOT EXISTS idx_lists_user ON lists (user_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_lists_applied ON lists (user_id, applied_at);
