@@ -71,11 +71,12 @@ final class AnnouncementsSchema
             }
 
             // ۲) ستون‌های جدید برای نصب‌های قدیمی‌تر
+            //    ⚠️ LIKE با «لیترال» — SHOW COLUMNS در Prepared Statement بومی
+            //    (EMULATE_PREPARES=false) placeholder نمی‌پذیرد و با «near '?'» شکست می‌خورد.
             foreach (['link_url' => 'TEXT', 'image_url' => 'TEXT'] as $col => $type) {
                 if ($mysql) {
-                    $exists = $pdo->prepare("SHOW COLUMNS FROM `announcements` LIKE :c");
-                    $exists->execute([':c' => $col]);
-                    if ($exists->fetch() === false) {
+                    $exists = $pdo->query("SHOW COLUMNS FROM `announcements` LIKE '{$col}'")->fetch();
+                    if ($exists === false) {
                         $pdo->exec("ALTER TABLE `announcements` ADD COLUMN `{$col}` VARCHAR(500) NULL DEFAULT NULL");
                     }
                 } else {
