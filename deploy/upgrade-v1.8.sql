@@ -18,12 +18,22 @@
 -- تکرارپذیر: هر دستور با INFORMATION_SCHEMA گارد دارد — چند بار اجرا بی‌ضرر است
 -- (درس v1.2.9: پشتیبان‌ها DDL صریح با فقط PRIMARY KEY — هیچ کلید یکتایی به ارث نمی‌رسد).
 --
+-- ویرایش ۲ — رفع خطای #1054 «Unknown column 'price_rials' in 'SELECT'»:
+--   اگر این مهاجرت قبلاً (کامل یا نیمه‌تمام) اجرا شده باشد، ستون‌های ریالی حذف شده‌اند و
+--   پشتیبان‌گیریِ بدون گارد در اجرای دوباره خطای ستون ناشناخته می‌داد. حالا هر INSERT
+--   پشتیبان هم گارد INFORMATION_SCHEMA دارد: ستون ریالی نبود ⇒ پشتیبان‌گیری بی‌صدا رد
+--   می‌شود (از قبل پشتیبان گرفته شده) و اجرا تا انتها می‌رود. داده‌ی ریالی شما در
+--   جدول‌های _bak_v18_* امن است — پشتیبان همیشه قبل از تبدیل اجرا می‌شود.
+--
 -- ترتیب امن آپلود: (۱) اجرای همین SQL   (۲) آپلود api/ و panel/ جدید
 -- اگر فقط کد نو را آپلود کنید و SQL را اجرا نکنید، مسیرهای پرداخت خطای «ستون ناشناخته» می‌دهند.
 
 -- ===============================================================
 -- ۰) پشتیبان صریح (PK فقط — بدون کلید یکتا؛ تکرارپذیر با INSERT IGNORE)
+--    ویرایش ۲: هر INSERT با گارد INFORMATION_SCHEMA — ستون ریالی نبود ⇒ رد
 -- ===============================================================
+
+SET @schema = DATABASE();
 
 CREATE TABLE IF NOT EXISTS `_bak_v18_plans` (
   `id` BIGINT UNSIGNED NOT NULL,
@@ -33,8 +43,9 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_plans` (
   `created_at` DATETIME NULL, `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT IGNORE INTO `_bak_v18_plans` (`id`,`uuid`,`code`,`title`,`months`,`price_rials`,`description`,`is_active`,`sort_order`,`created_at`,`updated_at`)
-  SELECT `id`,`uuid`,`code`,`title`,`months`,`price_rials`,`description`,`is_active`,`sort_order`,`created_at`,`updated_at` FROM `plans`;
+SET @bak_plans_rials = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME='plans' AND COLUMN_NAME='price_rials');
+SET @ddl = IF(@bak_plans_rials > 0, 'INSERT IGNORE INTO `_bak_v18_plans` (`id`,`uuid`,`code`,`title`,`months`,`price_rials`,`description`,`is_active`,`sort_order`,`created_at`,`updated_at`) SELECT `id`,`uuid`,`code`,`title`,`months`,`price_rials`,`description`,`is_active`,`sort_order`,`created_at`,`updated_at` FROM `plans`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
 CREATE TABLE IF NOT EXISTS `_bak_v18_orders` (
   `id` BIGINT UNSIGNED NOT NULL,
@@ -44,8 +55,9 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_orders` (
   `created_at` DATETIME NULL, `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT IGNORE INTO `_bak_v18_orders` (`id`,`uuid`,`user_id`,`plan_id`,`coupon_id`,`amount_rials`,`discount_rials`,`status`,`description`,`created_at`,`updated_at`)
-  SELECT `id`,`uuid`,`user_id`,`plan_id`,`coupon_id`,`amount_rials`,`discount_rials`,`status`,`description`,`created_at`,`updated_at` FROM `orders`;
+SET @bak_orders_rials = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME='orders' AND COLUMN_NAME='amount_rials');
+SET @ddl = IF(@bak_orders_rials > 0, 'INSERT IGNORE INTO `_bak_v18_orders` (`id`,`uuid`,`user_id`,`plan_id`,`coupon_id`,`amount_rials`,`discount_rials`,`status`,`description`,`created_at`,`updated_at`) SELECT `id`,`uuid`,`user_id`,`plan_id`,`coupon_id`,`amount_rials`,`discount_rials`,`status`,`description`,`created_at`,`updated_at` FROM `orders`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
 CREATE TABLE IF NOT EXISTS `_bak_v18_payments` (
   `id` BIGINT UNSIGNED NOT NULL,
@@ -55,8 +67,9 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_payments` (
   `created_at` DATETIME NULL, `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT IGNORE INTO `_bak_v18_payments` (`id`,`uuid`,`order_id`,`gateway`,`status`,`amount_rials`,`gateway_ref`,`verified_at`,`verify_payload`,`created_at`,`updated_at`)
-  SELECT `id`,`uuid`,`order_id`,`gateway`,`status`,`amount_rials`,`gateway_ref`,`verified_at`,`verify_payload`,`created_at`,`updated_at` FROM `payments`;
+SET @bak_payments_rials = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME='payments' AND COLUMN_NAME='amount_rials');
+SET @ddl = IF(@bak_payments_rials > 0, 'INSERT IGNORE INTO `_bak_v18_payments` (`id`,`uuid`,`order_id`,`gateway`,`status`,`amount_rials`,`gateway_ref`,`verified_at`,`verify_payload`,`created_at`,`updated_at`) SELECT `id`,`uuid`,`order_id`,`gateway`,`status`,`amount_rials`,`gateway_ref`,`verified_at`,`verify_payload`,`created_at`,`updated_at` FROM `payments`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
 CREATE TABLE IF NOT EXISTS `_bak_v18_deposit_requests` (
   `id` BIGINT UNSIGNED NOT NULL,
@@ -68,8 +81,9 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_deposit_requests` (
   `created_at` DATETIME NULL, `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT IGNORE INTO `_bak_v18_deposit_requests` (`id`,`uuid`,`user_id`,`plan_id`,`plan_code`,`amount_rials`,`discount_rials`,`coupon_id`,`reference`,`note`,`status`,`review_note`,`reviewed_by`,`reviewed_at`,`subscription_id`,`created_at`,`updated_at`)
-  SELECT `id`,`uuid`,`user_id`,`plan_id`,`plan_code`,`amount_rials`,`discount_rials`,`coupon_id`,`reference`,`note`,`status`,`review_note`,`reviewed_by`,`reviewed_at`,`subscription_id`,`created_at`,`updated_at` FROM `deposit_requests`;
+SET @bak_deposits_rials = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME='deposit_requests' AND COLUMN_NAME='amount_rials');
+SET @ddl = IF(@bak_deposits_rials > 0, 'INSERT IGNORE INTO `_bak_v18_deposit_requests` (`id`,`uuid`,`user_id`,`plan_id`,`plan_code`,`amount_rials`,`discount_rials`,`coupon_id`,`reference`,`note`,`status`,`review_note`,`reviewed_by`,`reviewed_at`,`subscription_id`,`created_at`,`updated_at`) SELECT `id`,`uuid`,`user_id`,`plan_id`,`plan_code`,`amount_rials`,`discount_rials`,`coupon_id`,`reference`,`note`,`status`,`review_note`,`reviewed_by`,`reviewed_at`,`subscription_id`,`created_at`,`updated_at` FROM `deposit_requests`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
 CREATE TABLE IF NOT EXISTS `_bak_v18_coupons` (
   `id` BIGINT UNSIGNED NOT NULL,
@@ -79,6 +93,7 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_coupons` (
   `created_at` DATETIME NULL, `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- (پشتیبان coupons به گارد نیاز ندارد — هیچ ستون ریالی ندارد و ستون value هرگز حذف نمی‌شود)
 INSERT IGNORE INTO `_bak_v18_coupons` (`id`,`uuid`,`code`,`type`,`value`,`expires_at`,`max_uses`,`used_count`,`is_active`,`created_at`,`updated_at`)
   SELECT `id`,`uuid`,`code`,`type`,`value`,`expires_at`,`max_uses`,`used_count`,`is_active`,`created_at`,`updated_at` FROM `coupons`;
 
@@ -89,8 +104,9 @@ CREATE TABLE IF NOT EXISTS `_bak_v18_coupon_redemptions` (
   `created_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT IGNORE INTO `_bak_v18_coupon_redemptions` (`id`,`uuid`,`coupon_id`,`user_id`,`kind`,`reference_id`,`discount_rials`,`created_at`)
-  SELECT `id`,`uuid`,`coupon_id`,`user_id`,`kind`,`reference_id`,`discount_rials`,`created_at` FROM `coupon_redemptions`;
+SET @bak_redemptions_rials = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME='coupon_redemptions' AND COLUMN_NAME='discount_rials');
+SET @ddl = IF(@bak_redemptions_rials > 0, 'INSERT IGNORE INTO `_bak_v18_coupon_redemptions` (`id`,`uuid`,`coupon_id`,`user_id`,`kind`,`reference_id`,`discount_rials`,`created_at`) SELECT `id`,`uuid`,`coupon_id`,`user_id`,`kind`,`reference_id`,`discount_rials`,`created_at` FROM `coupon_redemptions`', 'SELECT 1');
+PREPARE st FROM @ddl; EXECUTE st; DEALLOCATE PREPARE st;
 
 -- ===============================================================
 -- ۱) plans — price_rials → price_tomans (÷۱۰)
