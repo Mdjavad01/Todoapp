@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { homeStats, myDayTasks } from '@/lib/selectors';
@@ -8,14 +8,15 @@ import { SmartTaskList, SmartEmpty } from '@/views/SmartViews';
 /**
  * فاز الف — تب «امروز» (ناوبری ۵تبی): همان «روزهای من» + کارت «برنامه‌ی امروز»
  * که از خانه به این‌جا منتقل شد (تعداد/درصد پیشرفت) + هشدار معوقه‌ها.
- * افزودن کار در همین صفحه با ورودی سریع یا نوار افزودن پایین‌ثابت انجام می‌شود.
+ * افزودن کار فقط با نوار پایین‌ثابت (QuickBar) — کار تازه به «روزهای من» پین می‌شود.
+ *
+ * بسته A (خلوت‌سازی UX): کارت «برنامه‌ی امروز» تا وقتی داده‌ی امروز وجود ندارد مخفی است و
+ * جمله‌ی هاردکد «تمرکز روی پروژه‌های اصلی» حذف شد؛ ردیف افزودنِ داخل صفحه هم حذف شد (تک‌نوار QuickBar).
  */
 export function TodayTab() {
   const tasks = useAppStore((s) => s.tasks);
   const myDayIds = useAppStore((s) => s.myDayIds);
-  const addMyDayTask = useAppStore((s) => s.addMyDayTask);
   const moveOverdueToToday = useAppStore((s) => s.moveOverdueToToday);
-  const [quick, setQuick] = useState('');
   const today = new Date();
 
   const stats = homeStats(tasks, today);
@@ -29,11 +30,11 @@ export function TodayTab() {
     );
   }, [tasks, myDayIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit = () => {
-    if (!quick.trim()) return;
-    void addMyDayTask(quick);
-    setQuick('');
-  };
+  /* بسته A — کارت «برنامه‌ی امروز» فقط با داده‌ی واقعی همین تب:
+     مبنای عدد = همان لیست پایین صفحه (کارهای سررسید-امروز + پین‌شده‌های «روزهای من»)؛
+     بدون داده ⇒ کارت کلاً مخفی (صفرِ بی‌معنا و جمله‌ی هاردکد حذف شد). */
+  const listTotal = pending.length + completed.length;
+  const listPct = listTotal === 0 ? 0 : Math.round((completed.length / listTotal) * 100);
 
   return (
     <section className="p-margin flex flex-col gap-4" id="view-myday">
@@ -46,6 +47,8 @@ export function TodayTab() {
       </div>
 
       {/* کارت قهرمان پیشرفت امروز — از خانه به این‌جا منتقل شد (فاز الف) */}
+      {/* بسته A — تا وقتی «برنامه‌ی امروز» داده‌ای ندارد مخفی است (صفرِ بی‌معنا نشان داده نمی‌شود) */}
+      {listTotal > 0 ? (
       <div
         className="bg-gradient-to-l from-primary via-primary-container to-primary-deep text-on-primary rounded-2xl p-4 shadow-md relative overflow-hidden"
         id="today-progress"
@@ -57,19 +60,20 @@ export function TodayTab() {
             <span className="text-headline-sm font-headline-sm">برنامه‌ی امروز</span>
           </div>
           <span className="text-label-lg font-bold bg-white/20 px-2 py-0.5 rounded-full">
-            {toFa(stats.todayPct)}٪ تکمیل
+            {toFa(listPct)}٪ تکمیل
           </span>
         </div>
         <p className="text-body-sm opacity-90 mb-3">
-          {toFa(stats.todayRemaining)} از {toFa(stats.todayTotal)} کار مانده • تمرکز روی پروژه‌های اصلی
+          {toFa(pending.length)} از {toFa(listTotal)} کار مانده
         </p>
         <div className="w-full bg-black/20 h-2.5 rounded-full overflow-hidden p-0.5">
           <div
             className="bg-primary-fixed h-full rounded-full transition-all duration-700"
-            style={{ width: `${stats.todayPct}%` }}
+            style={{ width: `${listPct}%` }}
           />
         </div>
       </div>
+      ) : null}
 
       {/* هشدار کارهای معوقه — از نمای «برنامه امروز» قبلی حفظ شد */}
       {overdue.length > 0 ? (
@@ -97,32 +101,11 @@ export function TodayTab() {
         </div>
       ) : null}
 
-      {/* افزودن دستی به امروز — کار بی‌تاریخ فقط همین‌جا می‌ماند (قاعده هرس فاز ۳) */}
-      <div className="p-2 bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/40 flex items-center gap-2 shadow-sm">
-        <input
-          className="flex-1 bg-transparent border-0 text-body-sm text-on-surface dark:text-inverse-on-surface focus:ring-0 placeholder:text-outline outline-none px-2"
-          placeholder="افزودن به امروز..."
-          type="text"
-          value={quick}
-          onChange={(e) => setQuick(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          aria-label="افزودن سریع به امروز"
-        />
-        <button
-          className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm active:scale-95"
-          onClick={submit}
-          disabled={!quick.trim()}
-          aria-label="افزودن"
-        >
-          <Icon name="arrow_back" size={20} />
-        </button>
-      </div>
-
       {pending.length === 0 && completed.length === 0 ? (
         <SmartEmpty
           emoji="☀️"
           title="روز پاکی است!"
-          hint="کارهای امروز این‌جا جمع می‌شوند: هر کاری سررسیدش امروز باشد خودکار می‌آید و می‌توانید کار دلخواه هم اضافه کنید."
+          hint="هر کاری سررسیدش امروز باشد خودکار این‌جا می‌آید؛ از نوار پایین هم می‌توانی کاری را به امروز اضافه کنی."
         />
       ) : (
         <SmartTaskList pending={pending} completed={completed} />

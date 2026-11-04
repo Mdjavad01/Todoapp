@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { Icon } from '@/components/Icon';
 import { AdBanner } from '@/components/AdBanner';
 import { GuestDataBanner } from '@/components/GuestDataBanner';
 import { useAppStore } from '@/store/useAppStore';
-import * as repo from '@/db/repo';
-import { isTraderActive, TRADER_BANNER_PREF } from '@/db/traderTemplate';
 import {
   sortedLists,
   listProgress,
@@ -13,7 +11,6 @@ import {
   plannerSections,
   homeStats,
   HUB_CARDS,
-  defaultListId,
 } from '@/lib/selectors';
 import { toFa } from '@/lib/format';
 import type { ListEntity, HubKey } from '@/types';
@@ -25,69 +22,14 @@ import type { ListEntity, HubKey } from '@/types';
  *   ردیف «لیست جدید». ویرایش/ترتیب/حذف فقط از منوی ⋮ یا نگه‌داشتن طولانی.
  *   بدون چیپ، بدون کارت خوش‌آمد، بدون میکروفون، بدون دکمه‌ی شناور و نوار افزودن.
  *   نوار اندازه‌ی فونت: ۱۵px (عنوان‌ها/نام‌ها) و ۱۲px (تعدادها) — دو وزن: bold/normal.
+ *
+ * بسته A (خلوت‌سازی UX):
+ *   - بنر «چک‌لیست تریدر آماده است» و ردیف دائمی «قالب‌های آماده» از خانه حذف شد —
+ *     تنها مسیر قالب: «لیست جدید → یا از قالب آماده» (+ ردیف تنظیمات تا بسته C).
+ *   - کارت 🌱 حالت خالی حذف شد؛ فقط یک خط کم‌رنگ می‌ماند — افزودن اولین کار با QuickBar پایین صفحه.
  */
 
 const ROW_H = 'min-h-[48px]'; // ناحیه‌ی لمس حداقل ۴۸ پیکسل
-
-/**
- * v1.10.2 — بنر کشف‌پذیری «چک‌لیست تریدر» در خانه (درخواست صاحب محصول: UX کشف قالب‌ها سخت بود)
- *  - فقط تا وقتی تمپلیت فعال نشده دیده می‌شود (با فعال‌سازی خودش می‌رود)
- *  - بستن با ✗ → دیگر نشان داده نمی‌شود (پایا در prefs سطح دستگاه — هم‌الگوی GuestDataBanner)
- *  - کلیک → صفحه‌ی «قالب‌های آماده» (فعال‌سازی با یک کلیک همان‌جاست)
- */
-function TraderDiscoveryBanner({ onOpen }: { onOpen: () => void }) {
-  const [dismissed, setDismissed] = useState(true); // پیش‌فرض: پنهان تا pref خوانده شود (بدون پرش)
-
-  useEffect(() => {
-    void repo
-      .prefsGet<boolean>(TRADER_BANNER_PREF, false)
-      .then((v) => setDismissed(Boolean(v)))
-      .catch(() => undefined);
-  }, []);
-
-  const dismiss = () => {
-    setDismissed(true);
-    void repo.prefsSet(TRADER_BANNER_PREF, true).catch(() => undefined);
-  };
-
-  if (dismissed) return null;
-
-  return (
-    <div
-      className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300/60 dark:border-amber-700/50 rounded-2xl p-3.5"
-      role="status"
-      aria-label="چک‌لیست معامله‌گری آماده است"
-      id="trader-discovery-banner"
-    >
-      <div className="flex items-start gap-2.5">
-        <span className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 text-lg" aria-hidden="true">
-          📈
-        </span>
-        <button
-          className="flex-1 min-w-0 text-right"
-          onClick={onOpen}
-          aria-label="رفتن به قالب‌های آماده برای فعال‌سازی چک‌لیست تریدر"
-        >
-          <p className="text-[13px] font-black text-amber-900 dark:text-amber-200">چک‌لیست معامله‌گری آماده است</p>
-          <p className="text-[11px] leading-5 text-amber-800/90 dark:text-amber-300/90 mt-0.5">
-            ۵ لیستِ «پیش از بازار، قبل از معامله، بعد از بازار، ریویو هفتگی، قوانین من» — با یک کلیک فعال می‌شود.
-          </p>
-          <span className="inline-flex items-center gap-1 rounded-xl bg-amber-500 text-white px-3 py-1.5 text-[11px] font-black active:scale-95 transition-transform mt-2">
-            <Icon name="auto_awesome" size={13} />
-            فعال‌سازی با یک کلیک
-          </span>
-        </button>
-        <button
-          className="w-7 h-7 rounded-full text-amber-700 dark:text-amber-300 flex items-center justify-center hover:bg-amber-100 dark:hover:bg-amber-900/60 shrink-0"
-          onClick={dismiss}
-          aria-label="بستن بنر چک‌لیست تریدر (نمایش داده نشد)"
-        >
-          <Icon name="close" size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export function HomeView() {
   const tasks = useAppStore((s) => s.tasks);
@@ -140,7 +82,6 @@ export function HomeView() {
 
   /* ---- لیست‌های کاربر: بدون گروه + گروه‌های فعال (قاعده‌ی فاز ۲ حفظ شده) ---- */
   const live = sortedLists(lists);
-  const traderActive = useMemo(() => isTraderActive(lists), [lists]);
   const liveIds = new Set(live.map((l) => l.id));
   const activeGroups = groups
     .map((g) => ({ ...g, listIds: g.listIds.filter((id) => liveIds.has(id)) }))
@@ -154,12 +95,6 @@ export function HomeView() {
     () => live.every((l) => tasks.filter((t) => t.listId === l.id && !t.deletedAt).length === 0),
     [live, tasks],
   );
-
-  const addFirst = () => {
-    const id = defaultListId(lists);
-    if (id) openList(id);
-    openModal('quickAdd');
-  };
 
   return (
     <section className="p-margin flex flex-col gap-4 pb-6" id="view-home">
@@ -239,9 +174,6 @@ export function HomeView() {
         </div>
       ) : null}
 
-      {/* v1.10.2 — بنر کشف‌پذیری قالب تریدر (فقط تا فعال‌سازی؛ قابل‌بستن) */}
-      {!traderActive ? <TraderDiscoveryBanner onOpen={() => setView('templates')} /> : null}
-
       {/* جداکننده‌ی بخش‌ها */}
       <div className="border-t border-outline-variant/40" aria-hidden="true" />
 
@@ -297,42 +229,13 @@ export function HomeView() {
           <span className="flex-1 text-[15px] font-bold">لیست جدید</span>
           <span className="text-xs text-on-surface-variant">یا از قالب آماده</span>
         </button>
-
-        {/* v1.10.2 — ردیف دائمی «قالب‌های آماده» — از خانه یک‌لمسی (به‌جای پنهان‌بودن در تنظیمات) */}
-        <button
-          className={`w-full ${ROW_H} px-3 flex items-center gap-3 text-right rounded-2xl border border-dashed border-outline-variant/50 hover:bg-surface-container/60 dark:hover:bg-slate-700/50 active:bg-surface-container transition-colors`}
-          onClick={() => setView('templates')}
-          aria-label="قالب‌های آماده"
-        >
-          <span className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <Icon name="auto_awesome" size={20} />
-          </span>
-          <span className="flex-1 text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">قالب‌های آماده</span>
-          <span className="text-xs text-on-surface-variant">تریدر، خرید، کنکور…</span>
-          <Icon name="arrow_back" size={16} className="text-outline shrink-0" />
-        </button>
       </div>
 
-      {/* حالت خالی — پیام کوتاه و دوستانه */}
+      {/* بسته A — حالت خالی: فقط یک خط کم‌رنگ؛ افزودن اولین کار با QuickBar پایین صفحه */}
       {isEmpty ? (
-        <div className="flex flex-col items-center text-center gap-2 py-6" id="home-empty">
-          <div className="w-16 h-16 rounded-full bg-primary-container/15 flex items-center justify-center text-3xl">
-            🌱
-          </div>
-          <p className="text-[15px] font-bold text-on-surface dark:text-inverse-on-surface">
-            همه‌چیز آماده است!
-          </p>
-          <p className="text-xs text-on-surface-variant max-w-[240px] leading-relaxed">
-            لیست‌هایت ساخته شده‌اند؛ اولین کارت را اضافه کن تا کارام از همین لحظه همراهت باشد.
-          </p>
-          <button
-            className="mt-2 h-12 px-5 rounded-2xl bg-primary text-on-primary text-[15px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1.5"
-            onClick={addFirst}
-          >
-            <Icon name="add" size={18} />
-            <span>اولین کارت را اضافه کن</span>
-          </button>
-        </div>
+        <p className="text-center text-xs text-on-surface-variant/70 py-4" id="home-empty">
+          برای شروع، اولین کارت را از نوار پایین اضافه کن.
+        </p>
       ) : null}
     </section>
   );

@@ -18,6 +18,18 @@ export interface DragHandleProps {
 }
 
 /** کارت کار — دقیقاً مطابق طرح (بخش ۳) */
+/**
+ * بسته A (خلوت‌سازی UX) — برچسب اولویت فقط برای «فوری/بالا» نشان داده می‌شود؛
+ * «متوسط» (پیش‌فرض) و «کم» دیگر ردیف را شلوغ نمی‌کنند. ستاره = تنها نشان «مهم» در سطح اول.
+ * (بسته B: اولویت کامل پشت «بیشتر» در جزئیات کار می‌رود و فقط «فوری» روی ردیف می‌ماند.)
+ */
+const SHOW_PRIORITY_BADGE: Record<TaskEntity['priority'], boolean> = {
+  urgent: true,
+  high: true,
+  normal: false,
+  low: false,
+};
+
 export function TaskCard({
   task,
   subtaskCount,
@@ -71,7 +83,9 @@ export function TaskCard({
         <TaskItemFields task={task} />
         {task.notes ? <p className="text-body-sm text-on-surface-variant mt-0.5">{task.notes}</p> : null}
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
+          {SHOW_PRIORITY_BADGE[task.priority] ? (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
+          ) : null}
           {task.dueDate ? (
             <span className="text-[11px] text-on-surface-variant flex items-center gap-0.5">
               <Icon name="calendar_today" size={13} />

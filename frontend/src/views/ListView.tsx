@@ -11,7 +11,11 @@ import type { TaskEntity } from '@/types';
 
 type ListFilter = 'all' | 'urgent' | 'done';
 
-/** بخش ۳: نمای لیست — با فیلتر، مرتب‌سازی پنج‌حالته‌ی به‌یادماندنی (فاز ۲)، آکاردئون انجام‌شده‌ها و افزودن سریع */
+/**
+ * بخش ۳: نمای لیست — با فیلتر، مرتب‌سازی پنج‌حالته‌ی به‌یادماندنی (فاز ۲)، آکاردئون انجام‌شده‌ها و افزودن سریع
+ * بسته A (خلوت‌سازی UX): ردیف افزودنِ داخل صفحه حذف شد — نوار پایین‌ثابت (QuickBar) تنها راه سریع افزودن است
+ * (همان لیستِ فعال را هدف می‌گیرد + تشخیص هوشمند تاریخ/ساعت دارد).
+ */
 export function ListView() {
   const lists = useAppStore((s) => s.lists);
   const tasks = useAppStore((s) => s.tasks);
@@ -19,8 +23,6 @@ export function ListView() {
   const activeListId = useAppStore((s) => s.activeListId);
   const goHome = useAppStore((s) => s.goHome);
   const setView = useAppStore((s) => s.setView);
-  const addInlineTask = useAppStore((s) => s.addInlineTask);
-  const openCalendar = useAppStore((s) => s.openCalendar);
   const completedExpanded = useAppStore((s) => s.completedExpanded);
   const toggleCompletedAccordion = useAppStore((s) => s.toggleCompletedAccordion);
   const openEditList = useAppStore((s) => s.openEditList);
@@ -30,7 +32,6 @@ export function ListView() {
   const taskOrders = useAppStore((s) => s.taskOrders);
   const setTaskOrder = useAppStore((s) => s.setTaskOrder);
 
-  const [quickValue, setQuickValue] = useState('');
   const [filter, setFilter] = useState<ListFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -74,12 +75,6 @@ export function ListView() {
       </section>
     );
   }
-
-  const submitInline = () => {
-    if (!quickValue.trim()) return;
-    addInlineTask(list.id, quickValue);
-    setQuickValue('');
-  };
 
   const pendingSorted: TaskEntity[] = manual ? (drag.order.map((id) => pending.find((t) => t.id === id)!).filter(Boolean) as TaskEntity[]) : pending;
 
@@ -305,32 +300,7 @@ export function ListView() {
         </div>
       ) : null}
 
-      {/* افزودن سریع کار */}
-      <div className="mt-4 p-2 bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/40 flex items-center gap-2 shadow-sm">
-        <input
-          className="flex-1 bg-transparent border-0 text-body-sm text-on-surface dark:text-inverse-on-surface focus:ring-0 placeholder:text-outline outline-none px-2"
-          placeholder="افزودن سریع کار به این لیست..."
-          type="text"
-          value={quickValue}
-          onChange={(e) => setQuickValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submitInline()}
-          aria-label="افزودن سریع کار"
-        />
-        <button
-          className="w-8 h-8 rounded-full text-on-surface-variant hover:text-primary flex items-center justify-center"
-          onClick={() => openCalendar('quickAdd')}
-          aria-label="انتخاب تاریخ"
-        >
-          <Icon name="calendar_month" size={20} />
-        </button>
-        <button
-          className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm active:scale-95"
-          onClick={submitInline}
-          aria-label="افزودن"
-        >
-          <Icon name="arrow_back" size={20} />
-        </button>
-      </div>
+      {/* بسته A — ردیف افزودنِ داخل صفحه حذف شد؛ QuickBar پایین صفحه (هدف: همین لیست فعال) */}
     </section>
   );
 }

@@ -95,7 +95,7 @@ export function deepAnalysis(tasks: TaskEntity[], today: Date): DeepAnalysis {
   };
 }
 
-/** تب آمار و عملکرد */
+/** تب آمار و عملکرد — بسته A: کارت استریک تا وجود دیتا مخفی است؛ جمله‌های هاردکد حذف شدند */
 export function AnalyticsView() {
   const tasks = useAppStore((s) => s.tasks);
   const premium = useAppStore((s) => s.premium);
@@ -113,17 +113,19 @@ export function AnalyticsView() {
     <section className="p-margin flex flex-col gap-4" id="view-analytics">
       <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">آمار</h1>
 
-      {/* کارت استریک */}
-      <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 rounded-2xl flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🔥</span>
-          <div>
-            <h3 className="text-headline-sm font-bold">{toFa(streak)} روز پیاپی منظم!</h3>
-            <p className="text-body-sm opacity-90">استریک شما در بالاترین رکورد ماهانه است</p>
+      {/* کارت استریک — بسته A: فقط وقتی زنجیره‌ای وجود دارد (صفرِ بی‌معنا/جمله‌ی هاردکد حذف شد) */}
+      {streak > 0 ? (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 rounded-2xl flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🔥</span>
+            <div>
+              <h3 className="text-headline-sm font-bold">{toFa(streak)} روز پیاپی</h3>
+              <p className="text-body-sm opacity-90">هر روز که حداقل یک کار کامل کنی، زنجیره ادامه پیدا می‌کند</p>
+            </div>
           </div>
+          <span className="text-2xl font-black bg-white/20 px-3 py-1 rounded-xl">{toFa(streak)}</span>
         </div>
-        <span className="text-2xl font-black bg-white/20 px-3 py-1 rounded-xl">{toFa(streak)}</span>
-      </div>
+      ) : null}
 
       {/* نمودار هفتگی */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 p-4 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
@@ -154,9 +156,6 @@ export function AnalyticsView() {
             </div>
           ))}
         </div>
-        <p className="text-body-sm text-center text-on-surface-variant font-semibold">
-          عالی پیش رفتی! تنها ۲ کار تا ثبت رکورد این هفته فاصله داری ✨
-        </p>
       </div>
 
       {/* تحلیل عمقی بهره‌وری — برای کاربر پرو پنل واقعی است (v16) */}
