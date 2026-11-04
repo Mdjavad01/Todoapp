@@ -42,8 +42,8 @@ export const TRADER_SCORE_DAILY = 'امتیاز انضباط امروز';
 export const TRADER_ANCHOR_START = 'شروع سشن معاملاتی';
 export const TRADER_ANCHOR_END = 'پایان سشن معاملاتی';
 
-/** ریویو هفتگی — پیش‌فرض جمعه (jalaliWeekday: 0=شنبه … 6=جمعه) */
-export const TRADER_REVIEW_DAY_DEFAULT = 6;
+/** ریویو هفتگی — پیش‌فرض شنبه به‌ازای درخواست صاحب محصول v1.10.2 (jalaliWeekday: 0=شنبه … 6=جمعه)؛ کاربر از جزئیات آیتم عوضش می‌کند */
+export const TRADER_REVIEW_DAY_DEFAULT = 0;
 
 export interface TraderItemDef {
   title: string;
@@ -128,7 +128,7 @@ export const TRADER_TEMPLATE: TraderListDef[] = [
     name: TRADER_REVIEW_LIST,
     emoji: '🗓️',
     color: 'emerald',
-    guide: 'جمع‌بندی هفته — پیش‌فرض جمعه است؛ روزش را از جزئیات هر آیتم می‌توانی عوض کنی.',
+    guide: 'جمع‌بندی هفته — پیش‌فرض شنبه است؛ روزش را از جزئیات هر آیتم می‌توانی عوض کنی.',
     items: [
       { title: 'تعداد کل معاملات هفته', type: 'num', repeat: 'custom', repeatMeta: { every: 1, unit: 'week', days: [TRADER_REVIEW_DAY_DEFAULT] } },
       { title: 'چند معامله طبق پلن بود', type: 'num', repeat: 'custom', repeatMeta: { every: 1, unit: 'week', days: [TRADER_REVIEW_DAY_DEFAULT] } },
@@ -228,6 +228,9 @@ export function traderDisciplineAvg(
 
 /** نشانی pref نشانگر فعال‌سازی (سطح دستگاه — هویت واقعی لیست‌ها کلید «trader.*» سینک‌شونده است) */
 export const TRADER_PREF_KEY = 'trader-template';
+
+/** v1.10.2 — pref بستن بنر «چک‌لیست تریدر آماده است» در خانه (سطح دستگاه؛ با فعال‌سازی، بنر خودش می‌رود) */
+export const TRADER_BANNER_PREF = 'trader-banner-dismissed';
 
 export interface TraderPref {
   activatedAt: string;

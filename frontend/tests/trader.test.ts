@@ -4,7 +4,7 @@
  * اجرا:  cd frontend && bun test tests/trader.test.ts
  *
  * پوشش:
- *   ۱) داده‌ی تمپلیت: ۵ لیست با نام دقیق، پین فقط «قوانین من»، تکرار روزانه/هفتگی (جمعه) و انواع آیتم
+ *   ۱) داده‌ی تمپلیت: ۵ لیست با نام دقیق، پین فقط «قوانین من»، تکرار روزانه/هفتگی (شنبه — پیش‌فرض v1.10.2) و انواع آیتم
  *   ۲) توابع خالص: normalizeTime / addMinutesToTime / nextWeekdayIso / traderDisciplineAvg
  *   ۳) compareLists — پین‌شده‌ها همیشه اول (حتی با سطرهای قدیمیِ بدون pinned)
  *   ۴) فعال‌سازی ایدمپوتنت با store واقعی (mock IndexedDB): دو بار فعال‌سازی = بدون لیست/آیتم تکراری
@@ -17,6 +17,7 @@
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
 import type { ListEntity, TaskEntity } from '@/types';
+import { TRADER_REVIEW_DAY_DEFAULT } from '@/db/traderTemplate';
 import type { TraderPref } from '@/db/traderTemplate';
 
 /* ---------- انبار IndexedDB درون‌حافظه‌ای (mock — هم‌الگوی phase1/phase2) ---------- */
@@ -109,7 +110,7 @@ describe('داده‌ی تمپلیت تریدر', () => {
     }
   });
 
-  test('تکرار: آیتم‌های روزانه در پیش/بعد از بازار و هفتگی جمعه در ریویو — بدون تکرار در قوانین و قبل از معامله', () => {
+  test('تکرار: آیتم‌های روزانه در پیش/بعد از بازار و هفتگی شنبه در ریویو — بدون تکرار در قوانین و قبل از معامله', () => {
     const pre = TRADER_TEMPLATE.find((l) => l.name === 'پیش از بازار')!;
     const post = TRADER_TEMPLATE.find((l) => l.name === 'بعد از بازار')!;
     const review = TRADER_TEMPLATE.find((l) => l.name === 'ریویو هفتگی')!;
@@ -117,7 +118,7 @@ describe('داده‌ی تمپلیت تریدر', () => {
     const pretrade = TRADER_TEMPLATE.find((l) => l.name === TRADER_PRETRADE_LIST)!;
     expect(pre.items.every((i) => i.repeat === 'daily')).toBe(true);
     expect(post.items.every((i) => i.repeat === 'daily')).toBe(true);
-    expect(review.items.every((i) => i.repeat === 'custom' && i.repeatMeta?.unit === 'week' && i.repeatMeta.days?.[0] === 6)).toBe(true);
+    expect(review.items.every((i) => i.repeat === 'custom' && i.repeatMeta?.unit === 'week' && i.repeatMeta.days?.[0] === TRADER_REVIEW_DAY_DEFAULT)).toBe(true);
     expect(rules.items.every((i) => i.repeat === undefined)).toBe(true);
     expect(pretrade.items.every((i) => i.repeat === undefined)).toBe(true);
     // انواع آیتم: عدد/یادداشت/انتخاب/امتیاز حتماً در تمپلیت باشند
@@ -149,7 +150,7 @@ describe('توابع خالص تریدر', () => {
     expect(addMinutesToTime('00:00', 1440)).toBe('00:00');
   });
 
-  test('nextWeekdayIso — جمعه (۶) نزدیک‌ترین', () => {
+  test('nextWeekdayIso — شنبه (۰) و جمعه (۶) نزدیک‌ترین', () => {
     // چهارشنبه ۱۹ نوامبر ۲۰۲۵ → getDay=3 → jalaliWeekday=4 → جمعه = ۲ روز بعد = ۲۱ نوامبر
     const wed = new Date(2025, 10, 19);
     expect(nextWeekdayIso(6, wed)).toBe('2025-11-21');
@@ -162,6 +163,12 @@ describe('توابع خالص تریدر', () => {
     // شنبه ۲۲ نوامبر → جمعه‌ی بعد ۶ روز بعد
     const sat = new Date(2025, 10, 22);
     expect(nextWeekdayIso(6, sat)).toBe('2025-11-28');
+    // v1.10.2 — پیش‌فرض ریویو = شنبه: چهارشنبه ۱۹ نوامبر → شنبه = ۳ روز بعد = ۲۲ نوامبر
+    expect(nextWeekdayIso(TRADER_REVIEW_DAY_DEFAULT, wed)).toBe('2025-11-22');
+    // شنبه → خودش
+    expect(nextWeekdayIso(TRADER_REVIEW_DAY_DEFAULT, sat)).toBe('2025-11-22');
+    // پنج‌شنبه ۲۰ نوامبر (jw=5) → شنبه‌ی بعد = ۲ روز بعد = ۲۲ نوامبر
+    expect(nextWeekdayIso(TRADER_REVIEW_DAY_DEFAULT, thu)).toBe('2025-11-22');
   });
 
   test('traderDisciplineAvg — فقط امتیازهای هفته‌ی اخیر', () => {
@@ -273,14 +280,14 @@ describe('فعال‌سازی تمپلیت تریدر (store + IndexedDB mock)',
     expect(anchorStart.repeat).toBe('daily');
     expect(anchorEnd.dueTime).toBe('18:00');
     expect(anchorEnd.reminderMinutes).toBe(0);
-    // آیتم‌های هفتگی: سررسید = یک جمعه (jalaliWeekday 6)
+    // آیتم‌های هفتگی: سررسید = یک شنبه (jalaliWeekday 0 — پیش‌فرض v1.10.2)
     const reviewList = lists.find((l) => l.name === 'ریویو هفتگی')!;
     const weekly = tasks.filter((t) => t.listId === reviewList.id);
     expect(weekly.length).toBe(6);
     for (const t of weekly) {
       const jw = (new Date(`${t.dueDate}T00:00:00`).getDay() + 1) % 7;
-      expect(jw).toBe(6);
-      expect(t.repeatMeta?.days?.[0]).toBe(6);
+      expect(jw).toBe(TRADER_REVIEW_DAY_DEFAULT);
+      expect(t.repeatMeta?.days?.[0]).toBe(TRADER_REVIEW_DAY_DEFAULT);
     }
 
     // pref ثبت شده است
