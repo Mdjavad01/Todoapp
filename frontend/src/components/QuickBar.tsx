@@ -15,6 +15,8 @@ import { defaultListId } from '@/lib/selectors';
  * بسته A (خلوت‌سازی UX) — تک‌نوارشدن: ردیف‌های افزودنِ داخل صفحه (لیست و امروز) حذف شدند و
  * این نوار تنها راه سریعِ افزودن است — روی «خانه» هم دیده می‌شود با هدف لیست پیش‌فرض؛
  * در تب «امروز» کار ساخته‌شده خودکار به «روزهای من» پین می‌شود (همان معنای ردیف حذف‌شده).
+ * حالت صفر لیست: نوار هرگز مخفی نمی‌شود — با اولین ارسال، لیست پیش‌فرض قطعی «کارهای من»
+ * ساخته و کار در آن ثبت می‌شود (addQuickTaskBootstrap — e2e: tests/e2e-quickbar-fresh.mjs).
  * رفتار کیبورد: پنجره با interactive-widget=resizes-content در موبایل کوچک می‌شود و نوار
  * بالای ناوبری می‌ماند؛ مکانیزم --kb-height در lib/keyboard.ts تست unit دارد (tests/keyboard.test.ts)
  * و چیدمان در tests/e2e-quickbar.mjs راستی‌آزمایی می‌شود.
@@ -28,6 +30,7 @@ export function QuickBar() {
   const activeListId = useAppStore((s) => s.activeListId);
   const myDayIds = useAppStore((s) => s.myDayIds);
   const addQuickTask = useAppStore((s) => s.addQuickTask);
+  const addQuickTaskBootstrap = useAppStore((s) => s.addQuickTaskBootstrap);
   const persistMyDay = useAppStore((s) => s.persistMyDay);
   const openCalendar = useAppStore((s) => s.openCalendar);
   const openModal = useAppStore((s) => s.openModal);
@@ -43,20 +46,29 @@ export function QuickBar() {
 
   const smart = useMemo(() => (text.trim() ? detectSmartDate(text, new Date()) : null), [text]);
 
-  if (!VISIBLE_VIEWS.includes(view) || !targetList) return null;
+  // بسته A — نوار بدون هدف هم دیده می‌شود؛ ارسال اول لیست پیش‌فرض را می‌سازد (نه مخفی‌شدن، نه خطا)
+  if (!VISIBLE_VIEWS.includes(view)) return null;
 
   const submit = () => {
     if (!text.trim()) return;
     const value = text;
     setText('');
     void (async () => {
-      const createdId = await addQuickTask({
-        title: value,
-        listId: targetList.id,
-        dueDate: smart?.dueDate ?? null,
-        dueTime: smart?.dueTime ?? null,
-        titleText: smart?.cleanTitle,
-      });
+      const smartNow = smart;
+      const createdId = targetList
+        ? await addQuickTask({
+            title: value,
+            listId: targetList.id,
+            dueDate: smartNow?.dueDate ?? null,
+            dueTime: smartNow?.dueTime ?? null,
+            titleText: smartNow?.cleanTitle,
+          })
+        : await addQuickTaskBootstrap({
+            title: value,
+            dueDate: smartNow?.dueDate ?? null,
+            dueTime: smartNow?.dueTime ?? null,
+            titleText: smartNow?.cleanTitle,
+          });
       // تب «امروز» — همان معنای ردیف حذف‌شده: کار تازه به «روزهای من» پین می‌شود
       if (isMyDay && createdId) await persistMyDay([...myDayIds, createdId]);
     })();
@@ -71,7 +83,13 @@ export function QuickBar() {
         <Icon name="add" size={20} className="text-primary shrink-0 mx-1.5" />
         <input
           className="flex-1 min-w-0 bg-transparent border-0 text-body-sm text-on-surface dark:text-inverse-on-surface focus:ring-0 placeholder:text-outline outline-none px-1"
-          placeholder={isMyDay ? 'افزودن به امروز…' : `افزودن به ${targetList.name}…`}
+          placeholder={
+            isMyDay
+              ? 'افزودن به امروز…'
+              : targetList
+                ? `افزودن به ${targetList.name}…`
+                : 'افزودن به کارهای من…'
+          }
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}

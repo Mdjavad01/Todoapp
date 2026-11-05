@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { ListEntity, ListGroup, ListColor, ListSortKey, HubKey, TaskEntity, SubtaskEntity, ViewName, TemplateDef, JobPackDef, TaskItemType } from '@/types';
 import * as repo from '@/db/repo';
-import { ensureDefaultData } from '@/db/seed';
+import { ensureAliveDefaultList, ensureDefaultData } from '@/db/seed';
 import {
   TRADER_TEMPLATE,
   TRADER_LIST_KEYS,
@@ -226,6 +226,8 @@ interface AppState {
 
   toggleTask(id: string): Promise<void>;
   addQuickTask(input: { title: string; listId: string; dueDate: string | null; dueTime?: string | null; titleText?: string; priority?: TaskEntity['priority']; repeat?: TaskEntity['repeat']; repeatMeta?: RepeatMeta | null }): Promise<string | null>;
+  /** بسته A — نوار افزودن هرگز بی‌هدف نمی‌ماند: با صفر لیست زنده، اول لیست پیش‌فرض قطعی ساخته می‌شود بعد کار در آن ثبت می‌شود */
+  addQuickTaskBootstrap(input: { title: string; dueDate: string | null; dueTime?: string | null; titleText?: string }): Promise<string | null>;
   addInlineTask(listId: string, title: string): Promise<void>;
   updateTask(id: string, patch: Partial<Pick<TaskEntity, 'title' | 'notes' | 'priority' | 'dueDate' | 'dueTime' | 'reminderMinutes' | 'repeat' | 'repeatMeta' | 'starred' | 'listId' | 'itemType' | 'itemValue' | 'completedAt'>>): Promise<void>;
   deleteTask(id: string): Promise<void>;
@@ -981,6 +983,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ modal: null, pendingDate: null });
     get().showToast(`کار «${cleanTitle || title}» افزوده شد`);
     return created.id;
+  },
+
+  async addQuickTaskBootstrap(input) {
+    // بسته A (خلوت‌سازی UX) — نصب تازه/صفر لیست زنده: نوار افزودن همچنان دیده می‌شود و
+    // با اولین Enter، اول لیست پیش‌فرضِ قطعی «کارهای من» (همان DEFAULT_LIST_ID سید) ساخته
+    // و بعد کار در آن ثبت می‌شود — بدون خطا و بدون نوارِ مخفی (e2e: tests/e2e-quickbar-fresh.mjs)
+    let targetId = defaultListId(get().lists);
+    if (!targetId) {
+      await ensureAliveDefaultList();
+      await get().refresh();
+      targetId = defaultListId(get().lists) ?? null;
+    }
+    if (!targetId) return null;
+    return get().addQuickTask({ ...input, listId: targetId });
   },
 
   async addInlineTask(listId, title) {

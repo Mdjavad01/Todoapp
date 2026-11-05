@@ -19,7 +19,22 @@
  *   ۶) مرورگر بی‌visualViewport → بدون خطا (نمونه‌ی تازه‌ی ماژول با query)
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, afterAll } from 'bun:test';
+
+/**
+ * آلودگی گلوبال — بازگردانی window/document پس از تست (پیدا‌شده در پیگیری صاحب محصول):
+ * این فایل گلوبال‌های DOM را با نمونه‌ی ساختگی جایگزین می‌کند؛ bun test همه‌ی فایل‌ها را
+ * در یک پروسه اجرا می‌کند و بدون بازگردانی، فایل‌های بعدی (مثل jobpacks که از
+ * window.setTimeout در showToast استفاده می‌کنند) می‌شکنند — هرگز بدون afterAll رها نشود.
+ */
+const realGlobals = {
+  window: (globalThis as Record<string, unknown>).window,
+  document: (globalThis as Record<string, unknown>).document,
+};
+afterAll(() => {
+  (globalThis as Record<string, unknown>).window = realGlobals.window;
+  (globalThis as Record<string, unknown>).document = realGlobals.document;
+});
 
 type Listener = () => void;
 
