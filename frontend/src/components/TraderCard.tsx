@@ -1,21 +1,33 @@
 import { useEffect, useState } from 'react';
-import { Icon } from './Icon';
+import { Icon, type IconName } from './Icon';
 import { useAppStore } from '@/store/useAppStore';
 import * as repo from '@/db/repo';
 import {
   TRADER_TEMPLATE,
   TRADER_REPEAT_NOTICE,
-  TRADER_PRETRADE_FOOTER,
   isTraderActive,
   findTraderLists,
 } from '@/db/traderTemplate';
-import { toFa, faTime } from '@/lib/format';
+import { faTime } from '@/lib/format';
 
 /**
  * فاز تریدر — کارت «چک‌لیست تریدر» در قالب‌های آماده (رایگان — جایگزین بسته‌ی قدیمی kit-trader).
  * فعال‌سازی ایدمپوتنت؛ دیالوگ دو‌سؤالی ساعت سشن (بدون پیش‌فرض ثابت)؛
  * دسترسی سریع به ۵ لیست + ریست تیک‌های «قبل از معامله» + بازنشانی با تأیید.
+ *
+ * بسته B (خلوت‌سازی UX) — بازطراحی: کارت هماهنگ با تم (به‌جای گرادیان تیره‌ی هاردکد)؛
+ * اقدامات کم‌استفاده (تغییر ساعت / ریست تیک‌ها / راهنما / بازنشانی) از بدنه‌ی همیشه‌باز به
+ * منوی «⋯» رفت و راهنمای لیست‌ها با دکمه‌ی «؟» سر جایش باز/بسته می‌شود (بازشدن خودکارِ
+ * اولین‌بار باقی است) — بدنه‌ی کارت فقط وضعیت + دسترسی سریع ۵ لیست را نشان می‌دهد.
  */
+
+const MENU_ACTIONS: { key: 'retime' | 'ticks' | 'guide' | 'reset'; label: string; icon: IconName; danger?: boolean }[] = [
+  { key: 'retime', label: 'تغییر ساعت سشن', icon: 'schedule' },
+  { key: 'ticks', label: 'ریست تیک‌های «قبل از معامله»', icon: 'replay' },
+  { key: 'guide', label: 'راهنمای لیست‌ها', icon: 'help' },
+  { key: 'reset', label: 'بازنشانی به حالت پیش‌فرض', icon: 'delete_forever', danger: true },
+];
+
 export function TraderCard() {
   const lists = useAppStore((s) => s.lists);
   const traderPref = useAppStore((s) => s.traderPref);
@@ -34,6 +46,7 @@ export function TraderCard() {
   const [end, setEnd] = useState('');
   const [resetConfirm, setResetConfirm] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // راهنمای اولین‌بار — یک‌بار در هر دستگاه (pref محلی)
   useEffect(() => {
@@ -48,10 +61,19 @@ export function TraderCard() {
   };
 
   const openSetup = (mode: 'activate' | 'retime') => {
+    setMenuOpen(false);
     setSetupMode(mode);
     setStart(traderPref?.start ?? '');
     setEnd(traderPref?.end ?? '');
     setSetupOpen(true);
+  };
+
+  const runMenuAction = (key: 'retime' | 'ticks' | 'guide' | 'reset') => {
+    setMenuOpen(false);
+    if (key === 'retime') openSetup('retime');
+    else if (key === 'ticks') void resetPretradeTicks();
+    else if (key === 'guide') setGuideOpen(true);
+    else if (key === 'reset') setResetConfirm(true);
   };
 
   const submitSetup = async () => {
@@ -65,49 +87,100 @@ export function TraderCard() {
 
   return (
     <div
-      className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 rounded-2xl shadow-md border border-emerald-500/30 flex flex-col gap-3 relative"
+      className="bg-surface-container-high dark:bg-slate-800 text-on-surface dark:text-inverse-on-surface p-4 rounded-2xl shadow-md border border-outline-variant/40 flex flex-col gap-3 relative"
       id="trader-card"
     >
-      <span className="absolute top-3 left-3 font-black text-[10px] px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
-        <Icon name="check_circle" size={12} />
-        رایگان
-      </span>
-      <div className="flex items-center gap-2.5">
-        <span className="text-3xl">📈</span>
-        <div>
-          <h3 className="text-headline-sm font-bold text-amber-400">چک‌لیست تریدر</h3>
-          <p className="text-xs text-slate-300">
+      {/* هدر: عنوان + راهنمای «؟» + منوی «⋯» */}
+      <div className="flex items-start gap-2.5">
+        <span className="text-3xl shrink-0">📈</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="text-headline-sm font-bold text-primary">چک‌لیست تریدر</h3>
+            <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              رایگان
+            </span>
+          </div>
+          <p className="text-xs text-on-surface-variant mt-0.5">
             ۵ لیست آماده: قوانین من، پیش از بازار، قبل از معامله، بعد از بازار و ریویو هفتگی — با یادآور سشن
           </p>
         </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lightest dark:hover:bg-slate-700 active:scale-90 transition-transform"
+            onClick={() => setGuideOpen((v) => !v)}
+            aria-label="راهنمای چک‌لیست تریدر"
+            aria-expanded={guideOpen}
+            title="راهنمای لیست‌ها"
+          >
+            <Icon name={guideOpen ? 'close' : 'help'} size={19} />
+          </button>
+          {active ? (
+            <button
+              className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-lightest dark:hover:bg-slate-700 active:scale-90 transition-transform"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="گزینه‌های کارت تریدر"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              title="تغییر ساعت، ریست تیک‌ها، راهنما، بازنشانی"
+            >
+              <Icon name="more_vert" size={20} />
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {/* منوی «⋯» — چهار اقدام کم‌استفاده، فقط وقتی خواستی */}
+      {menuOpen ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div
+            className="absolute left-3 top-12 z-50 min-w-[230px] py-1 rounded-xl bg-surface-container-lowest dark:bg-slate-800 shadow-xl border border-outline-variant/40"
+            role="menu"
+            aria-label="گزینه‌های کارت تریدر"
+          >
+            {MENU_ACTIONS.map((a) => (
+              <button
+                key={a.key}
+                role="menuitem"
+                className={`w-full px-3.5 py-2.5 text-right text-xs font-bold flex items-center gap-2 hover:bg-surface-container-lightest dark:hover:bg-slate-700 transition-colors ${
+                  a.danger ? 'text-red-600 dark:text-red-400' : 'text-on-surface dark:text-inverse-on-surface'
+                }`}
+                onClick={() => runMenuAction(a.key)}
+              >
+                <Icon name={a.icon} size={16} />
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {!active ? (
         <>
-          <div className="text-xs text-slate-300 space-y-1 rounded-xl bg-white/5 p-2.5">
+          <div className="text-xs text-on-surface-variant space-y-1 rounded-xl bg-surface-container-low dark:bg-slate-700/60 p-2.5">
             <div>✓ قوانین ثابت تو — همیشه بالای لیست‌ها (پین‌شده)</div>
             <div>✓ روتین روزانه‌ی قبل و بعد از بازار با یادآور ۳۰ دقیقه‌ای</div>
             <div>✓ چک‌لیست قبل از هر معامله + ریویو هفتگی با امتیاز انضباط</div>
           </div>
           <button
-            className="w-full py-2.5 font-bold rounded-xl text-sm bg-emerald-500 hover:bg-emerald-400 text-white transition-colors"
+            className="w-full py-2.5 font-bold rounded-xl text-sm bg-primary text-on-primary hover:opacity-90 transition-opacity"
             onClick={() => openSetup('activate')}
           >
             فعال‌سازی تمپلیت ترید
           </button>
-          <p className="text-[10px] leading-4 text-slate-400">
+          <p className="text-[10px] leading-4 text-on-surface-variant/80">
             اگر قبلاً بسته‌ی قدیمی «تریدر» را فعال کرده بودی، لیست‌هایش سر جایشان است — نگهشان دار یا خودت از مدیریت لیست‌ها حذفشان کن.
           </p>
         </>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 font-bold flex items-center gap-1">
+            <span className="px-2 py-1 rounded-full bg-primary/15 text-primary font-bold flex items-center gap-1">
               <Icon name="check_circle" size={13} />
               تمپلیت فعال است
             </span>
             {traderPref ? (
-              <span className="px-2 py-1 rounded-full bg-white/10 text-slate-200">
+              <span className="px-2 py-1 rounded-full bg-surface-container-low dark:bg-slate-700/60 text-on-surface-variant">
                 سشن: {faTime(traderPref.start)} تا {faTime(traderPref.end)}
               </span>
             ) : null}
@@ -122,8 +195,8 @@ export function TraderCard() {
                   key={def.name}
                   className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
                     l
-                      ? 'bg-white/10 hover:bg-white/20 border-white/15 text-slate-100'
-                      : 'bg-transparent border-dashed border-white/25 text-slate-400'
+                      ? 'bg-surface-container-lowest dark:bg-slate-700 hover:bg-surface-container-light dark:hover:bg-slate-600 border-outline-variant/50 text-on-surface dark:text-inverse-on-surface'
+                      : 'bg-transparent border-dashed border-outline-variant/60 text-on-surface-variant'
                   }`}
                   onClick={() => (l ? openList(l.id) : openSetup('activate'))}
                   title={def.guide}
@@ -133,54 +206,27 @@ export function TraderCard() {
               );
             })}
           </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              className="py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 transition-colors"
-              onClick={() => openSetup('retime')}
-            >
-              تغییر ساعت سشن
-            </button>
-            <button
-              className="py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 transition-colors"
-              onClick={() => void resetPretradeTicks()}
-              title={TRADER_PRETRADE_FOOTER}
-            >
-              ریست تیک‌های «قبل از معامله»
-            </button>
-            <button
-              className="py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition-colors"
-              onClick={() => setGuideOpen(true)}
-            >
-              راهنمای لیست‌ها
-            </button>
-            <button
-              className="py-2 rounded-xl text-xs font-bold text-rose-300 hover:text-rose-200 transition-colors"
-              onClick={() => setResetConfirm(true)}
-            >
-              بازنشانی به حالت پیش‌فرض
-            </button>
-          </div>
-
-          {guideOpen ? (
-            <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200 space-y-1.5" role="note">
-              {TRADER_TEMPLATE.map((def) => (
-                <div key={def.name}>
-                  <span className="font-bold text-amber-300">{def.emoji} {def.name}:</span>{' '}
-                  <span className="text-slate-300">{def.guide}</span>
-                </div>
-              ))}
-              <p className="text-slate-400 leading-5 pt-1 border-t border-white/10">{TRADER_REPEAT_NOTICE}</p>
-              <button
-                className="mt-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-bold"
-                onClick={dismissGuide}
-              >
-                فهمیدم
-              </button>
-            </div>
-          ) : null}
         </>
       )}
+
+      {/* راهنمای «؟» — باز/بسته با دکمه‌ی سربرگ */}
+      {guideOpen ? (
+        <div className="rounded-xl bg-surface-container-low dark:bg-slate-700/60 p-3 text-xs text-on-surface-variant space-y-1.5" role="note">
+          {TRADER_TEMPLATE.map((def) => (
+            <div key={def.name}>
+              <span className="font-bold text-primary">{def.emoji} {def.name}:</span>{' '}
+              <span>{def.guide}</span>
+            </div>
+          ))}
+          <p className="leading-5 pt-1 border-t border-outline-variant/40">{TRADER_REPEAT_NOTICE}</p>
+          <button
+            className="mt-1 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-bold"
+            onClick={dismissGuide}
+          >
+            فهمیدم
+          </button>
+        </div>
+      ) : null}
 
       {/* دیالوگ دو‌سؤالی ساعت سشن — بدون پیش‌فرض ثابت */}
       {setupOpen ? (
@@ -257,15 +303,15 @@ export function TraderCard() {
             className="bg-surface-container-lowest dark:bg-slate-800 text-on-surface dark:text-inverse-on-surface w-full max-w-sm rounded-2xl p-4 shadow-xl flex flex-col gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-label-lg font-bold text-rose-500">بازنشانی به حالت پیش‌فرض؟</h4>
+            <h4 className="text-label-lg font-bold text-red-600 dark:text-red-400">بازنشانی به حالت پیش‌فرض؟</h4>
             <p className="text-body-sm text-on-surface-variant leading-6">
-              هر ۵ لیست تریدر ({toFa(5)} لیست: قوانین من، پیش از بازار، قبل از معامله، بعد از بازار، ریویو هفتگی) حذف و با محتوای
+              هر ۵ لیست تریدر (۵ لیست: قوانین من، پیش از بازار، قبل از معامله، بعد از بازار، ریویو هفتگی) حذف و با محتوای
               پیش‌فرض از نو ساخته می‌شود. لیست‌ها با کلید قالب شناخته می‌شوند — حتی اگر نامشان را عوض کرده باشی حذف می‌شوند.
               ویرایش‌ها و تیک‌های فعلی از بین می‌رود (تا لحظه‌ی نگه‌داری تومب‌استون در سینک باقی می‌ماند).
             </p>
             <div className="flex gap-2">
               <button
-                className="flex-1 py-2 rounded-xl text-sm font-bold bg-rose-500 hover:bg-rose-400 text-white"
+                className="flex-1 py-2 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white"
                 onClick={() => {
                   setResetConfirm(false);
                   void resetTraderTemplate();

@@ -69,6 +69,15 @@ async function gotoTemplates(page) {
   await sleep(300);
 }
 
+/** بسته B — بازکردن منوی «⋯» کارت تریدر (اقدامات در منو شدند) */
+async function openTraderMenu(page) {
+  const btn = page.locator('#trader-card [aria-label="گزینه‌های کارت تریدر"]');
+  await btn.waitFor({ state: 'visible', timeout: 8000 });
+  await btn.click();
+  await page.locator('[role="menu"][aria-label="گزینه‌های کارت تریدر"]').waitFor({ state: 'visible', timeout: 4000 });
+  await sleep(200);
+}
+
 /** خواندن رکوردهای زنده از IndexedDB اپ */
 async function readIdb(page) {
   return page.evaluate(
@@ -155,6 +164,32 @@ check('هیچ لیست دیگری پین نیست', idb.lists.filter((l) => l.pi
 check('لنگر شروع با یادآور ۳۰ دقیقه‌ای', idb.tasks.some((t) => t.title === 'شروع سشن معاملاتی' && t.dueTime === '09:00' && t.reminderMinutes === 30 && t.repeat === 'daily'));
 check('لنگر پایان = ۱۷:۳۰ + ۳۰ دقیقه با یادآور ۰', idb.tasks.some((t) => t.title === 'پایان سشن معاملاتی' && t.dueTime === '18:00' && t.reminderMinutes === 0 && t.repeat === 'daily'));
 check('کارت حالا «تمپلیت فعال است» نشان می‌دهد', (await card.getByText('تمپلیت فعال است').count()) > 0);
+
+/* بسته B — کارت هم‌تم با «؟» و منوی «⋯» */
+check('دکمه‌ی «؟» راهنما روی کارت هست', (await card.locator('[aria-label="راهنمای چک‌لیست تریدر"]').count()) === 1);
+check('دکمه‌ی «⋯» گزینه‌ها روی کارت فعال هست', (await card.locator('[aria-label="گزینه‌های کارت تریدر"]').count()) === 1);
+const themeOk = await card.evaluate((el) => !el.className.includes('from-slate-900'));
+check('کارت هماهنگ با تم است (گرادیان تیره‌ی هاردکد حذف شد)', themeOk);
+const bodyButtons = await card.locator('button', { hasText: 'تغییر ساعت سشن' }).count();
+check('اقدامات دیگر همیشه‌باز نیستند (منو شده‌اند)', bodyButtons === 0);
+await openTraderMenu(page);
+const menu = page.locator('[role="menu"][aria-label="گزینه‌های کارت تریدر"]');
+check('منوی «⋯» با ۴ اقدام باز می‌شود', (await menu.locator('[role="menuitem"]').count()) === 4);
+check('بازنشانی (اقدام خطرناک) داخل منو رنگ هشدار دارد', (await menu.locator('[role="menuitem"][class*="text-red"]').count()) === 1);
+await page.locator('div.fixed.inset-0.z-40').click(); // بستن منو با کلیک بیرون
+await sleep(250);
+check('منو با کلیک بیرون بسته می‌شود', (await menu.count()) === 0);
+// راهنمای اولین‌بار خودکار باز است — اول ببند (فهمیدم)، بعد باز/بسته‌ی دستی «؟» را بسنجیم
+if ((await card.getByText('فهمیدم').count()) > 0) {
+  await card.getByText('فهمیدم').click();
+  await sleep(200);
+}
+await card.locator('[aria-label="راهنمای چک‌لیست تریدر"]').click();
+await sleep(250);
+check('راهنمای «؟» باز می‌شود (هر ۵ لیست)', (await card.getByText('قوانین من:', { exact: false }).count()) > 0 && (await card.getByText('ریویو هفتگی:', { exact: false }).count()) > 0);
+await card.getByText('فهمیدم').click();
+await sleep(200);
+check('راهنما با «فهمیدم» بسته می‌شود', (await card.getByText('فهمیدم').count()) === 0);
 await page.screenshot({ path: join(SHOTS, 'trader-active.png') });
 
 /* ---------- ۳) فعال‌سازی دوباره ---------- */
@@ -275,6 +310,7 @@ await page.locator('[aria-label="تب تنظیمات"]').click();
 await page.waitForSelector('#view-settings', { timeout: 8000 });
 await page.locator('[aria-label="قالب‌های آماده"]').click();
 await sleep(300);
+await openTraderMenu(page);
 await page.locator('#trader-card').getByText('ریست تیک‌های «قبل از معامله»').click();
 check('توست ریست تیک‌ها', await waitToast(page, 'صفر شد'));
 await sleep(500);

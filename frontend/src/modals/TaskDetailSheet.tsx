@@ -15,6 +15,7 @@ import {
 } from '@/lib/repeat';
 import { faShort, parseIsoDate, faTime } from '@/lib/format';
 import { ensureRemindersPermissionNow } from '@/lib/reminderScheduler';
+import { findTraderLists } from '@/db/traderTemplate';
 import type { TaskEntity, TaskItemType } from '@/types';
 
 const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
@@ -64,6 +65,8 @@ export function TaskDetailSheet() {
   const list = lists.find((l) => l.id === task?.listId);
   const subs = subtasks.filter((s) => s.taskId === task?.id && !s.deletedAt);
   const inMyDay = task ? myDayIds.includes(task.id) : false;
+  // بسته B — «نوع آیتم» فقط در لیست‌های تریدر (کلید trader.* یا فال‌بک نامی) — نه در همه‌ی کارها
+  const isTraderList = !!task && findTraderLists(lists).some((l) => l?.id === task.listId);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -75,6 +78,8 @@ export function TaskDetailSheet() {
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editingSubTitle, setEditingSubTitle] = useState('');
   const [speaking, setSpeaking] = useState(false);
+  // بسته B (خلوت‌سازی UX) — جزئیات دوسطحی: سطح اول فقط عنوان + یادداشت + سررسید + ستاره؛ بقیه پشت «بیشتر»
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const appSettings = useAppStore((s) => s.appSettings);
 
@@ -124,6 +129,7 @@ export function TaskDetailSheet() {
       setAddingSub(false);
       setEditingSubId(null);
       setEditingSubTitle('');
+      setMoreOpen(false);
     } else {
       stopSpeaking();
     }
@@ -190,42 +196,26 @@ export function TaskDetailSheet() {
         <>
           <SheetHeader
             title={
-              <span className="text-xs font-bold text-primary px-2.5 py-0.5 rounded-full bg-primary/10">
-                {list?.emoji} {list?.name}
+              <span className="flex items-center gap-2">
+                <span className="text-xs font-bold text-primary px-2.5 py-0.5 rounded-full bg-primary/10">
+                  {list?.emoji} {list?.name}
+                </span>
+                {/* بسته B — ستاره = تنها نشان «مهم» در سطح اول، سرِ سربرگ */}
+                <button
+                  className={`w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform ${
+                    task.starred ? 'text-amber-500 dark:text-amber-400' : 'text-on-surface-variant hover:text-primary'
+                  }`}
+                  onClick={() => void toggleStar(task.id)}
+                  aria-pressed={task.starred}
+                  aria-label={task.starred ? 'برداشتن ستاره' : 'افزودن ستاره (مهم)'}
+                  title={task.starred ? 'مهم' : 'ستاره (مهم)'}
+                >
+                  <Icon name={task.starred ? 'star_filled' : 'star'} size={20} />
+                </button>
               </span>
             }
             onClose={() => openModal(null)}
           />
-
-          {/* ردیف ستاره / روزهای من / حذف */}
-          <div className="flex gap-2">
-            <button
-              className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-transform ${
-                task.starred
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                  : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
-              }`}
-              onClick={() => void toggleStar(task.id)}
-              aria-pressed={task.starred}
-              aria-label={task.starred ? 'برداشتن ستاره' : 'افزودن ستاره (مهم)'}
-            >
-              <Icon name={task.starred ? 'star_filled' : 'star'} size={17} />
-              {task.starred ? 'مهم' : 'ستاره'}
-            </button>
-            <button
-              className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-transform ${
-                inMyDay
-                  ? 'bg-primary/15 text-primary'
-                  : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
-              }`}
-              onClick={() => void toggleMyDay(task.id)}
-              aria-pressed={inMyDay}
-              aria-label={inMyDay ? 'برداشتن از روزهای من' : 'افزودن به روزهای من'}
-            >
-              <Icon name="today" size={17} />
-              {inMyDay ? 'در روزهای من' : 'روزهای من'}
-            </button>
-          </div>
 
           <input
             className="text-headline-md font-bold bg-transparent border-0 border-b border-outline-variant/30 text-on-surface dark:text-inverse-on-surface focus:ring-0 p-1 outline-none"
@@ -234,61 +224,17 @@ export function TaskDetailSheet() {
             onChange={(e) => setTitle(e.target.value)}
             aria-label="عنوان کار"
           />
+          {/* بسته B — یادداشت بزرگ‌تر: جزء سطح اول جزئیات دوسطحی */}
           <textarea
-            className="bg-surface-container dark:bg-slate-800 rounded-xl p-3 text-body-sm border-0 focus:ring-1 focus:ring-primary outline-none resize-none text-on-surface dark:text-inverse-on-surface placeholder:text-outline"
+            className="bg-surface-container dark:bg-slate-800 rounded-xl p-3 text-body-md border-0 focus:ring-1 focus:ring-primary outline-none resize-none text-on-surface dark:text-inverse-on-surface placeholder:text-outline leading-7"
             placeholder="یادداشت و توضیحات تکمیلی..."
-            rows={2}
+            rows={5}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             aria-label="یادداشت"
           />
 
-          {/* فاز تریدر — نوع آیتم: تیک ساده / عدد / یادداشت کوتاه / انتخاب / امتیاز — ذخیره‌ی فوری */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] text-outline">نوع آیتم (چک‌لیست تریدر):</span>
-            <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="نوع آیتم">
-              {ITEM_TYPE_OPTIONS.map((o) => {
-                const current = task?.itemType ?? 'check';
-                const active = current === o.value;
-                return (
-                  <button
-                    key={o.value}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
-                      active
-                        ? 'bg-primary text-on-primary border-primary'
-                        : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant border-outline-variant/40 hover:border-primary/50'
-                    }`}
-                    onClick={() => {
-                      if (!task || active) return;
-                      updateTask(task.id, {
-                        itemType: o.value === 'check' ? null : o.value,
-                        itemValue: o.value === 'check' ? null : task.itemValue,
-                      });
-                    }}
-                    role="radio"
-                    aria-checked={active}
-                  >
-                    {o.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {voiceAvailable ? (
-            <button
-              className={`self-start flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold active:scale-95 transition-transform ${
-                speaking ? 'bg-primary text-on-primary' : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
-              }`}
-              onClick={() => (speaking ? stopSpeaking() : speak())}
-              aria-label={speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
-            >
-              <Icon name="mic" size={15} />
-              {speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
-            </button>
-          ) : null}
-
-          {/* سررسید و ساعت — فاز ۳ */}
+          {/* سررسید و ساعت — فاز ۳ (بسته B: سطح اول جزئیات دوسطحی) */}
           <div className="flex flex-col gap-2">
             <span className="text-xs text-outline font-semibold">سررسید:</span>
             <div className="flex flex-wrap gap-1.5">
@@ -345,7 +291,85 @@ export function TaskDetailSheet() {
             </div>
           </div>
 
-          {/* اولویت — فاز ۳ (همان برچسب‌های افزودن سریع) */}
+          {/* بسته B — «بیشتر»: همه‌ی تنظیمات ثانویه پشت یک بازشو */}
+          <button
+            className="w-full py-2 rounded-xl text-xs font-bold bg-surface-container dark:bg-slate-800 text-on-surface-variant flex items-center justify-center gap-1 hover:bg-surface-container-light dark:hover:bg-slate-700 transition-colors"
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+            aria-controls="task-more"
+          >
+            <Icon name="expand_more" size={16} className={moreOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            {moreOpen ? 'بستن تنظیمات بیشتر' : 'بیشتر: روزهای من، اولویت، زیرکار، یادآور، تکرار و…'}
+          </button>
+
+          {moreOpen ? (
+          <div id="task-more" className="flex flex-col gap-4">
+            {/* روزهای من — از سطح اول به «بیشتر» رفت (بسته B) */}
+            <div className="flex">
+              <button
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+                  inMyDay
+                    ? 'bg-primary/15 text-primary'
+                    : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
+                }`}
+                onClick={() => void toggleMyDay(task.id)}
+                aria-pressed={inMyDay}
+                aria-label={inMyDay ? 'برداشتن از روزهای من' : 'افزودن به روزهای من'}
+              >
+                <Icon name="today" size={15} />
+                {inMyDay ? 'در روزهای من' : 'افزودن به روزهای من'}
+              </button>
+            </div>
+
+            {voiceAvailable ? (
+              <button
+                className={`self-start flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold active:scale-95 transition-transform ${
+                  speaking ? 'bg-primary text-on-primary' : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant'
+                }`}
+                onClick={() => (speaking ? stopSpeaking() : speak())}
+                aria-label={speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
+              >
+                <Icon name="mic" size={15} />
+                {speaking ? 'توقف خواندن' : 'خواندن کار با صدا'}
+              </button>
+            ) : null}
+
+            {/* فاز تریدر — نوع آیتم: تیک ساده / عدد / یادداشت کوتاه / انتخاب / امتیاز — ذخیره‌ی فوری */}
+            {/* بسته B — فقط در لیست‌های تریدر نشان داده می‌شود، نه در همه‌ی کارها */}
+            {isTraderList ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] text-outline">نوع آیتم (چک‌لیست تریدر):</span>
+              <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="نوع آیتم">
+                {ITEM_TYPE_OPTIONS.map((o) => {
+                  const current = task?.itemType ?? 'check';
+                  const active = current === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                        active
+                          ? 'bg-primary text-on-primary border-primary'
+                          : 'bg-surface-container dark:bg-slate-800 text-on-surface-variant border-outline-variant/40 hover:border-primary/50'
+                      }`}
+                      onClick={() => {
+                        if (!task || active) return;
+                        updateTask(task.id, {
+                          itemType: o.value === 'check' ? null : o.value,
+                          itemValue: o.value === 'check' ? null : task.itemValue,
+                        });
+                      }}
+                      role="radio"
+                      aria-checked={active}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            ) : null}
+
+            {/* اولویت — فاز ۳ (همان برچسب‌های افزودن سریع) — بسته B: پشت «بیشتر» */}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs text-outline font-semibold">اولویت و فوریت:</span>
             <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="اولویت و فوریت کار">
@@ -601,6 +625,9 @@ export function TaskDetailSheet() {
               })}
             </div>
           </div>
+
+          </div>
+          ) : null}
 
           {/* اقدامات */}
           <div className="flex gap-2 pt-2 pb-2">
