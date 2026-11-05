@@ -49,21 +49,32 @@ export async function ensureDefaultData(): Promise<void> {
 
 /**
  * بعد از سینک (فاز نصب تمیز): اگر حساب/دستگاه هیچ لیست زنده‌ای ندارد (مثلاً ورود به
- * حساب تازه که لیست خالی مهمان آن با prune حذف شده)، لیست پیش‌فرضِ قطعی ساخته می‌شود.
+ * حساب تازه که لیست خالی مهمان آن با prune حذف شده، یا تومب‌استونِ لیست پیش‌فرض)،
+ * لیست پیش‌فرضِ قطعی ساخته می‌شود.
  * چون شناسه ثابت است، اگر دستگاه دیگری هم همین را ساخته باشد، در سرور ادغام می‌شود.
+ *
+ * قرارداد بازسازی روی تومب‌استون (اصلاح ۱ — با تست واحد tests/bootstrap-resurrect.test.ts):
+ * اگر رکورد DEFAULT_LIST_ID از قبل به‌صورت تومب‌استون باشد، همین نوشتن روی «همان شناسه»
+ * فلگ حذف را خاموش (deletedAt: null) و updatedAt را جدیدتر از لحظه‌ی حذف می‌کند؛
+ * بنابراین push نسخه‌ی زنده را به سرور می‌برد و اکوی تومب‌استونِ قدیمی‌ترِ سرور با
+ * قاعده‌ی LWW هرگز روی نسخه‌ی زنده اعمال نمی‌شود — سینک لیست را «نمی‌خوابانَد».
  * @returns true اگر لیستی ساخته شد (تماس‌دهنده باید refresh + سینک بعدی کند)
  */
 export async function ensureAliveDefaultList(): Promise<boolean> {
   const lists = await idbGetAll<ListEntity>(STORES.lists);
   if (lists.some((l) => !l.deletedAt)) return false;
   const now = nowIso();
+  // قرارداد بازسازی روی تومب‌استون (اصلاح ۱): هویت رکورد حفظ می‌شود — createdAt و pinned
+  // تومب‌استونِ همان شناسه پابرجا می‌ماند و فقط فلگ حذف خاموش + updatedAt تازه می‌شود
+  const prev = lists.find((l) => l.id === DEFAULT_LIST_ID);
   await idbPut(STORES.lists, {
     id: DEFAULT_LIST_ID,
     name: 'کارهای من',
     emoji: '🗂️',
     color: 'teal',
     sortOrder: 0,
-    createdAt: now,
+    pinned: prev?.pinned ?? false,
+    createdAt: prev?.createdAt ?? now,
     updatedAt: now,
     deletedAt: null,
   });
