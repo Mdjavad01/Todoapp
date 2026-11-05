@@ -220,7 +220,7 @@ export function AnalyticsView() {
       ) : (
         <div
           className="relative overflow-hidden bg-surface-container-high/60 dark:bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-secondary/30 flex items-center justify-between cursor-pointer"
-          onClick={() => setView('paywall')}
+          onClick={() => setView('templates')}
         >
           <div className="flex items-center gap-3">
             <Icon name="lock" size={28} className="text-secondary" />

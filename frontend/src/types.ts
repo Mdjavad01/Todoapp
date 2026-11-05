@@ -101,8 +101,8 @@ export type ViewName =
   | 'home'
   | 'listView'
   | 'analytics'
+  /** بسته C — صفحه‌ی واحد «قالب‌ها» (ادغام قالب‌های رایگان + تریدر + بسته‌های شغلی؛ 'jobkits' حذف شد) */
   | 'templates'
-  | 'jobkits'
   | 'paywall'
   | 'settings'
   | 'search'

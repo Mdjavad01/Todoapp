@@ -188,6 +188,16 @@ export function isTraderActive(lists: ListEntity[]): boolean {
   return isTemplateActive(lists, TRADER_TEMPLATE, (i) => TRADER_LIST_KEYS[i]);
 }
 
+/**
+ * بسته C — تابع خالص قفل تریدر (ثابت واحد: TRADER_REQUIRES_PRO در sync/payments.ts):
+ * فقط وقتی قفل است که بیلد تریدر را پرو بخواهد و کاربر نه پرو باشد و نه قبلاً
+ * فعالش کرده باشد (فعالِ قبلی = لیست‌های تریدر موجود با کلید/نام، یا pref دستگاه) —
+ * یعنی «کاربران فعالِ قبلی دسترسی کامل می‌مانند». تست‌پذیر بدون وابستگی به بیلد.
+ */
+export function traderLockedFor(requiresPro: boolean, isPro: boolean, active: boolean): boolean {
+  return requiresPro && !isPro && !active;
+}
+
 /** مقادیر فعلی «قوانین من» برای بنر فقط‌خواندنی بالای «پیش از بازار» (کلید-اول + فال‌بک نامی) */
 export function traderRulesValues(
   lists: ListEntity[],

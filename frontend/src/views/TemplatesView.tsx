@@ -7,6 +7,14 @@ import { JOB_PACKS, packItemCount, PACK_REPEAT_NOTICE, isPackActive } from '@/db
 import { toFa } from '@/lib/format';
 import type { JobPackDef, JobPackItem, JobPackList } from '@/types';
 
+/**
+ * بسته C — صفحه‌ی واحد «قالب‌ها» (ادغام TemplatesView و JobKitsView سابق):
+ *  - بخش «رایگان برای همه»: ۴ قالب کاتالوگ (سوپرمارکت، کنکور، سفر، خانه‌تکانی) با برچسب «رایگان»
+ *  - بخش «مخصوص کارام پرو»: چک‌لیست تریدر (قفل کلاینت TRADER_REQUIRES_PRO) + ۳ بسته‌ی شغلی با برچسب «پرو»
+ * تنها ورود به این صفحه: «لیست جدید ← یا از قالب‌های آماده شروع کنید» — ردیف‌های تنظیمات حذف شدند و
+ * کارت ارتقا به پرو (تنظیمات/آمار) به همین صفحه راه می‌برد.
+ */
+
 /** فاز الف — سربرگ مشترک صفحات داخلی: دکمه‌ی بازگشت + عنوان روشن */
 function InnerHeader({ title, subtitle }: { title: string; subtitle: string }) {
   const goHome = useAppStore((s) => s.goHome);
@@ -27,24 +35,43 @@ function InnerHeader({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-/** بخش ۹: قالب‌های آماده */
+/** بسته C — صفحه‌ی واحد قالب‌ها: دو بخش با برچسب رایگان/پرو */
 export function TemplatesView() {
   const applyTemplate = useAppStore((s) => s.applyTemplate);
+  const setView = useAppStore((s) => s.setView);
+  const activateJobPack = useAppStore((s) => s.activateJobPack);
+  const resetJobPack = useAppStore((s) => s.resetJobPack);
+  const premium = useAppStore((s) => s.premium);
+  const isPro = premium.loaded && premium.isPremium;
+
   return (
     <section className="p-margin flex flex-col gap-4" id="view-templates">
-      <InnerHeader title="قالب‌های آماده" subtitle="چک‌لیست‌های تخصصی آماده برای شروع بدون اتلاف وقت" />
-      {/* فاز تریدر — کارت چک‌لیست تریدر (رایگان — چندلیستی با یادآور سشن) */}
-      <TraderCard />
-      <div className="grid grid-cols-1 gap-3">
+      <InnerHeader
+        title="قالب‌ها"
+        subtitle="چک‌لیست‌های آماده برای شروع سریع — رایگان‌ها برای همه؛ فعال‌سازی بسته‌های پرو مخصوص کارام پرو"
+      />
+
+      {/* بخش رایگان — ۴ قالب کاتالوگ */}
+      <h2 className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface flex items-center gap-1.5">
+        <Icon name="check_circle" size={18} className="text-primary" />
+        رایگان برای همه
+      </h2>
+      <div className="grid grid-cols-1 gap-3" id="templates-free">
         {TEMPLATES.map((tpl) => (
           <div
             key={tpl.id}
             className="bg-surface-container-lowest dark:bg-slate-800 p-4 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center justify-between gap-3"
+            data-template={tpl.id}
           >
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">{tpl.emoji}</span>
-              <div>
-                <h4 className="text-label-lg font-bold">{tpl.title}</h4>
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-3xl shrink-0">{tpl.emoji}</span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <h4 className="text-label-lg font-bold">{tpl.title}</h4>
+                  <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                    رایگان
+                  </span>
+                </div>
                 <p className="text-body-sm text-outline">
                   {toFa(tpl.items.length)} {tpl.subtitle}
                 </p>
@@ -59,31 +86,26 @@ export function TemplatesView() {
           </div>
         ))}
       </div>
-    </section>
-  );
-}
 
-/** بخش ۱۰ — P2.0: بسته‌های شغلی تخصصی — پیش‌نمایش کامل برای همه، قفل فقط روی فعال‌سازی */
-export function JobKitsView() {
-  const setView = useAppStore((s) => s.setView);
-  const activateJobPack = useAppStore((s) => s.activateJobPack);
-  const resetJobPack = useAppStore((s) => s.resetJobPack);
-  const premium = useAppStore((s) => s.premium);
-  const isPro = premium.loaded && premium.isPremium;
-
-  return (
-    <section className="p-margin flex flex-col gap-4" id="view-jobkits">
-      <InnerHeader title="بسته‌های شغلی تخصصی" subtitle="روتین‌های چندلیستی آماده با یادآور — محتوای هر بسته را کامل ببین، فعال‌سازی مخصوص کارام پرو است" />
-      {JOB_PACKS.map((pack) => (
-        <PackCard
-          key={pack.id}
-          pack={pack}
-          isPro={isPro}
-          onLocked={() => setView('paywall')}
-          onActivate={() => void activateJobPack(pack)}
-          onReset={() => void resetJobPack(pack.id)}
-        />
-      ))}
+      {/* بخش پرو — چک‌لیست تریدر + ۳ بسته‌ی شغلی */}
+      <h2 className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface flex items-center gap-1.5">
+        <Icon name="workspace_premium" size={18} className="text-secondary" />
+        مخصوص کارام پرو
+      </h2>
+      <div className="flex flex-col gap-3" id="templates-pro">
+        {/* چک‌لیست تریدر — قفل کلاینت TRADER_REQUIRES_PRO؛ فعالِ قبلی/پرو/بیلد بازار = دسترسی کامل */}
+        <TraderCard />
+        {JOB_PACKS.map((pack) => (
+          <PackCard
+            key={pack.id}
+            pack={pack}
+            isPro={isPro}
+            onLocked={() => setView('paywall')}
+            onActivate={() => void activateJobPack(pack)}
+            onReset={() => void resetJobPack(pack.id)}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -170,7 +192,13 @@ function PackCard({
       <div className="flex items-center gap-2.5">
         <span className="text-3xl">{pack.emoji}</span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-headline-sm font-bold">{pack.title}</h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="text-headline-sm font-bold">{pack.title}</h3>
+            {/* بسته C — برچسب سطح بسته (بعد از فعال‌سازی، چیپ «فعال است» کنارش می‌آید) */}
+            <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-secondary/15 text-secondary shrink-0">
+              پرو
+            </span>
+          </div>
           <p className="text-xs text-outline">{pack.subtitle}</p>
         </div>
         {active ? (

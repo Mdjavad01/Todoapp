@@ -217,11 +217,11 @@ export function SettingsView() {
     <section className="p-margin flex flex-col gap-4" id="view-settings">
       <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">تنظیمات</h1>
 
-      {/* فاز الف — کارت کوچک اشتراک پرو (بالای تنظیمات). کلید خاموشی پرداخت‌ها در شیت پرداخت
-          مثل قبل مدیریت می‌شود — این کارت فقط مسیر ورود را حفظ می‌کند */}
+      {/* فاز الف — کارت کوچک اشتراک پرو (بالای تنظیمات). بسته C: کارت ارتقا به صفحه‌ی واحد «قالب‌ها»
+          راه می‌برد (ببین پرو چه می‌دهد) و از آنجا دکمه‌های قفل به پی‌وال می‌روند؛ کاربر پرو به پی‌وال (وضعیت اشتراک) */}
       <div
         className="rounded-2xl border border-secondary/30 bg-secondary/5 dark:bg-secondary/10 p-4 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition-transform"
-        onClick={() => setView('paywall')}
+        onClick={() => setView(isPro ? 'paywall' : 'templates')}
         role="button"
         aria-label={isPro ? 'وضعیت اشتراک کارام پرو' : 'ارتقا به کارام پرو'}
         id="settings-pro"
@@ -246,32 +246,9 @@ export function SettingsView() {
         </span>
       </div>
 
-      {/* فاز الف — قالب‌ها و بسته‌های شغلی (از خانه به تنظیمات منتقل شدند) + مدیریت لیست‌ها */}
+      {/* بسته C — ردیف‌های «قالب‌های آماده» و «بسته‌های شغلی تخصصی» حذف شدند؛ تنها ورود به قالب‌ها:
+          «لیست جدید ← یا از قالب‌های آماده شروع کنید» (NewListSheet) */}
       <div className="bg-surface-container-lowest dark:bg-slate-800 rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20 text-body-md">
-        <div
-          className="p-3.5 flex justify-between items-center cursor-pointer"
-          onClick={() => setView('templates')}
-          role="button"
-          aria-label="قالب‌های آماده"
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="auto_awesome" size={22} className="text-outline" />
-            <span>قالب‌های آماده</span>
-          </div>
-          <Icon name="arrow_back_ios" size={14} className="text-outline" />
-        </div>
-        <div
-          className="p-3.5 flex justify-between items-center cursor-pointer"
-          onClick={() => setView('jobkits')}
-          role="button"
-          aria-label="بسته‌های شغلی تخصصی"
-        >
-          <div className="flex items-center gap-2.5">
-            <Icon name="psychology" size={22} className="text-outline" />
-            <span>بسته‌های شغلی تخصصی</span>
-          </div>
-          <Icon name="arrow_back_ios" size={14} className="text-outline" />
-        </div>
         <div
           className="p-3.5 flex justify-between items-center cursor-pointer"
           onClick={() => openModal('manageLists')}

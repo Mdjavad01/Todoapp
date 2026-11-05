@@ -8,7 +8,7 @@ import { TodayTab } from '@/views/TodayTab';
 import { PlannerView } from '@/views/PlannerView';
 import { AnalyticsView } from '@/views/AnalyticsView';
 import { ImportantView, AllView } from '@/views/SmartViews';
-import { TemplatesView, JobKitsView } from '@/views/TemplatesView';
+import { TemplatesView } from '@/views/TemplatesView';
 import { PaywallView } from '@/views/PaywallView';
 import { SettingsView } from '@/views/SettingsView';
 import { SearchView } from '@/views/SearchView';
@@ -111,7 +111,6 @@ export default function App() {
               {view === 'important' ? <ImportantView /> : null}
               {view === 'all' ? <AllView /> : null}
               {view === 'templates' ? <TemplatesView /> : null}
-              {view === 'jobkits' ? <JobKitsView /> : null}
               {view === 'paywall' ? <PaywallView /> : null}
               {view === 'settings' ? <SettingsView /> : null}
               {view === 'search' ? <SearchView /> : null}

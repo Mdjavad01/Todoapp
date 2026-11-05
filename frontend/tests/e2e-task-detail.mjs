@@ -17,6 +17,7 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { gotoTemplates, seedTraderLists } from './helpers-e2e.mjs';
 
 const BASE = process.env.E2E_BASE || 'http://localhost:4173/';
 const SHOTS = '/tmp/karam-e2e-shots';
@@ -170,19 +171,10 @@ const browser = await chromium.launch();
   await page.screenshot({ path: join(SHOTS, 'task-detail-more-counter.png') });
   await closeDetail(page);
 
-  console.log('— بلوک ۴: «نوع آیتم» فقط در لیست‌های تریدر (فعال‌سازی تمپلیت)');
-  await page.locator('[aria-label="تب تنظیمات"]').click();
-  await page.waitForSelector('#view-settings', { timeout: 8000 });
-  await page.locator('[aria-label="قالب‌های آماده"]').click();
-  await page.waitForSelector('#view-templates', { timeout: 8000 });
+  console.log('— بلوک ۴: «نوع آیتم» فقط در لیست‌های تریدر (بسته C — شبیه‌سازی فعالِ قبلی با seed IDB)');
+  await gotoTemplates(page);
+  await seedTraderLists(page);
   await sleep(300);
-  await page.locator('#trader-card').getByText('فعال‌سازی تمپلیت ترید').click();
-  await sleep(300);
-  const dialog = page.locator('[aria-label="ساعت سشن معاملاتی"]');
-  await dialog.locator('[aria-label="ساعت شروع سشن"]').fill('09:00');
-  await dialog.locator('[aria-label="ساعت پایان سشن"]').fill('17:00');
-  await dialog.getByText('فعال‌سازی', { exact: true }).click();
-  await sleep(800);
 
   await page.locator('[aria-label="تب خانه"]').click();
   await sleep(400);

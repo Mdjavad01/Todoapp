@@ -187,6 +187,15 @@ export interface PaymentsConfig {
 export const PAYMENTS_BUILD: 'on' | 'off' =
   (import.meta.env.VITE_PAYMENTS_BUILD as string | undefined)?.toLowerCase() === 'off' ? 'off' : 'on';
 
+/**
+ * بسته C — قفل کلاینت چک‌لیست تریدر (ثابت واحد — خواسته‌ی صاحب محصول):
+ *  - بیلد بازار (پرداخت خاموش، VITE_PAYMENTS_BUILD=off) = false → تریدر برای همه رایگان است
+ *  - بیلد با پرداخت فعال = true → فعال‌سازی تریدر مخصوص کارام پرو
+ * کاربرانِ فعالِ قبلی همیشه دسترسی کامل دارند (isTraderActive(lists) || traderPref !== null —
+ * ترکیب نهایی با traderLockedFor در db/traderTemplate.ts و مصرف در TraderCard).
+ */
+export const TRADER_REQUIRES_PRO: boolean = PAYMENTS_BUILD === 'on';
+
 /** پیش‌فرض محلی وقتی سرور در دسترس نیست — اندروید fail-closed، وب fail-open */
 function fallbackConfig(reason: 'offline' | 'guest'): PaymentsConfig {
   const platform = appPlatform();

@@ -7,11 +7,13 @@ import {
   TRADER_REPEAT_NOTICE,
   isTraderActive,
   findTraderLists,
+  traderLockedFor,
 } from '@/db/traderTemplate';
-import { faTime } from '@/lib/format';
+import { TRADER_REQUIRES_PRO } from '@/sync/payments';
+import { faTime, toFa } from '@/lib/format';
 
 /**
- * فاز تریدر — کارت «چک‌لیست تریدر» در قالب‌های آماده (رایگان — جایگزین بسته‌ی قدیمی kit-trader).
+ * فاز تریدر — کارت «چک‌لیست تریدر» در صفحه‌ی قالب‌ها (جایگزین بسته‌ی قدیمی kit-trader).
  * فعال‌سازی ایدمپوتنت؛ دیالوگ دو‌سؤالی ساعت سشن (بدون پیش‌فرض ثابت)؛
  * دسترسی سریع به ۵ لیست + ریست تیک‌های «قبل از معامله» + بازنشانی با تأیید.
  *
@@ -19,6 +21,11 @@ import { faTime } from '@/lib/format';
  * اقدامات کم‌استفاده (تغییر ساعت / ریست تیک‌ها / راهنما / بازنشانی) از بدنه‌ی همیشه‌باز به
  * منوی «⋯» رفت و راهنمای لیست‌ها با دکمه‌ی «؟» سر جایش باز/بسته می‌شود (بازشدن خودکارِ
  * اولین‌بار باقی است) — بدنه‌ی کارت فقط وضعیت + دسترسی سریع ۵ لیست را نشان می‌دهد.
+ *
+ * بسته C — قفل کلاینت با ثابت واحد TRADER_REQUIRES_PRO (sync/payments.ts):
+ * بیلد پرداخت‌دار → کاربر رایگانِ غیرفعال پیش‌نمایش فقط‌خواندنی ۵ لیست + دکمه‌ی قفل (→ پی‌وال)
+ * می‌بیند؛ فعالِ قبلی (لیست‌ها با کلید/نام یا pref) و پرو همیشه دسترسی کامل دارند؛
+ * بیلد بازار (پرداخت خاموش) → برای همه رایگان (TRADER_REQUIRES_PRO=false).
  */
 
 const MENU_ACTIONS: { key: 'retime' | 'ticks' | 'guide' | 'reset'; label: string; icon: IconName; danger?: boolean }[] = [
@@ -31,13 +38,19 @@ const MENU_ACTIONS: { key: 'retime' | 'ticks' | 'guide' | 'reset'; label: string
 export function TraderCard() {
   const lists = useAppStore((s) => s.lists);
   const traderPref = useAppStore((s) => s.traderPref);
+  const premium = useAppStore((s) => s.premium);
   const activateTraderTemplate = useAppStore((s) => s.activateTraderTemplate);
   const setTraderSessionTimes = useAppStore((s) => s.setTraderSessionTimes);
   const resetTraderTemplate = useAppStore((s) => s.resetTraderTemplate);
   const resetPretradeTicks = useAppStore((s) => s.resetPretradeTicks);
   const openList = useAppStore((s) => s.openList);
+  const setView = useAppStore((s) => s.setView);
 
   const active = isTraderActive(lists) || traderPref !== null;
+  const isPro = premium.loaded && premium.isPremium;
+  // بسته C — قفل کلاینت با ثابت واحد TRADER_REQUIRES_PRO: فعالِ قبلی/پرو/بیلد بازار = دسترسی کامل؛
+  // کاربر رایگانِ غیرفعال فقط پیش‌نمایش فقط‌خواندنی ۵ لیست + دکمه‌ی قفل می‌بیند
+  const locked = traderLockedFor(TRADER_REQUIRES_PRO, isPro, active);
   const traderLists = findTraderLists(lists);
 
   const [setupOpen, setSetupOpen] = useState(false);
@@ -96,8 +109,14 @@ export function TraderCard() {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <h3 className="text-headline-sm font-bold text-primary">چک‌لیست تریدر</h3>
-            <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-              رایگان
+            {/* بسته C — برچسب صادقانه: بیلد پرداخت‌دار = «پرو»، بیلد بازار = «رایگان» */}
+            <span
+              className={`font-bold text-[10px] px-2 py-0.5 rounded-full ${
+                TRADER_REQUIRES_PRO ? 'bg-secondary/15 text-secondary' : 'bg-primary/10 text-primary'
+              }`}
+              data-trader-tier
+            >
+              {TRADER_REQUIRES_PRO ? 'پرو' : 'رایگان'}
             </span>
           </div>
           <p className="text-xs text-on-surface-variant mt-0.5">
@@ -156,22 +175,58 @@ export function TraderCard() {
       ) : null}
 
       {!active ? (
-        <>
-          <div className="text-xs text-on-surface-variant space-y-1 rounded-xl bg-surface-container-low dark:bg-slate-700/60 p-2.5">
-            <div>✓ قوانین ثابت تو — همیشه بالای لیست‌ها (پین‌شده)</div>
-            <div>✓ روتین روزانه‌ی قبل و بعد از بازار با یادآور ۳۰ دقیقه‌ای</div>
-            <div>✓ چک‌لیست قبل از هر معامله + ریویو هفتگی با امتیاز انضباط</div>
-          </div>
-          <button
-            className="w-full py-2.5 font-bold rounded-xl text-sm bg-primary text-on-primary hover:opacity-90 transition-opacity"
-            onClick={() => openSetup('activate')}
-          >
-            فعال‌سازی تمپلیت ترید
-          </button>
-          <p className="text-[10px] leading-4 text-on-surface-variant/80">
-            اگر قبلاً بسته‌ی قدیمی «تریدر» را فعال کرده بودی، لیست‌هایش سر جایشان است — نگهشان دار یا خودت از مدیریت لیست‌ها حذفشان کن.
-          </p>
-        </>
+        locked ? (
+          <>
+            {/* بسته C — کاربر رایگانِ غیرفعال در بیلد پرداخت‌دار: پیش‌نمایش فقط‌خواندنی هر ۵ لیست */}
+            {/* (محتوای قالب پنهان نیست — فقط فعال‌سازی قفل است؛ همان صداقتِ بسته‌های شغلی) */}
+            <div
+              className="rounded-xl bg-surface-container-low dark:bg-slate-700/60 p-2.5 flex flex-col gap-1.5"
+              data-trader-preview
+            >
+              {TRADER_TEMPLATE.map((def) => (
+                <div key={def.name} className="flex items-baseline gap-1.5 text-xs">
+                  <span className="shrink-0">{def.emoji}</span>
+                  <span className="shrink-0 font-bold">{def.name}</span>
+                  <span className="flex-1 min-w-0 truncate text-on-surface-variant" title={def.guide}>
+                    {def.guide}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-outline">{toFa(def.items.length)} آیتم</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] leading-5 text-on-surface-variant">
+              محتوای هر ۵ لیست بالا را کامل می‌بینید — فعال‌سازی چک‌لیست تریدر (با یادآور سشن) مخصوص کارام پرو است.
+            </p>
+            <button
+              className="w-full py-2.5 font-bold rounded-xl text-sm bg-secondary text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
+              onClick={() => setView('paywall')}
+              data-trader-locked
+            >
+              <Icon name="lock" size={16} />
+              بازکردن با کارام پرو
+            </button>
+            <p className="text-[10px] leading-4 text-on-surface-variant/80">
+              اگر قبلاً چک‌لیست تریدر را فعال کرده بودی (حتی در نسخه‌های قدیمی)، لیست‌هایت سر جایشان است و دسترسی کامل داری.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="text-xs text-on-surface-variant space-y-1 rounded-xl bg-surface-container-low dark:bg-slate-700/60 p-2.5">
+              <div>✓ قوانین ثابت تو — همیشه بالای لیست‌ها (پین‌شده)</div>
+              <div>✓ روتین روزانه‌ی قبل و بعد از بازار با یادآور ۳۰ دقیقه‌ای</div>
+              <div>✓ چک‌لیست قبل از هر معامله + ریویو هفتگی با امتیاز انضباط</div>
+            </div>
+            <button
+              className="w-full py-2.5 font-bold rounded-xl text-sm bg-primary text-on-primary hover:opacity-90 transition-opacity"
+              onClick={() => openSetup('activate')}
+            >
+              فعال‌سازی تمپلیت ترید
+            </button>
+            <p className="text-[10px] leading-4 text-on-surface-variant/80">
+              اگر قبلاً بسته‌ی قدیمی «تریدر» را فعال کرده بودی، لیست‌هایش سر جایشان است — نگهشان دار یا خودت از مدیریت لیست‌ها حذفشان کن.
+            </p>
+          </>
+        )
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs">

@@ -2,9 +2,12 @@
  * کارام — تست e2e «فاز تریدر — چک‌لیست تریدر» روی وب (Playwright، حالت مهمان — بدون سرور API)
  *
  * پوشش:
- *   ۱) کارت تریدر در قالب‌های آماده (رایگان) + دیالوگ دو‌سؤالی ساعت سشن بدون پیش‌فرض
- *   ۲) فعال‌سازی → دقیقاً ۵ لیست + ۳۲ کار (۳۰ آیتم + ۲ لنگر) — «قوانین من» پین و اول
- *   ۳) فعال‌سازی دوباره (بعد از رفرش) → بدون هیچ تکرار (ایدمپوتنت)
+ *   ۰) بسته C — قفل کلاینت تریدر (TRADER_REQUIRES_PRO): مهمانِ غیرفعال در بیلد پرداخت‌دار (وب)
+ *      پیش‌نمایش فقط‌خواندنی ۵ لیست + بج «پرو» + دکمه‌ی قفل (→ پی‌وال) می‌بیند؛ فعال‌سازی UI برایش نیست
+ *   ۱) شبیه‌سازی «فعالِ قبلی» با seed IDB (helpers-e2e.mjs — ۵ لیست کلید‌دار + ۳۲ کار) → دسترسی کامل
+ *      بدون فعال‌سازی (حفظ کاربران فعال قبلی) + دیالوگ دو‌سؤالی تغییر ساعت بدون پیش‌فرض
+ *   ۲) داده‌ی فعال: دقیقاً ۵ لیست + ۳۲ کار (۳۰ آیتم + ۲ لنگر) — «قوانین من» پین و اول
+ *   ۳) رفرش دوباره → بدون هیچ تکرار (ایدمپوتنت)
  *   ۴) ذخیره‌ی عدد/یادداشت/انتخاب/امتیاز + ماندگاری بعد از رفرش (IndexedDB)
  *   ۵) بنر فقط‌خواندنی «قوانین من» بالای «پیش از بازار»
  *   ۶) متن ثابت پایین «قبل از معامله» + ریست تیک‌ها از کارت
@@ -13,6 +16,8 @@
  *   ۹) سازگاری با داده‌ی قدیمی — ردیف بدون itemType/pinned کرش نمی‌کند و تیک ساده حساب می‌شود
  *   ۱۰) سینک بین دو دستگاه: نیازمند سرور واقعی 8099 است — در این اسکریپت فقط هشدار داده می‌شود
  *       (پوشش واقعی سیم‌سینک: tests/phase-trader-test.php + tests/trader.test.ts)
+ *
+ * ورود به قالب‌ها (بسته C): فقط «لیست جدید ← یا از قالب‌های آماده شروع کنید» (helpers-e2e.mjs)
  *
  * اجرا:
  *   ۱) بیلد:  cd frontend && bun run build
@@ -24,6 +29,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gotoTemplates, seedTraderLists } from './helpers-e2e.mjs';
 
 const BASE = process.env.E2E_BASE || 'http://localhost:4173/';
 const SHOTS = '/tmp/karam-e2e-shots';
@@ -61,13 +67,7 @@ async function dismissFirstRunLayers(page) {
   }
 }
 
-async function gotoTemplates(page) {
-  await page.locator('[aria-label="تب تنظیمات"]').click();
-  await page.waitForSelector('#view-settings', { timeout: 8000 });
-  await page.locator('[aria-label="قالب‌های آماده"]').click();
-  await page.waitForSelector('#view-templates', { timeout: 8000 });
-  await sleep(300);
-}
+/** ورود به صفحه‌ی واحد قالب‌ها — helpers-e2e.mjs (تنها مسیر رسمی) */
 
 /** بسته B — بازکردن منوی «⋯» کارت تریدر (اقدامات در منو شدند) */
 async function openTraderMenu(page) {
@@ -129,30 +129,56 @@ await waitApp(page);
 await dismissFirstRunLayers(page);
 await gotoTemplates(page);
 
-/* ---------- ۱) کارت تریدر ---------- */
-console.log('— بلوک ۱: کارت تریدر و دیالوگ ساعت سشن');
+/* ---------- ۰) بسته C — قفل کلاینت تریدر برای مهمانِ غیرفعال ---------- */
+console.log('— بلوک ۰: قفل TRADER_REQUIRES_PRO (بیلد وب پرداخت‌دار — مهمان غیرفعال)');
 const card = page.locator('#trader-card');
 check('کارت چک‌لیست تریدر دیده می‌شود', await card.isVisible());
-check('بج «رایگان» روی کارت هست', (await card.getByText('رایگان', { exact: true }).count()) > 0);
-check('دکمه‌ی فعال‌سازی هست', (await card.getByText('فعال‌سازی تمپلیت ترید').count()) > 0);
-check('کیت قدیمی kit-trader از بسته‌های شغلی حذف شده است', (await page.getByText('بسته‌ی معامله‌گر و تریدر').count()) === 0);
+check('بج سطح «پرو» روی کارت هست (بیلد پرداخت‌دار)', (await card.locator('[data-trader-tier]').innerText()).trim() === 'پرو');
+check('دکمه‌ی فعال‌سازی برای مهمان نیست', (await card.getByText('فعال‌سازی تمپلیت ترید').count()) === 0);
+const lockBtn = card.locator('[data-trader-locked]');
+check('دکمه‌ی قفل «بازکردن با کارام پرو» هست', (await lockBtn.count()) === 1 && (await lockBtn.innerText()).includes('بازکردن با کارام پرو'));
+check('پیش‌نمایش فقط‌خواندنی هر ۵ لیست دیده می‌شود', await card.locator('[data-trader-preview]').isVisible() && (await card.locator('[data-trader-preview]').innerText()).includes('ریویو هفتگی'));
+check('بسته‌ی قدیمی kit-trader از بسته‌های شغلی حذف شده است', (await page.getByText('بسته‌ی معامله‌گر و تریدر').count()) === 0);
+check('بخش رایگان با ۴ قالب + بج «رایگان» هست', (await page.locator('#templates-free [data-template]').count()) === 4);
+await lockBtn.click();
+await page.waitForSelector('#view-paywall', { timeout: 8000 });
+await sleep(400);
+check('کلیک قفل → پی‌وال رفت', true);
+// بیلد وب پرداخت‌روشن است → پی‌وال کامل با کارت مزایا رندر می‌شود (بن‌بست نیست)؛
+// حالت «پیام بسته‌بودن + کد هدیه» مخصوص بیلد پرداخت‌خاموش است (استاب بازار — PaywallView.bazaar.tsx)
+check('پی‌وال با کارت مزایای پرو رندر شد (بن‌بست نیست)', (await page.getByText('دسترسی کامل به بسته‌های شغلی تخصصی و مالی').count()) > 0);
+await page.screenshot({ path: join(SHOTS, 'trader-locked-paywall.png') });
+await page.locator('[aria-label="تب خانه"]').click();
+await sleep(400);
 
-await card.getByText('فعال‌سازی تمپلیت ترید').click();
+/* ---------- ۱) شبیه‌سازی «فعالِ قبلی» با seed IDB — حفظ دسترسی کامل ---------- */
+console.log('— بلوک ۱: فعالِ قبلی (seed IDB) → دسترسی کامل + دیالوگ تغییر ساعت');
+await gotoTemplates(page);
+await seedTraderLists(page);
+await gotoTemplates(page);
+const card2 = page.locator('#trader-card');
+check('کاربر فعالِ قبلی بدون فعال‌سازی: «تمپلیت فعال است» (حفظ دسترسی)', (await card2.getByText('تمپلیت فعال است').count()) > 0);
+check('دکمه‌ی قفل برای فعالِ قبلی نیست', (await card2.locator('[data-trader-locked]').count()) === 0);
+check('دسترسی سریع ۵ لیست رندر شد', (await card2.locator('button[title]').count()) >= 5);
+
+// دیالوگ دو‌سؤالی — حالا از منوی «⋯» (تغییر ساعت سشن) — بدون پیش‌فرض ثابت
+await openTraderMenu(page);
+await page.locator('#trader-card').getByText('تغییر ساعت سشن').click();
 await sleep(300);
 const dialog = page.locator('[aria-label="ساعت سشن معاملاتی"]');
 check('دیالوگ دو‌سؤالی باز شد', await dialog.isVisible());
 const startInput = dialog.locator('[aria-label="ساعت شروع سشن"]');
 const endInput = dialog.locator('[aria-label="ساعت پایان سشن"]');
 check('ورودی‌ها بدون پیش‌فرض ثابت خالی‌اند', (await startInput.inputValue()) === '' && (await endInput.inputValue()) === '');
-check('دکمه‌ی فعال‌سازی تا پرشدن هر دو ساعت ناکاراست', await dialog.getByText('فعال‌سازی', { exact: true }).isDisabled());
+check('دکمه‌ی ذخیره تا پرشدن هر دو ساعت ناکاراست', await dialog.getByText('ذخیره', { exact: true }).isDisabled());
 await startInput.fill('09:00');
 await endInput.fill('17:30');
-await dialog.getByText('فعال‌سازی', { exact: true }).click();
-check('توست موفقیت فعال‌سازی', await waitToast(page, 'تمپلیت تریدر فعال شد'));
+await dialog.getByText('ذخیره', { exact: true }).click();
+check('توست به‌روزرسانی ساعت سشن', await waitToast(page, 'ساعت سشن به‌روز شد'));
 await sleep(600);
 
-/* ---------- ۲) ساخت ۵ لیست + پین ---------- */
-console.log('— بلوک ۲: ساخت ۵ لیست و پین «قوانین من»');
+/* ---------- ۲) ساخت ۵ لیست + پین (داده‌ی seed = خروجی دقیق فعال‌سازی) ---------- */
+console.log('— بلوک ۲: ۵ لیست و ۳۲ کار و پین «قوانین من»');
 let idb = await readIdb(page);
 const traderNames = ['قوانین من', 'پیش از بازار', 'قبل از معامله', 'بعد از بازار', 'ریویو هفتگی'];
 check('دقیقاً ۵ لیست تریدر ساخته شد', traderNames.every((n) => idb.lists.some((l) => l.name === n)), `got ${idb.lists.map((l) => l.name).join(',')}`);
@@ -193,12 +219,11 @@ check('راهنما با «فهمیدم» بسته می‌شود', (await card.g
 await page.screenshot({ path: join(SHOTS, 'trader-active.png') });
 
 /* ---------- ۳) فعال‌سازی دوباره ---------- */
-console.log('— بلوک ۳: ایدمپوتنس (رفرش + فعال‌سازی دوباره)');
+console.log('— بلوک ۳: ایدمپوتنس (رفرش + بدون تکرار)');
 await page.reload({ waitUntil: 'domcontentloaded' });
 await waitApp(page);
 await dismissFirstRunLayers(page);
 await gotoTemplates(page);
-const card2 = page.locator('#trader-card');
 check('بعد از رفرش همچنان «تمپلیت فعال است»', (await card2.getByText('تمپلیت فعال است').count()) > 0);
 check('دکمه‌ی فعال‌سازی اولیه دیگر نیست', (await card2.getByText('فعال‌سازی تمپلیت ترید').count()) === 0);
 idb = await readIdb(page);
@@ -306,10 +331,7 @@ for (let i = 0; i < tickCount; i++) {
   await sleep(250);
 }
 check('دو آیتم تیک خورد (پیش‌نیاز ریست)', tickCount === 2);
-await page.locator('[aria-label="تب تنظیمات"]').click();
-await page.waitForSelector('#view-settings', { timeout: 8000 });
-await page.locator('[aria-label="قالب‌های آماده"]').click();
-await sleep(300);
+await gotoTemplates(page); // بسته C — ورود از «لیست جدید ← یا از قالب»
 await openTraderMenu(page);
 await page.locator('#trader-card').getByText('ریست تیک‌های «قبل از معامله»').click();
 check('توست ریست تیک‌ها', await waitToast(page, 'صفر شد'));

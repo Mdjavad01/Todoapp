@@ -1,8 +1,12 @@
 /**
  * کارام — تست e2e «P2.0 — بسته‌های شغلی + قفل صادقانه» روی وب (Playwright، حالت مهمان — بدون سرور API)
  *
+ * بسته C — صفحه‌ی واحد «قالب‌ها»: بسته‌های شغلی حالا داخل بخش «مخصوص کارام پرو» صفحه‌ی قالب‌ها هستند
+ * (ادغام با قالب‌های رایگان + چک‌لیست تریدر) و ورود فقط از «لیست جدید ← یا از قالب» است.
+ *
  * پوشش:
- *   ۱) سه کارت بسته در «بسته‌های شغلی تخصصی» (فریلنسر/فروشگاه/دانشجو)
+ *   ۱) سه کارت بسته در بخش پرو صفحه‌ی قالب‌ها (فریلنسر/فروشگاه/دانشجو) + بخش رایگان ۴ قالبی + بج‌های رایگان/پرو
+ *   ۱ب) تنظیمات: ردیف‌های قالب/بسته حذف شدند؛ کارت ارتقا به پرو → همین صفحه
  *   ۲) پیش‌نمایش کامل محتوا برای مهمان — آزاد و صادقانه (لیست‌ها + آیتم‌ها + لنگرها + یادداشت تکرار)
  *   ۳) قفل فقط روی فعال‌سازی: دکمه‌ی «بازکردن با کارام پرو» (بدون وعده خرید، بدون قیمت) → پی‌وال
  *   ۴) وضعیت «فعال است» با داده‌ی کلید‌دار (seed مستقیم IDB) — کارت و بازنشانی با دیالوگ تأیید
@@ -23,6 +27,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gotoTemplates } from './helpers-e2e.mjs';
 
 const BASE = process.env.E2E_BASE || 'http://localhost:4173/';
 const SHOTS = '/tmp/karam-e2e-shots';
@@ -60,12 +65,9 @@ async function dismissFirstRunLayers(page) {
   }
 }
 
+/** بسته C — صفحه‌ی واحد قالب‌ها؛ ورود فقط از «لیست جدید ← یا از قالب‌های آماده شروع کنید» */
 async function gotoJobkits(page) {
-  await page.locator('[aria-label="تب تنظیمات"]').click();
-  await page.waitForSelector('#view-settings', { timeout: 8000 });
-  await page.locator('[aria-label="بسته‌های شغلی تخصصی"]').click();
-  await page.waitForSelector('#view-jobkits', { timeout: 8000 });
-  await sleep(300);
+  await gotoTemplates(page);
 }
 
 /** خواندن رکوردهای زنده از IndexedDB اپ */
@@ -166,6 +168,28 @@ for (const id of ['kit-freelance', 'kit-store', 'kit-student']) {
   check(`کارت بسته ${id} رندر شد`, (await page.locator(`[data-pack="${id}"]`).count()) === 1);
 }
 
+/* ---------- ۱الف) بسته C — صفحه‌ی واحد قالب‌ها (رایگان/پرو) ---------- */
+console.log('— بلوک ۱الف: صفحه‌ی واحد قالب‌ها');
+check('بخش رایگان با ۴ قالب رندر شد', (await page.locator('#templates-free [data-template]').count()) === 4);
+check('۴ بج «رایگان» روی قالب‌های رایگان', (await page.locator('#templates-free').getByText('رایگان', { exact: true }).count()) === 4);
+check('سربرگ بخش رایگان هست', (await page.getByText('رایگان برای همه').count()) > 0);
+check('سربرگ بخش پرو هست', (await page.getByText('مخصوص کارام پرو').count()) > 0);
+check('کارت تریدر داخل بخش پرو هست', (await page.locator('#templates-pro #trader-card').count()) === 1);
+check('۳ بج «پرو» روی بسته‌های شغلی', (await page.locator('#templates-pro [data-pack]').getByText('پرو', { exact: true }).count()) === 3);
+check('بج «پرو» روی کارت تریدر (بیلد پرداخت‌دار)', (await page.locator('#templates-pro #trader-card [data-trader-tier]').innerText()).trim() === 'پرو');
+
+/* ---------- ۱ب) تنظیمات: ردیف‌ها حذف شدند + کارت ارتقا به همین صفحه ---------- */
+console.log('— بلوک ۱ب: تنظیمات بدون ردیف قالب‌ها');
+await page.locator('[aria-label="تب تنظیمات"]').click();
+await page.waitForSelector('#view-settings', { timeout: 8000 });
+check('ردیف «قالب‌های آماده» از تنظیمات حذف شد', (await page.locator('[aria-label="قالب‌های آماده"]').count()) === 0);
+check('ردیف «بسته‌های شغلی تخصصی» از تنظیمات حذف شد', (await page.locator('[aria-label="بسته‌های شغلی تخصصی"]').count()) === 0);
+check('ردیف «مدیریت لیست‌ها» باقی است', (await page.locator('[aria-label="مدیریت لیست‌ها و ردیف‌های خانه"]').count()) === 1);
+await page.locator('#settings-pro').click();
+await page.waitForSelector('#view-templates', { timeout: 8000 });
+await sleep(300);
+check('کارت ارتقا به پرو → صفحه‌ی قالب‌ها رفت (همین صفحه)', true);
+
 /* ---------- ۲) پیش‌نمایش کامل برای مهمان (صادقانه — آزاد) ---------- */
 console.log('— بلوک ۲: پیش‌نمایش کامل');
 const previewBtn = page.locator('[data-pack="kit-freelance"] [aria-label*="پیش‌نمایش"]').first();
@@ -183,10 +207,11 @@ console.log('— بلوک ۳: قفل فعال‌سازی');
 const lockBtn = page.locator('[data-pack="kit-freelance"] [data-pack-locked="kit-freelance"]');
 check('دکمه‌ی قفل با متن «بازکردن با کارام پرو» هست (بدون وعده خرید)', (await lockBtn.innerText()).includes('بازکردن با کارام پرو'));
 {
-  // صداقت قیمت: هیچ وعده‌ی خرید/قیمتی در بسته‌ها نیست؛ «تومان» فقط داخل واحدهای ثبت آیتم («هزار تومان»)
-  const txt = await page.locator('#view-jobkits').innerText();
+  // صداقت قیمت در بخش پرو (اسکوپ — چون صفحه‌ی واحد حالا قالب رایگان «چک‌لیست خرید سوپرمارکت» را هم دارد):
+  // هیچ وعده‌ی خرید/قیمتی در بسته‌ها نیست؛ «تومان» فقط داخل واحدهای ثبت آیتم («هزار تومان»)
+  const txt = await page.locator('#templates-pro').innerText();
   const tomanHits = [...txt.matchAll(/.{0,12}تومان/g)].map((m) => m[0]);
-  check('هیچ وعده‌ی خرید/قیمتی در بسته‌ها نیست (بدون «خرید»/«قیمت»)', !txt.includes('خرید') && !txt.includes('قیمت'));
+  check('هیچ وعده‌ی خرید/قیمتی در بخش پرو نیست (بدون «خرید»/«قیمت»)', !txt.includes('خرید') && !txt.includes('قیمت'));
   check('هر «تومان» فقط در واحد ثبت آیتم («هزار تومان») است', tomanHits.every((h) => h.includes('هزار تومان')), JSON.stringify(tomanHits.slice(0, 3)));
 }
 await lockBtn.click();
