@@ -5,8 +5,8 @@
  *   A) نصب تازه در دو context مستقل (IndexedDB خالی) ⇒ دقیقاً ۱ لیست «کارهای من» و ۰ کار/زیرکار/یادآور
  *   B) راهنمای ۳مرحله‌ای: یک‌بار در نصب تازه دیده می‌شود، «رد کردن» همیشه هست، بعد از رد دیگر نمی‌آید،
  *      از «تنظیمات ← راهنمای کارام ← شروع تور» دوباره می‌آید
- *   C) بنر پاک‌سازی داده‌ی نمونه‌ی قدیمی: شناسایی → «پاک کن» (حذف نرم + واگرد) / «نگه دار» —
- *      کار واقعی کاربر با عنوان شبیه دمو هرگز پاک نمی‌شود
+ *   C) پاک‌سازی بی‌صدای داده‌ی نمونه‌ی قدیمی (بسته D — بدون بنر): حذف نرم در بوت‌استرپ +
+ *      توست واگرد که حداقل ۸ ثانیه می‌ماند — کار واقعی کاربر با عنوان شبیه دمو هرگز پاک نمی‌شود
  *   D) (با API) ورود با حساب جدید در دو دستگاه ⇒ همچنان ۱ لیست (نه ۲)
  *
  * اجرا:
@@ -317,10 +317,10 @@ console.log('\n── B) راهنمای اولین اجرا (Tooltip ۳ گامی
   await ctx.close();
 }
 
-/* ============ C) بنر پاک‌سازی داده‌ی نمونه ============ */
-console.log('\n── C) بنر «کارهای نمونه‌ی قدیمی» ──');
+/* ============ C) پاک‌سازی بی‌صدای داده‌ی نمونه (بسته D — بدون بنر) ============ */
+console.log('\n── C) پاک‌سازی بی‌صدا + توست واگرد ≥۸ ثانیه ──');
 {
-  // سناریوی «پاک کن»
+  // سناریوی «پاک‌سازی بی‌صدا + واگرد»
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage();
   await p.goto(BASE, { waitUntil: 'domcontentloaded' });
@@ -328,66 +328,61 @@ console.log('\n── C) بنر «کارهای نمونه‌ی قدیمی» ─�
   await dismissGuideIfShown(p);
   await injectLegacyDemoWorld(p);
   await p.reload({ waitUntil: 'domcontentloaded' });
+  const tReload = Date.now(); // مبدأ زمان‌سنجی توست — توست در init همین اجرا نمایش داده می‌شود
   await waitApp(p);
+  await sleep(1500); // پاک‌سازی بی‌صدا در بوت‌استرپ اجرا شده باشد
 
   const banner = p.locator('[aria-label="پاک‌سازی کارهای نمونه‌ی قدیمی"]');
-  let bannerShown = true;
-  try {
-    await banner.waitFor({ state: 'visible', timeout: 4000 });
-  } catch {
-    bannerShown = false;
-  }
-  check('بنر «کارهای نمونه‌ی قدیمی پیدا شد» نمایش داده می‌شود', bannerShown);
-  if (bannerShown) {
-    const realVisible = await p.locator('text=پروژه‌ی شخصی من').count();
-    check('لیست واقعی کاربر در صفحه هست', realVisible >= 1);
-    await p.screenshot({ path: `${SHOTS}/demo-banner.png` });
-    await p.getByRole('button', { name: 'پاک کردن کارهای نمونه' }).click();
-    await sleep(1200);
-    check('بنر بعد از «پاک کن» می‌رود', (await banner.count()) === 0);
-    const toast = await p.locator('text=مورد نمونه پاک شد').count();
-    check('توست نتیجه با دکمه‌ی واگرد می‌آید', toast >= 1);
-    const idb = await aliveLists(p);
-    // ۸ کار دمو + لیست‌های سیدی که خالی شده‌اند حذف نرم شده‌اند
-    check('کارهای دمو حذف نرم شدند (زنده=۰)', idb.tasks.alive === 1, JSON.stringify(idb.tasks));
-    check('تنها کار زنده = کار واقعی کاربر است', idb.tasks.alive === 1);
-    check('لیست‌های نمونه‌ی خالی حذف نرم شدند؛ لیست واقعی و «کارهای من» زنده‌اند', idb.lists.alive === 2, JSON.stringify(idb.lists));
-    // واگرد
+  check('هیچ بنری نمایش داده نمی‌شود (پاک‌سازی بی‌صدا)', (await banner.count()) === 0);
+  const idb = await aliveLists(p);
+  // ۸ کار دمو حذف نرم شده‌اند؛ فقط کار واقعی کاربر زنده است
+  check('کارهای دمو بی‌صدا حذف نرم شدند (زنده=۱)', idb.tasks.alive === 1, JSON.stringify(idb.tasks));
+  check('تنها کار زنده = کار واقعی کاربر است (عنوان شبیه دمو در لیست خودش)', idb.tasks.alive === 1);
+  check('لیست‌های نمونه‌ی خالی‌شده حذف نرم شدند؛ لیست واقعی و «کارهای من» زنده‌اند', idb.lists.alive === 2, JSON.stringify(idb.lists));
+
+  const toast = p.locator('text=مورد نمونه پاک شد');
+  const toastShown = (await toast.count()) >= 1;
+  check('توست نتیجه با دکمه‌ی واگرد می‌آید', toastShown);
+  await p.screenshot({ path: `${SHOTS}/demo-silent-cleanup.png` });
+
+  if (toastShown) {
+    // قرارداد بسته D: توست واگرد حداقل ۸ ثانیه می‌ماند — توست داخل init نمایش داده شده،
+    // پس در «ریلود + ۸.۵ ثانیه» (سنِ واقعی توست بین ~۶.۵ تا ~۸.۵ ثانیه، عمر توست = ۱۰ ثانیه)
+    // هنوز باید روی صفحه باشد؛ با عمر ۶ ثانیه‌ی قدیمی این لحظه قطعاً خالی می‌بود.
+    const waitMs = tReload + 8500 - Date.now();
+    if (waitMs > 0) await sleep(waitMs);
+    check('توست واگرد در «ریلود + ۸.۵ ثانیه» هنوز روی صفحه است (حداقل ۸ ثانیه)', (await toast.count()) >= 1);
+    await p.screenshot({ path: `${SHOTS}/demo-toast-8s.png` });
     await p.locator('text=واگرد').first().click();
     await sleep(1200);
     const idbAfterUndo = await aliveLists(p);
     check('واگرد ⇒ همه‌ی رکوردها زنده برگشتند', idbAfterUndo.tasks.alive === 9 && idbAfterUndo.lists.alive === 8, JSON.stringify(idbAfterUndo));
     await p.screenshot({ path: `${SHOTS}/demo-after-undo.png` });
-    // بعد از واگرد دیگر بنر نمی‌آید (تصمیم کاربر ثبت شده)
+    // بعد از واگرد پاک‌سازی تکرار نمی‌شود (تصمیم «cleaned» ثبت شده)
     await p.reload({ waitUntil: 'domcontentloaded' });
     await waitApp(p);
-    await sleep(1200);
-    check('بعد از واگرد، بنر دوباره مزاحم نمی‌شود (یک‌بارمصرف)', (await banner.count()) === 0);
+    await sleep(1500);
+    const idbRelaunched = await aliveLists(p);
+    check('بعد از واگرد، پاک‌سازی دوباره اجرا نمی‌شود (یک‌بارمصرف)', idbRelaunched.tasks.alive === 9 && idbRelaunched.lists.alive === 8, JSON.stringify(idbRelaunched));
+    check('بعد از واگرد هیچ بنر و توست پاک‌سازی نمی‌آید', (await banner.count()) === 0 && (await p.locator('text=مورد نمونه پاک شد').count()) === 0);
   }
   await ctx.close();
 
-  // سناریوی «نگه دار»
+  // سناریوی «نصب تازه بدون داده‌ی نمونه» — هیچ‌چیز لمس نمی‌شود و هیچ توستی نمی‌آید
   const ctx2 = await browser.newContext({ viewport: { width: 360, height: 800 } });
   const p2 = await ctx2.newPage();
   await p2.goto(BASE, { waitUntil: 'domcontentloaded' });
   await waitApp(p2);
   await dismissGuideIfShown(p2);
-  await injectLegacyDemoWorld(p2);
+  await sleep(1500);
+  const idb2 = await aliveLists(p2);
+  check('نصب تازه: ۱ لیست و ۰ کار — بدون هیچ دست‌کاری', idb2.lists.alive === 1 && idb2.tasks.alive === 0, JSON.stringify(idb2));
+  check('نصب تازه: هیچ توست پاک‌سازی نمی‌آید', (await p2.locator('text=مورد نمونه پاک شد').count()) === 0);
   await p2.reload({ waitUntil: 'domcontentloaded' });
   await waitApp(p2);
-  const banner2 = p2.locator('[aria-label="پاک‌سازی کارهای نمونه‌ی قدیمی"]');
-  try {
-    await banner2.waitFor({ state: 'visible', timeout: 4000 });
-    await p2.getByRole('button', { name: 'نگه داشتن کارهای نمونه' }).click();
-    await sleep(600);
-    check('«نگه دار» ⇒ بنر می‌رود و چیزی پاک نمی‌شود', (await aliveLists(p2)).tasks.alive === 9);
-    await p2.reload({ waitUntil: 'domcontentloaded' });
-    await waitApp(p2);
-    await sleep(1200);
-    check('بعد از «نگه دار» دیگر پرسیده نمی‌شود', (await banner2.count()) === 0);
-  } catch {
-    check('بنر در سناریوی «نگه دار» نمایش داده شد', false);
-  }
+  await sleep(1200);
+  const idb2b = await aliveLists(p2);
+  check('نصب تازه بعد از رفرش هم دست‌نخورده', idb2b.lists.alive === 1 && idb2b.tasks.alive === 0, JSON.stringify(idb2b));
   await ctx2.close();
 }
 

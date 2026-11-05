@@ -3,8 +3,8 @@
  *
  * نسخه‌های قدیمی کارام در اولین اجرا ۶ لیست و ~۲۷ کار نمونه می‌ساختند (SEED_TASKS قدیمی).
  * این داده‌ها امروز دیگر ساخته نمی‌شوند (seed.ts فقط یک لیست پیش‌فرض می‌سازد) ولی روی
- * نصب‌های قدیمی باقی مانده‌اند. این ماژول آنها را با «قاعده‌ی محافظه‌کارانه» شناسایی و
- * فقط با رضایت صریح کاربر (بنر یک‌بارمصرف) حذف نرم و سینک‌پذیر می‌کند — با واگرد.
+ * نصب‌های قدیمی باقی مانده‌اند. از بسته D این ماژول با «قاعده‌ی محافظه‌کارانه» شناسایی و
+ * بی‌صدا (بدون بنر و پرسش) حذف نرم سینک‌پذیر می‌کند — فقط حذف نرم، با توست واگرد حداقل ۸ ثانیه.
  *
  * قاعده‌ی تشخیص (هر شرط لازم است — بلوک اسکن خالص و تست‌پذیر است):
  *   ۱) عنوان دقیقاً برابر یکی از عنوان‌های سید شناخته‌شده (DEMO_TASK_TITLES)
@@ -169,6 +169,8 @@ export interface DemoCleanupSnapshot {
 /**
  * اجرای پاک‌سازی (حذف نرم سینک‌پذیر): نامزدها + زیرکارها + یادآورهای زنده‌ی آنها
  * تومب‌استون می‌شوند؛ سپس لیست‌های سیدی که خالی می‌شوند هم. هیچ‌چیز قطعی حذف نمی‌شود.
+ * اسنپ‌شات واگرد = «خود ردیف‌های تومب‌استون‌شده» (با updatedAt لحظه‌ی پاک‌سازی) تا
+ * واگرد بتواند تضمین کند ردیفِ بازگردانی «قطعاً جدیدتر از تومب‌استون» است (LWW).
  */
 export async function runDemoCleanup(scan: DemoScanResult): Promise<DemoCleanupSnapshot> {
   const now = nowIso();
@@ -182,18 +184,24 @@ export async function runDemoCleanup(scan: DemoScanResult): Promise<DemoCleanupS
   const deadSubs = allSubs.filter((s) => !s.deletedAt && taskIdSet.has(s.taskId));
   const deadRems = allRems.filter((r) => !r.deletedAt && taskIdSet.has(r.taskId));
 
+  // تومب‌استون‌ها با updatedAt لحظه‌ی پاک‌سازی نوشته و «همان» در اسنپ‌شات واگرد ثبت می‌شوند
+  const tombTasks = scan.tasks.map((t) => ({ ...t, deletedAt: now, updatedAt: now }));
+  const tombSubs = deadSubs.map((s) => ({ ...s, deletedAt: now, updatedAt: now }));
+  const tombRems = deadRems.map((r) => ({ ...r, deletedAt: now, updatedAt: now }));
+  const tombLists = scan.lists.map((l) => ({ ...l, deletedAt: now, updatedAt: now }));
+
   const snapshot: DemoCleanupSnapshot = {
-    tasks: scan.tasks,
-    lists: scan.lists,
-    subtasks: deadSubs,
-    reminders: deadRems,
+    tasks: tombTasks,
+    lists: tombLists,
+    subtasks: tombSubs,
+    reminders: tombRems,
   };
 
-  for (const t of snapshot.tasks) await idbPut(STORES.tasks, { ...t, deletedAt: now, updatedAt: now });
-  for (const s of snapshot.subtasks) await idbPut(STORES.subtasks, { ...s, deletedAt: now, updatedAt: now });
-  for (const r of snapshot.reminders) await idbPut(STORES.reminders, { ...r, deletedAt: now, updatedAt: now });
+  for (const t of snapshot.tasks) await idbPut(STORES.tasks, t);
+  for (const s of snapshot.subtasks) await idbPut(STORES.subtasks, s);
+  for (const r of snapshot.reminders) await idbPut(STORES.reminders, r);
   // لیست‌های خالیِ اسکن‌شده هم حذف نرم می‌شوند (این‌ها «از قبل» خالی بودند)
-  for (const l of snapshot.lists) await idbPut(STORES.lists, { ...l, deletedAt: now, updatedAt: now });
+  for (const l of snapshot.lists) await idbPut(STORES.lists, l);
 
   // بازمحاسبه‌ی لیست‌های سیدِ خالی «بعد از» پاک‌سازی (ممکن است لیستی تازه خالی شده باشد)
   const removedTaskIds = new Set(snapshot.tasks.map((t) => t.id));
@@ -216,11 +224,21 @@ async function allTasksAliveMinus(removedIds: Set<string>): Promise<TaskEntity[]
   return all.filter((t) => !t.deletedAt && !removedIds.has(t.id));
 }
 
-/** واگرد: همه‌ی ردیف‌های اسنپ‌شات با updatedAt جدید زنده می‌شوند (LWW بر تومب‌استون می‌چربد) */
+/**
+ * واگرد: همه‌ی ردیف‌های اسنپ‌شات با updatedAt «تضمین‌شده جدیدتر از تومب‌استون خودش» زنده می‌شوند.
+ * اگر ساعت دستگاه عقب باشد یا واگرد در همان میلی‌ثانیه‌ی پاک‌سازی اجرا شود، nowIso معمولی
+ * ممکن است برابر/قدیمی‌تر از تومب‌استون شود و در LWW سرور و دستگاه‌های دیگر «نمی‌بَرد» —
+ * پس مبدأ واگرد = بیشینه‌ی (الان، یک میلی‌ثانیه بعد از تازه‌ترین تومب‌استون اسنپ‌شات).
+ */
 export async function undoDemoCleanup(snap: DemoCleanupSnapshot): Promise<void> {
-  const now = nowIso();
-  for (const t of snap.tasks) await idbPut(STORES.tasks, { ...t, deletedAt: null, updatedAt: now });
-  for (const s of snap.subtasks) await idbPut(STORES.subtasks, { ...s, deletedAt: null, updatedAt: now });
-  for (const r of snap.reminders) await idbPut(STORES.reminders, { ...r, deletedAt: null, updatedAt: now });
-  for (const l of snap.lists) await idbPut(STORES.lists, { ...l, deletedAt: null, updatedAt: now });
+  const nowMs = Date.parse(nowIso());
+  const tombMaxMs = Math.max(
+    0,
+    ...[...snap.tasks, ...snap.subtasks, ...snap.reminders, ...snap.lists].map((r) => Date.parse(r.updatedAt)),
+  );
+  const undoAt = new Date(Math.max(nowMs, tombMaxMs + 1)).toISOString();
+  for (const t of snap.tasks) await idbPut(STORES.tasks, { ...t, deletedAt: null, updatedAt: undoAt });
+  for (const s of snap.subtasks) await idbPut(STORES.subtasks, { ...s, deletedAt: null, updatedAt: undoAt });
+  for (const r of snap.reminders) await idbPut(STORES.reminders, { ...r, deletedAt: null, updatedAt: undoAt });
+  for (const l of snap.lists) await idbPut(STORES.lists, { ...l, deletedAt: null, updatedAt: undoAt });
 }

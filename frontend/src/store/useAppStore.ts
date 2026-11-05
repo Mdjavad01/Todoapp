@@ -34,10 +34,9 @@ import { onReminderAction } from '@/lib/reminderBridge';
 import { initialLockState, reduceLock, lockEnabledFromPref, type LockState, type LockEnv } from '@/lib/appLock';
 import { biometryInfo, biometricUnlock, type BiometryInfo } from '@/lib/biometricBridge';
 import { isNativeApp } from '@/lib/native';
-import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoScanResult, type DemoCleanupSnapshot } from '@/db/demoCleanup';
+import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoCleanupSnapshot } from '@/db/demoCleanup';
 
-/* فاز نصب تمیز — اسکن جاری و اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارند) */
-let currentDemoScan: DemoScanResult | null = null;
+/* فاز نصب تمیز — اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارد) */
 let lastDemoSnapshot: DemoCleanupSnapshot | null = null;
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
@@ -50,7 +49,12 @@ export type CalendarTarget = 'quickAdd' | 'hub' | 'detail' | null;
 export interface ToastState {
   id: number;
   text: string;
-  action?: { label: string; run(): void };
+  action?: {
+    label: string;
+    run(): void;
+    /** مدت نمایش اختصاصی (ms) — پیش‌فرض اقدام ۶ ثانیه؛ حذف بی‌صدای دمو ۱۰ ثانیه */
+    durationMs?: number;
+  };
 }
 
 /** تنظیمات عمومی سرور (از /api/v1/bootstrap) — آفلاین با پیش‌فرض‌ها */
@@ -105,7 +109,7 @@ interface AppState {
   detailTaskId: string | null;
   calendarTarget: CalendarTarget;
   pendingDate: string | null; // تاریخ انتخابی برای کار جدید
-  toast: { id: number; text: string; action?: { label: string; run(): void } } | null;
+  toast: { id: number; text: string; action?: { label: string; run(): void; durationMs?: number } } | null;
   completedExpanded: boolean;
   searchQuery: string;
   searchFilter: string;
@@ -123,8 +127,6 @@ interface AppState {
   welcomeSheet: boolean;
   /** حباب راهنمای «اولین کار» (v10) — بالای دکمه‌ی + تا اولین افزودن یا بستن */
   coachAdd: boolean;
-  /** فاز نصب تمیز — بنر یک‌بارمصرف «کارهای نمونه‌ی قدیمی» (اسکن demoCleanup) */
-  demoCleanupBanner: { taskCount: number; listCount: number } | null;
   /** فاز ۲ — هشدار یادآور (ممیزی آلارم): «آلارم دقیق غیرفعال» یا «مجوز اعلان رد شده» — سطح نشست */
   reminderWarning: 'exact-denied' | 'permission-denied' | null;
   /** فاز ۲ — وضعیت تشخیصی یادآور برای کارت «اطمینان از دریافت یادآور» در تنظیمات */
@@ -181,13 +183,9 @@ interface AppState {
   dismissReminderWarning(): void;
   /** فاز ۲ — دکمه‌ی «۱۰ دقیقه دیگر» روی اعلان */
   snoozeReminderFromAction(taskId: string): Promise<void>;
-  /** فاز نصب تمیز — اسکن داده‌ی نمونه‌ی قدیمی و نمایش بنر (اگر چیزی پیدا شد) */
-  scanLegacyDemoBanner(): Promise<void>;
-  /** «نگه دار» — دیگر هرگز پرسیده نمی‌شود */
-  dismissDemoCleanup(): void;
-  /** «پاک کن» — حذف نرم سینک‌پذیر با واگرد توست‌دار */
+  /** فاز نصب تمیز (بسته D) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی (حذف نرم + توست واگرد ≥۸ ثانیه) */
   cleanLegacyDemos(): Promise<void>;
-  /** واگرد پاک‌سازی نمونه‌ها */
+  /** واگرد آخرین پاک‌سازی بی‌صدای داده‌ی نمونه */
   undoLegacyDemoCleanup(): Promise<void>;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
   saveDisplayName(name: string): Promise<void>;
@@ -219,7 +217,7 @@ interface AppState {
   openModal(m: ModalName, taskId?: string | null): void;
   openCalendar(target: CalendarTarget): void;
   confirmCalendar(dateIso: string): void;
-  showToast(text: string, action?: { label: string; run(): void }): void;
+  showToast(text: string, action?: { label: string; run(): void; durationMs?: number }): void;
   clearToast(): void;
   toggleCompletedAccordion(): void;
   setSearch(q: string, filter?: string): void;
@@ -390,7 +388,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   tourOpen: false,
   welcomeSheet: false,
   coachAdd: false,
-  demoCleanupBanner: null,
   reminderWarning: null,
   reminderDiag: null,
   lockState: initialLockState,
@@ -524,10 +521,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // فاز نصب تمیز — اسکن محافظه‌کارانه‌ی داده‌ی نمونه‌ی نصب‌های قدیمی (بنر یک‌بارمصرف)
+    // فاز نصب تمیز (بسته D) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی؛ pref خالی یعنی هنوز تصمیمی ثبت نشده
+    // (اسکن null هیچ‌چیز ثبت نمی‌کند تا اجرای بعدی دوباره اسکن کند — مثلاً بعد از اولین سینک حساب ابری)
     {
       const cleanupPref = await repo.prefsGet<string>('demo-cleanup-v1', '');
-      if (cleanupPref === '') void get().scanLegacyDemoBanner();
+      if (cleanupPref === '') void get().cleanLegacyDemos();
     }
 
     // تنظیمات عمومی سرور (فاز ۴.۵) — در نبود شبکه با پیش‌فرض‌ها ادامه می‌دهیم
@@ -646,41 +644,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ tourOpen: true, guideSheet: false });
   },
 
-  /* ---- فاز نصب تمیز — پاک‌سازی ایمن داده‌ی نمونه‌ی نصب‌های قدیمی ---- */
+  /* ---- فاز نصب تمیز (بسته D) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی ---- */
 
-  async scanLegacyDemoBanner() {
+  /**
+   * پاک‌سازی بی‌صدا (جایگزین بنر): خودش اسکن می‌کند؛ اگر نامزدی بود بدون هیچ پرسشی
+   * حذف نرم سینک‌پذیر می‌شوند و توست گذرا با دکمه‌ی «واگرد» (۱۰ ثانیه — حداقل ۸ ثانیه)
+   * می‌آید. اسکن null ⇒ هیچ‌چیز ثبت نمی‌شود تا اجرای بعدی دوباره اسکن کند
+   * (نصب تازه‌ای که به حساب ابری وارد می‌شود ممکن است داده را بعد از این اجرا بگیرد).
+   * اسکن خالص و قواعدش دست‌نخورده مانده‌اند (منطق اسکن = قرارداد بسته D).
+   */
+  async cleanLegacyDemos() {
     try {
       const [tasks, lists] = await Promise.all([repo.tasksAll(), repo.listsAll()]);
       const scan = scanLegacyDemos(tasks, lists);
-      currentDemoScan = scan;
-      set({ demoCleanupBanner: scan ? { taskCount: scan.tasks.length, listCount: scan.lists.length } : null });
+      if (!scan) return;
+      void repo.prefsSet('demo-cleanup-v1', 'cleaned');
+      lastDemoSnapshot = await runDemoCleanup(scan);
+      await get().refresh();
+      queueSync();
+      // زنگ‌های کارهای نمونه‌ی حذف‌شده هم از دستگاه برداشته شود
+      void syncReminders(get().tasks, get().alerts, true);
+      const n = toFa(lastDemoSnapshot.tasks.length + lastDemoSnapshot.subtasks.length + lastDemoSnapshot.reminders.length);
+      get().showToast(`${n} مورد نمونه پاک شد`, {
+        label: 'واگرد',
+        run: () => void get().undoLegacyDemoCleanup(),
+        durationMs: 10_000, // حذف بی‌صدا — پنجره‌ی واگرد سخاوتمندانه (قرارداد: حداقل ۸ ثانیه)
+      });
     } catch {
       /* محیط بدون IndexedDB — نادیده */
     }
-  },
-
-  dismissDemoCleanup() {
-    void repo.prefsSet('demo-cleanup-v1', 'kept');
-    currentDemoScan = null;
-    set({ demoCleanupBanner: null });
-  },
-
-  async cleanLegacyDemos() {
-    const scan = currentDemoScan;
-    if (!scan) return;
-    currentDemoScan = null;
-    set({ demoCleanupBanner: null });
-    void repo.prefsSet('demo-cleanup-v1', 'cleaned');
-    lastDemoSnapshot = await runDemoCleanup(scan);
-    await get().refresh();
-    queueSync();
-    // زنگ‌های کارهای نمونه‌ی حذف‌شده هم از دستگاه برداشته شود
-    void syncReminders(get().tasks, get().alerts, true);
-    const n = toFa(lastDemoSnapshot.tasks.length + lastDemoSnapshot.subtasks.length + lastDemoSnapshot.reminders.length);
-    get().showToast(`${n} مورد نمونه پاک شد`, {
-      label: 'واگرد',
-      run: () => void get().undoLegacyDemoCleanup(),
-    });
   },
 
   async undoLegacyDemoCleanup() {
@@ -910,10 +902,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   showToast(text, action) {
     const id = Date.now();
     set({ toast: { id, text, action } });
-    // توست دارای اقدام (واگرد) زمان بیشتری می‌گیرد
+    // توست دارای اقدام (واگرد) زمان بیشتری می‌گیرد؛ مدت اختصاصی (حذف بی‌صدای دمو = ۱۰ ثانیه) اولویت دارد
+    const ms = action?.durationMs ?? (action ? 6000 : 3200);
     window.setTimeout(() => {
       if (get().toast?.id === id) set({ toast: null });
-    }, action ? 6000 : 3200);
+    }, ms);
   },
 
   clearToast() {
