@@ -6,6 +6,7 @@
  *   ۲) «بیشتر»: روزهای من/اولویت/زیرکار/یادآور/تکرار/انتقال به لیست پشت بازشو — نوع آیتم در لیست معمولی نیست
  *   ۳) «نوع آیتم» فقط در لیست‌های تریدر (بعد از فعال‌سازی تمپلیت)
  *   ۴) ردیف کار: فقط «فوری» نشان دارد — «بالا» هم از ردیف جمع شده (بسته B)
+ *   ۵) اصلاح ۲: فیلد غیرپیش‌فرض پشت «بیشتر» → دکمه با شمارنده‌ی «بیشتر • N» (به‌روزرسانی زنده)
  *
  * اجرا:
  *   ۱) بیلد آزمایشی:  bun run build
@@ -139,6 +140,35 @@ const browser = await chromium.launch();
   const normalCard = page.locator('#view-listView div.rounded-2xl', { hasText: 'کار عادی' }).last();
   check('ردیف کار عادی هیچ نشان اولویتی ندارد', (await normalCard.getByText('متوسط', { exact: true }).count()) === 0);
   await page.screenshot({ path: join(SHOTS, 'task-detail-rows.png') });
+
+  console.log('— بلوک ۳٫۵: شمارنده‌ی «بیشتر • N» (اصلاح ۲ — ترجیح صاحب محصول: شمارنده، نه بازشدن خودکار)');
+  await openDetail(page, 'کار عادی');
+  const moreDefault = page.locator('button[aria-controls="task-more"]');
+  check('کار با همه‌ی پیش‌فرض‌ها: برچسب کامل، بدون شمارنده', (await moreDefault.innerText()).includes('بیشتر: روزهای من') && !(await moreDefault.innerText()).includes('بیشتر •'));
+  await closeDetail(page);
+
+  await openDetail(page, 'کار فوری');
+  const moreCounter = page.locator('button[aria-controls="task-more"]');
+  check('کار فوری (اولویت غیرپیش‌فرض): «بیشتر • ۱»', (await moreCounter.innerText()).includes('بیشتر • ۱'), await moreCounter.innerText());
+  check('با شمارنده، برچسب بلند جایگزین می‌شود', !(await moreCounter.innerText()).includes('روزهای من،'));
+  check('برچسب کامل در title دکمه باقی است (کشف‌پذیری)', ((await moreCounter.getAttribute('title')) ?? '').includes('یکی از این‌ها مقدار دارد'));
+  await moreCounter.click();
+  await sleep(250);
+  check('باز شده: برچسب «بستن تنظیمات بیشتر»', (await moreCounter.innerText()).includes('بستن تنظیمات بیشتر'));
+  // افزودن زیرکار داخل «بیشتر» → شمارنده باید زنده به ۲ برسد
+  // (دکمه‌ی «افزودن» = خواهرِ برچسب «زیرکارها (Subtasks)» — «افزودن به روزهای من» را نمی‌گیرد)
+  const subsHeader = page.locator('#task-more').getByText('زیرکارها (Subtasks)').locator('..');
+  await subsHeader.getByRole('button').click();
+  await sleep(200);
+  const subInput = page.locator('#task-more input[placeholder*="زیرکار جدید"]');
+  await subInput.fill('زیرکار شمارنده');
+  await subInput.press('Enter');
+  await sleep(600);
+  await moreCounter.click(); // بستن «بیشتر»
+  await sleep(300);
+  check('بعد از افزودن زیرکار: «بیشتر • ۲» (به‌روزرسانی زنده از استور)', (await moreCounter.innerText()).includes('بیشتر • ۲'), await moreCounter.innerText());
+  await page.screenshot({ path: join(SHOTS, 'task-detail-more-counter.png') });
+  await closeDetail(page);
 
   console.log('— بلوک ۴: «نوع آیتم» فقط در لیست‌های تریدر (فعال‌سازی تمپلیت)');
   await page.locator('[aria-label="تب تنظیمات"]').click();

@@ -13,7 +13,7 @@ import {
   type RepeatMeta,
   type RepeatUnit,
 } from '@/lib/repeat';
-import { faShort, parseIsoDate, faTime } from '@/lib/format';
+import { faShort, parseIsoDate, faTime, toFa } from '@/lib/format';
 import { ensureRemindersPermissionNow } from '@/lib/reminderScheduler';
 import { findTraderLists } from '@/db/traderTemplate';
 import type { TaskEntity, TaskItemType } from '@/types';
@@ -65,6 +65,16 @@ export function TaskDetailSheet() {
   const list = lists.find((l) => l.id === task?.listId);
   const subs = subtasks.filter((s) => s.taskId === task?.id && !s.deletedAt);
   const inMyDay = task ? myDayIds.includes(task.id) : false;
+  // اصلاح ۲ بسته C — شمارنده‌ی فیلدهای غیرپیش‌فرض پشت «بیشتر»: وقتی چیزی تنظیم شده که در سطح اول
+  // دیده نمی‌شود (روزهای من/اولویت/یادآور/تکرار/زیرکار)، دکمه با «بیشتر • N» خبر می‌دهد
+  // (ترجیح صاحب محصول: شمارنده، نه بازشدن خودکار) — از استور می‌آید پس با هر تغییر زنده به‌روز است
+  const moreCount = task
+    ? Number(inMyDay) +
+      Number(task.priority !== 'normal') +
+      Number(task.reminderMinutes !== null) +
+      Number(task.repeat !== 'none') +
+      Number(subs.length > 0)
+    : 0;
   // بسته B — «نوع آیتم» فقط در لیست‌های تریدر (کلید trader.* یا فال‌بک نامی) — نه در همه‌ی کارها
   const isTraderList = !!task && findTraderLists(lists).some((l) => l?.id === task.listId);
 
@@ -291,15 +301,20 @@ export function TaskDetailSheet() {
             </div>
           </div>
 
-          {/* بسته B — «بیشتر»: همه‌ی تنظیمات ثانویه پشت یک بازشو */}
+          {/* بسته B — «بیشتر»: همه‌ی تنظیمات ثانویه پشت یک بازشو — اصلاح ۲: با مقدار غیرپیش‌فرض، «بیشتر • N» */}
           <button
             className="w-full py-2 rounded-xl text-xs font-bold bg-surface-container dark:bg-slate-800 text-on-surface-variant flex items-center justify-center gap-1 hover:bg-surface-container-light dark:hover:bg-slate-700 transition-colors"
             onClick={() => setMoreOpen((v) => !v)}
             aria-expanded={moreOpen}
             aria-controls="task-more"
+            title={moreOpen || moreCount === 0 ? undefined : 'روزهای من، اولویت، زیرکار، یادآور، تکرار — یکی از این‌ها مقدار دارد'}
           >
             <Icon name="expand_more" size={16} className={moreOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
-            {moreOpen ? 'بستن تنظیمات بیشتر' : 'بیشتر: روزهای من، اولویت، زیرکار، یادآور، تکرار و…'}
+            {moreOpen
+              ? 'بستن تنظیمات بیشتر'
+              : moreCount > 0
+                ? `بیشتر • ${toFa(moreCount)}`
+                : 'بیشتر: روزهای من، اولویت، زیرکار، یادآور، تکرار و…'}
           </button>
 
           {moreOpen ? (
