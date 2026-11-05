@@ -5,7 +5,8 @@
  *     - دسته‌ی مهاجرت‌شده v1.2.5 (updatedAt خوشه‌ای جدا از createdAt) شناسایی می‌شود
  *     - کار واقعی کاربر با عنوانِ شبیه دمو هرگز شناسایی نمی‌شود
  *     - کار ویرایش‌شده/ستاره‌دار از نامزدها بیرون می‌ماند
- *     - لیست‌های سیدِ خالی (مثل خروجی dedupe سرور) شناسایی می‌شوند
+ *     - لیست‌های خالیِ هم‌دوره‌ی سید (فقط با کارهای دموی همان دستگاه) شناسایی می‌شوند؛
+ *       لیست خالیِ تازه‌ساخت کاربر هرگز (اصلاح ۱.۱۱.۱)
  *     - «کارهای من» هرگز در نتیجه نیست
  *  ۲) شناسه‌ی قطعی لیست پیش‌فرض — قالب UUIDv4 معتبر (تا سینک سرور قبول کند)
  *
@@ -137,23 +138,36 @@ describe('scanLegacyDemos — نصب‌های قدیمی', () => {
     expect(scan!.tasks.length).toBe(7);
   });
 
-  test('فقط لیست‌های سیدِ خالی (بدون هیچ کار دمو) → بنر لیست‌ها', () => {
+  test('فقط لیست‌های سیدِ خالی بدون هیچ کار دمو ⇒ نامزد نمی‌شوند (اصلاح ۱.۱۱.۱ — گارد دوره‌ی سید)', () => {
     const lists = SEED_LIST_NAMES.map((n) => mkList(n));
     // یک لیست سید با کارِ واقعی کاربر (باید حفظ شود)
     const work = lists[5];
     const real = mkTask(work.id, 'کار واقعی من', { createdAt: LATER, updatedAt: LATER });
+    // بدون هیچ کارِ دمو روی دستگاه، هیچ لیستی نامزد نمی‌شود — حتی لیست خالیِ هم‌نام سید
+    // (قرارداد نو: لیست خالی فقط با دوره‌ی سید نامزد است — کارهای دموی همان دستگاه باید باشند)
     const scan = scanLegacyDemos([real], lists);
+    expect(scan).toBeNull();
+    for (const l of lists) expect(l.deletedAt).toBeNull();
+  });
+
+  test('لیست‌های خالیِ هم‌دوره‌ی سید در نصب قدیمیِ دارای دمو ⇒ همچنان نامزدند (قرارداد نو)', () => {
+    const { lists, tasks } = seedWorld();
+    const work = lists[5];
+    const real = mkTask(work.id, 'کار واقعی من', { createdAt: LATER, updatedAt: LATER });
+    const scan = scanLegacyDemos([...tasks, real], lists);
     expect(scan).not.toBeNull();
-    expect(scan!.tasks.length).toBe(0);
-    expect(scan!.lists.length).toBe(5); // همه به‌جز «کاری» که کار واقعی دارد
-    expect(scan!.lists.some((l) => l.id === work.id)).toBe(false);
+    expect(scan!.tasks.length).toBe(8); // فقط کارهای دموی سید
+    expect(scan!.lists.length).toBe(5); // پوسته‌ی لیست‌هایی که فقط کار دمو داشتند
+    expect(scan!.lists.some((l) => l.id === work.id)).toBe(false); // کار واقعی دارد
   });
 
   test('«کارهای من» (لیست پیش‌فرض) هرگز در لیست‌های قابل حذف نیست', () => {
-    const lists = [mkList(DEFAULT_LIST_NAME, { id: DEFAULT_LIST_ID }), ...SEED_LIST_NAMES.map((n) => mkList(n))];
-    const scan = scanLegacyDemos([], lists);
+    const def = mkList(DEFAULT_LIST_NAME, { id: DEFAULT_LIST_ID, createdAt: LATER, updatedAt: LATER });
+    const { lists, tasks } = seedWorld();
+    const scan = scanLegacyDemos(tasks, [def, ...lists]);
     expect(scan).not.toBeNull();
     expect(scan!.lists.some((l) => l.name === DEFAULT_LIST_NAME)).toBe(false);
+    expect(scan!.lists.length).toBeGreaterThan(0); // لیست‌های خالیِ هم‌دوره‌ی سید نامزدند
   });
 
   test('کار دمو در لیستِ غیر-سید (کاربر جابه‌جا کرده) → نامزد نمی‌شود', () => {

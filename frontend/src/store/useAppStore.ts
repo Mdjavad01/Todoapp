@@ -34,10 +34,12 @@ import { onReminderAction } from '@/lib/reminderBridge';
 import { initialLockState, reduceLock, lockEnabledFromPref, type LockState, type LockEnv } from '@/lib/appLock';
 import { biometryInfo, biometricUnlock, type BiometryInfo } from '@/lib/biometricBridge';
 import { isNativeApp } from '@/lib/native';
-import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, type DemoCleanupSnapshot } from '@/db/demoCleanup';
+import { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, decideCleanupPref, type DemoCleanupSnapshot } from '@/db/demoCleanup';
 
 /* فاز نصب تمیز — اسنپ‌شات واگرد (خارج از state — نیازی به رندر ندارد) */
 let lastDemoSnapshot: DemoCleanupSnapshot | null = null;
+/** سقف انتظار برای اتمام اولین سینک قبل از اسکن پاک‌سازی نمونه‌ها — اگر سینک طولانی‌تر شد، تصمیم به بوت بعدی واگذار می‌شود */
+const CLEANUP_SYNC_WAIT_MS = 25_000;
 
 export type AccentColor = Extract<ListColor, 'teal' | 'indigo' | 'amber' | 'emerald' | 'rose' | 'purple'>;
 export type FontScale = 'small' | 'medium' | 'large';
@@ -184,7 +186,7 @@ interface AppState {
   /** فاز ۲ — دکمه‌ی «۱۰ دقیقه دیگر» روی اعلان */
   snoozeReminderFromAction(taskId: string): Promise<void>;
   /** فاز نصب تمیز (بسته D) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی (حذف نرم + توست واگرد ≥۸ ثانیه) */
-  cleanLegacyDemos(): Promise<void>;
+  cleanLegacyDemos(firstSync?: Promise<unknown> | null): Promise<void>;
   /** واگرد آخرین پاک‌سازی بی‌صدای داده‌ی نمونه */
   undoLegacyDemoCleanup(): Promise<void>;
   /** ثبت نام کاربر — محلی + پروفایل سرور در صورت ورود (v10 آنبوردینگ) */
@@ -499,10 +501,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     onReminderAction((ev) => handleReminderAction(ev.actionId, ev.taskId));
     await get().reloadSession(false);
     // اگر access نزدیک انقضاست همین‌جا تمدید می‌شود (فاز ۳) — و فقط «یک» سینک در init
+    // وعده‌ی اولین سینک نگه داشته می‌شود — اسکن پاک‌سازی نمونه‌ها فقط بعد از اتمام آن معتبر است
+    let firstSync: Promise<SyncState> | null = null;
     if (get().session) {
       await refreshSession();
       await get().reloadSession(false);
-      void runSync();
+      firstSync = runSync();
     }
 
     // فاز نصب تمیز — هیچ مودال مزاحمی در باز شدن اپ نیست؛ راهنمای ۳مرحله‌ای Tooltip
@@ -521,11 +525,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // فاز نصب تمیز (بسته D) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی؛ pref خالی یعنی هنوز تصمیمی ثبت نشده
-    // (اسکن null هیچ‌چیز ثبت نمی‌کند تا اجرای بعدی دوباره اسکن کند — مثلاً بعد از اولین سینک حساب ابری)
+    // فاز نصب تمیز (بسته D + اصلاح ۱.۱۱.۱) — پاک‌سازی بی‌صدای داده‌ی نمونه‌ی نصب‌های قدیمی؛
+    // pref خالی یعنی هنوز «تصمیم قطعی» ثبت نشده. اسکن فقط تا اولین تصمیم قطعی اجرا می‌شود
+    // (پاک‌سازی انجام شد، یا اسکنِ بعد از اولین سینک چیزی نیافت) — بعدش دیگر هرگز (decideCleanupPref)
     {
       const cleanupPref = await repo.prefsGet<string>('demo-cleanup-v1', '');
-      if (cleanupPref === '') void get().cleanLegacyDemos();
+      if (cleanupPref === '') void get().cleanLegacyDemos(firstSync);
     }
 
     // تنظیمات عمومی سرور (فاز ۴.۵) — در نبود شبکه با پیش‌فرض‌ها ادامه می‌دهیم
@@ -649,17 +654,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   /**
    * پاک‌سازی بی‌صدا (جایگزین بنر): خودش اسکن می‌کند؛ اگر نامزدی بود بدون هیچ پرسشی
    * حذف نرم سینک‌پذیر می‌شوند و توست گذرا با دکمه‌ی «واگرد» (۱۰ ثانیه — حداقل ۸ ثانیه)
-   * می‌آید. اسکن null ⇒ هیچ‌چیز ثبت نمی‌شود تا اجرای بعدی دوباره اسکن کند
-   * (نصب تازه‌ای که به حساب ابری وارد می‌شود ممکن است داده را بعد از این اجرا بگیرد).
-   * اسکن خالص و قواعدش دست‌نخورده مانده‌اند (منطق اسکن = قرارداد بسته D).
+   * می‌آید.
+   *
+   * توقف دائمی اسکن (اصلاح صاحب محصول ۱.۱۱.۱): تصمیم قطعی فقط یک‌بار گرفته می‌شود و
+   * با pref «demo-cleanup-v1» ثبت می‌شود — بعدش دیگر هرگز اسکن نمی‌شود (حتی بعد از واگرد):
+   *   • نامزد پیدا شد ⇒ پاک‌سازی + pref 'cleaned'
+   *   • مهمان (بدون حساب) و چیزی نیافت ⇒ pref 'empty-local' — داده‌ی دستگاه کامل بار شده
+   *   • حساب ابری و چیزی نیافت ⇒ فقط وقتی 'empty-synced' ثبت می‌شود که اولین سینکِ همین
+ *     بوت کامل و موفق شده باشد (اسکن بعد از اولین سینک)؛ وگرنه pref خالی می‌ماند و
+   *     بوت بعدی دوباره تصمیم می‌گیرد
+   * اسکن خالص و قواعدش = قرارداد بسته D (منطق تشخیص دست‌نخورده از D + گارد دوره‌ی سید برای لیست‌های خالی).
    */
-  async cleanLegacyDemos() {
+  async cleanLegacyDemos(firstSync?: Promise<unknown> | null) {
     try {
+      // تصمیم قطعی فقط بعد از «بار شدن کامل داده» معتبر است: حساب ابری ⇒ اولین سینک باید
+      // تمام شده باشد. سقف زمانی محافظ: اگر سینک طولانی‌تر شد، همین بوت فقط اسکن می‌کند ولی
+      // تصمیم به بوت بعدی واگذار می‌شود (self-healing)
+      if (firstSync) {
+        await Promise.race([
+          Promise.resolve(firstSync).catch(() => undefined),
+          new Promise((r) => setTimeout(r, CLEANUP_SYNC_WAIT_MS)),
+        ]);
+      }
       const [tasks, lists] = await Promise.all([repo.tasksAll(), repo.listsAll()]);
       const scan = scanLegacyDemos(tasks, lists);
-      if (!scan) return;
-      void repo.prefsSet('demo-cleanup-v1', 'cleaned');
+      const decision = decideCleanupPref({
+        found: scan !== null,
+        hasSession: !!get().session,
+        syncStatusOk: get().syncState.status === 'ok',
+      });
+      if (decision === 'deferred') return; // هنوز تصمیم قطعی نیست — بوت بعدی دوباره اسکن می‌کند
+      if (!scan) {
+        await repo.prefsSet('demo-cleanup-v1', decision); // 'empty-local' | 'empty-synced' — قطعی
+        return;
+      }
       lastDemoSnapshot = await runDemoCleanup(scan);
+      await repo.prefsSet('demo-cleanup-v1', 'cleaned'); // پاک‌سازی انجام شد ⇒ قطعی
       await get().refresh();
       queueSync();
       // زنگ‌های کارهای نمونه‌ی حذف‌شده هم از دستگاه برداشته شود

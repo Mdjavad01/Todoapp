@@ -217,6 +217,15 @@ export function AccountSheet() {
             ? await verifyOtp({ channel: 'sms', target: phone.trim(), code: code.trim() })
             : await verifyOtp({ channel: 'email', target: email.trim(), code: code.trim() });
       await reloadSession();
+      // اصلاح بسته‌ی D (۱.۱۱.۱) — تصمیم قبلیِ 'empty-local' (مهمان) بعد از ورود به حساب اعتبار ندارد:
+      // داده‌ی ابری ممکن است بعداً کارهای نمونه بیاورد ⇒ pref به حالت «تصمیم‌نگرفته» برمی‌گردد
+      // تا بوتِ بعد از اولین سینک، دوباره اسکن و تصمیم قطعی بگیرد
+      try {
+        const prevCleanupPref = await repo.prefsGet<string>('demo-cleanup-v1', '');
+        if (prevCleanupPref === 'empty-local') void repo.prefsSet('demo-cleanup-v1', '');
+      } catch {
+        /* pref در دسترس نیست — نادیده */
+      }
       void listSessions().then(setSessions).catch(() => setSessions([]));
       showToast(res.isNew ? 'حساب شما ساخته شد و سینک ابری فعال شد' : 'ورود موفق؛ سینک ابری فعال شد');
       setStep('choose');

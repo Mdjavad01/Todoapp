@@ -98,6 +98,10 @@ async function injectLegacyDemoWorld(page) {
   return page.evaluate(() => {
     const T0 = '2025-01-10T08:00:00.000Z';
     const NOW = new Date().toISOString();
+    // بازسازی حالت واقعی «نصب قدیمی که هنوز پاک‌سازی نسخه‌ی نو را نگرفته»:
+    // pref تصمیم پاک‌سازی («demo-cleanup-v1») باید خالی باشد تا اسکنِ بوتِ بعدی
+    // (اصلاح ۱.۱۱.۱ — توقف دائمی بعد از اولین تصمیم قطعی) دنیای دمو را ببیند و پاک کند
+    const PREFS_RESET = { store: 'prefs', key: 'demo-cleanup-v1', value: '' };
     const SEED_LIST_NAMES = ['کارهای خانه', 'خرید هفتگی', 'کنکور و مطالعه', 'ترید و بازارهای مالی', 'مالی و قبوض', 'کاری'];
     const DEMO_TITLES = [
       'تست‌های فیزیک حرکت‌شناسی',
@@ -116,9 +120,11 @@ async function injectLegacyDemoWorld(page) {
       open.onerror = () => reject(new Error('open failed'));
       open.onsuccess = () => {
         const db = open.result;
-        const tx = db.transaction(['lists', 'tasks'], 'readwrite');
+        const tx = db.transaction(['lists', 'tasks', 'prefs'], 'readwrite');
         const listStore = tx.objectStore('lists');
         const taskStore = tx.objectStore('tasks');
+        const prefStore = tx.objectStore('prefs');
+        prefStore.put({ key: PREFS_RESET.key, value: PREFS_RESET.value }); // نصب قدیمی: تصمیم پاک‌سازی هنوز ثبت نشده
         SEED_LIST_NAMES.forEach((name, i) => {
           const id = crypto.randomUUID();
           listIds.push(id);

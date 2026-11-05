@@ -6,7 +6,7 @@
  * نصب‌های قدیمی باقی مانده‌اند. از بسته D این ماژول با «قاعده‌ی محافظه‌کارانه» شناسایی و
  * بی‌صدا (بدون بنر و پرسش) حذف نرم سینک‌پذیر می‌کند — فقط حذف نرم، با توست واگرد حداقل ۸ ثانیه.
  *
- * قاعده‌ی تشخیص (هر شرط لازم است — بلوک اسکن خالص و تست‌پذیر است):
+ * قاعده‌ی تشخیص کار (هر شرط لازم است — بلوک اسکن خالص و تست‌پذیر است):
  *   ۱) عنوان دقیقاً برابر یکی از عنوان‌های سید شناخته‌شده (DEMO_TASK_TITLES)
  *   ۲) کار داخل لیستی با نام سید شناخته‌شده (SEED_LIST_NAMES) و زنده
  *   ۳) ستاره نخورده (ستاره = دست‌کاری کاربر)
@@ -15,6 +15,18 @@
  *      دسته (اثر مهاجرت v1.2.5 که همه‌ی ردیف‌ها را در یک لحظه بازنویسی کرد)؛ نامزدهای
  *      پراکنده = ویرایش‌شده توسط کاربر → هرگز لمس نمی‌شوند.
  * نتیجه: کار واقعی کاربر (حتی با عنوان شبیه دمو) پاک نمی‌شود.
+ *
+ * قاعده‌ی نامزدشدن «لیست‌های سیدی خالی» (اصلاح صاحب محصول — نسخه‌های ۱.۱۱.۱):
+ * لیست خالیِ ساخته‌شده توسط کاربر (هر چقدر هم هم‌نام سید) هرگز نامزد نمی‌شود. لیست
+ * خالیِ نام‌سید فقط وقتی نامزد است که «از دوره‌ی سید» باشد:
+ *   الف) createdAt لیست در همان پنجره‌ی زمانیِ کارهای دموی همین دستگاه است —
+ *        یعنی حداقل MIN_BATCH کارِ امضای دمو در فاصله‌ی BATCH_WINDOW_MS از createdAt لیست
+ *        ساخته شده‌اند (اثر ساختِ یکجای سید)، یا
+ *   ب) در همین اسکن حداقل یک کار دموی خودِ همین لیست نامزد شده (لیست با همین پاک‌سازی خالی شده).
+ *
+ * شرایط توقف دائمی اسکن (pref «demo-cleanup-v1» — اصلاح صاحب محصول): اسکن در هر بوت
+ * فقط تا «اولین تصمیم قطعی» اجرا می‌شود؛ تصمیم قطعی با decideCleanupPref ثبت و از
+ * آن به بعد دیگر هرگز اسکن نمی‌شود (حتی بعد از واگرد — انتخاب کاربر نهایی است).
  */
 
 import { idbGetAll, idbPut, STORES } from './idb';
@@ -85,12 +97,12 @@ export interface DemoScanResult {
 const isSeedTitle = (title: string): boolean => (DEMO_TASK_TITLES as readonly string[]).includes(title.trim());
 
 /**
- * اسکن خالص — هیچ دسترسی به IndexedDB/شبکه ندارد (تست واحد مستقیم).
- * null = هیچ داده‌ی نمونه‌ای پیدا نشد.
+ * کارهای با «امضای دمو» (زنده، بی‌ستاره، عنوان دقیق دمو، داخل لیست زنده‌ی نام‌سید) —
+ * مبدأ تعریف «دوره‌ی سید» برای لیست‌های خالی. خالص و تست‌پذیر.
  */
-export function scanLegacyDemos(tasks: TaskEntity[], lists: ListEntity[]): DemoScanResult | null {
+export function demoSignaturePool(tasks: TaskEntity[], lists: ListEntity[]): TaskEntity[] {
   const liveListById = new Map(lists.filter((l) => !l.deletedAt).map((l) => [l.id, l]));
-  const pool = tasks.filter(
+  return tasks.filter(
     (t) =>
       !t.deletedAt &&
       !t.starred &&
@@ -100,6 +112,57 @@ export function scanLegacyDemos(tasks: TaskEntity[], lists: ListEntity[]): DemoS
         return !!l && (SEED_LIST_NAMES as readonly string[]).includes(l.name);
       })(),
   );
+}
+
+/**
+ * «از دوره‌ی سید بودن» لیست: حداقل MIN_BATCH کارِ امضای دمو در فاصله‌ی BATCH_WINDOW_MS
+ * از createdAt خودِ لیست ساخته شده‌اند (سید لیست‌ها و کارها را در یک اجرا ساخت). خالص و تست‌پذیر.
+ */
+export function isDemoEraList(list: ListEntity, pool: TaskEntity[]): boolean {
+  const listMs = Date.parse(list.createdAt);
+  let near = 0;
+  for (const t of pool) {
+    if (Math.abs(Date.parse(t.createdAt) - listMs) <= BATCH_WINDOW_MS) {
+      near += 1;
+      if (near >= MIN_BATCH) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * تصمیم قطعی pref پس از هر اسکن — خالص و تست‌پذیر (اصلاح صاحب محصول: توقف دائمی اسکن).
+ *
+ * مقادیر pref «demo-cleanup-v1» و معنی‌شان:
+ *   ''              هنوز هیچ تصمیم قطعی‌ای ثبت نشده — بوت بعدی دوباره اسکن می‌کند
+ *   'cleaned'       پاک‌سازی انجام شد ⇒ قطعی — دیگر هرگز اسکن نمی‌شود
+ *   'empty-local'   مهمان (بدون حساب ابری)؛ اسکن روی داده‌ی کامل دستگاه چیزی نیافت ⇒ قطعی
+ *   'empty-synced'  حساب ابری؛ اسکن «بعد از اتمام اولین سینک» چیزی نیافت ⇒ قطعی
+ * واگرد pref را تغییر نمی‌دهد — انتخاب کاربر نهایی است و پاک‌سازی تکرار نمی‌شود.
+ */
+export type DemoCleanupDecision = 'cleaned' | 'empty-local' | 'empty-synced' | 'deferred';
+
+export interface CleanupDecisionInput {
+  /** اسکن نامزد پیدا کرد؟ */
+  found: boolean;
+  /** در لحظه‌ی اسکن حساب ابری وجود دارد؟ */
+  hasSession: boolean;
+  /** اولین سینک همین بوت کامل و موفق شده؟ (syncState.status === 'ok') */
+  syncStatusOk: boolean;
+}
+
+export function decideCleanupPref(input: CleanupDecisionInput): DemoCleanupDecision {
+  if (input.found) return 'cleaned';
+  if (!input.hasSession) return 'empty-local';
+  return input.syncStatusOk ? 'empty-synced' : 'deferred';
+}
+
+/**
+ * اسکن خالص — هیچ دسترسی به IndexedDB/شبکه ندارد (تست واحد مستقیم).
+ * null = هیچ داده‌ی نمونه‌ای پیدا نشد.
+ */
+export function scanLegacyDemos(tasks: TaskEntity[], lists: ListEntity[]): DemoScanResult | null {
+  const pool = demoSignaturePool(tasks, lists);
 
   // دسته‌بندی بر اساس createdAt — پنجره‌ی لغزان ۵ ثانیه
   const sorted = [...pool].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -142,15 +205,18 @@ export function scanLegacyDemos(tasks: TaskEntity[], lists: ListEntity[]): DemoS
     }
   }
   // لیست‌های سیدِ خالی (هیچ کار زنده‌ای — با احتساب نامزدهای در انتظار پاک‌سازی)
-  // مستقل از نامزدهای کار محاسبه می‌شود — حتی بدون کارِ دمو، لیست‌های خالیِ سید باید
-  // با رضایت کاربر قابل پاک‌سازی باشند (خالی‌شده با dedupe سرور یا حذف دستی کارها)
+  // فقط وقتی نامزدند که «از دوره‌ی سید» باشند (اصلاح صاحب محصول v1.11.1):
+  //   الف) createdAt لیست در همان پنجره‌ی زمانیِ کارهای دموی همین دستگاه (isDemoEraList)، یا
+  //   ب) در همین اسکن حداقل یک کار دموی خودِ همین لیست نامزد شده (لیست با همین پاک‌سازی خالی شده)
+  // ⇒ لیست خالیِ تازه‌ساخته‌شده‌ی کاربر (هر چقدر هم هم‌نام سید) هرگز نامزد نمی‌شود.
   const pickedIds = new Set(picked.map((t) => t.id));
   const aliveTasks = tasks.filter((t) => !t.deletedAt && !pickedIds.has(t.id));
   const demoLists = lists.filter(
     (l) =>
       !l.deletedAt &&
       (SEED_LIST_NAMES as readonly string[]).includes(l.name) &&
-      !aliveTasks.some((t) => t.listId === l.id),
+      !aliveTasks.some((t) => t.listId === l.id) &&
+      (isDemoEraList(l, pool) || picked.some((t) => t.listId === l.id)),
   );
 
   // هیچ نامزد کاری (کمتر از MIN_BATCH) و هیچ لیست خالی سیُدی → چیزی برای پرسیدن نیست
@@ -174,7 +240,9 @@ export interface DemoCleanupSnapshot {
  */
 export async function runDemoCleanup(scan: DemoScanResult): Promise<DemoCleanupSnapshot> {
   const now = nowIso();
-  const [allSubs, allRems, allLists] = await Promise.all([
+  // وضعیت «قبل از» پاک‌سازی — مبدأ گارد دوره‌ی سید و محاسبه‌ی زنده‌ها (بعد از نوشتن تومب‌استون‌ها لازم می‌شود)
+  const [allTasks, allSubs, allRems, allLists] = await Promise.all([
+    idbGetAll<TaskEntity>(STORES.tasks),
     idbGetAll<SubtaskEntity>(STORES.subtasks),
     idbGetAll<ReminderEntity>(STORES.reminders),
     idbGetAll<ListEntity>(STORES.lists),
@@ -204,24 +272,21 @@ export async function runDemoCleanup(scan: DemoScanResult): Promise<DemoCleanupS
   for (const l of snapshot.lists) await idbPut(STORES.lists, l);
 
   // بازمحاسبه‌ی لیست‌های سیدِ خالی «بعد از» پاک‌سازی (ممکن است لیستی تازه خالی شده باشد)
+  // با همان گارد «دوره‌ی سید» — لیست خالیِ تازه‌ساخته‌شده‌ی کاربر این‌جا هم هرگز تومب‌استون نمی‌شود
   const removedTaskIds = new Set(snapshot.tasks.map((t) => t.id));
-  const aliveAfter = await allTasksAliveMinus(removedTaskIds);
+  const aliveAfter = allTasks.filter((t) => !t.deletedAt && !removedTaskIds.has(t.id));
+  const poolPre = demoSignaturePool(allTasks, allLists);
   const listIds = new Set(snapshot.lists.map((l) => l.id));
   for (const l of allLists) {
     if (l.deletedAt || listIds.has(l.id)) continue;
     if (!(SEED_LIST_NAMES as readonly string[]).includes(l.name)) continue;
-    if (!aliveAfter.some((t) => t.listId === l.id)) {
+    if (!aliveAfter.some((t) => t.listId === l.id) && isDemoEraList(l, poolPre)) {
       const row = { ...l, deletedAt: now, updatedAt: now };
       await idbPut(STORES.lists, row);
       snapshot.lists.push(row);
     }
   }
   return snapshot;
-}
-
-async function allTasksAliveMinus(removedIds: Set<string>): Promise<TaskEntity[]> {
-  const all = await idbGetAll<TaskEntity>(STORES.tasks);
-  return all.filter((t) => !t.deletedAt && !removedIds.has(t.id));
 }
 
 /**

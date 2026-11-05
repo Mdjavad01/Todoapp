@@ -52,7 +52,7 @@ mock.module('@/db/idb', () => ({
 }));
 
 /* ---------- بعد از mock، ماژول‌های تحت تست ---------- */
-const { scanLegacyDemos, runDemoCleanup, undoDemoCleanup } = await import('../src/db/demoCleanup');
+const { scanLegacyDemos, runDemoCleanup, undoDemoCleanup, decideCleanupPref } = await import('../src/db/demoCleanup');
 const { DEFAULT_LIST_ID, DEFAULT_LIST_NAME, SEED_LIST_NAMES } = await import('../src/sync/lww');
 const { DEMO_TASK_TITLES } = await import('../src/db/demoCleanup');
 import type { ListEntity, ReminderEntity, SubtaskEntity, TaskEntity } from '../src/types';
@@ -264,5 +264,120 @@ describe('بسته D — واگرد پاک‌سازی بی‌صدا', () => {
     await undoDemoCleanup(snap);
     const undoneTime = (mem.tasks.get(w.demoTasks[0].id) as unknown as TaskEntity).updatedAt;
     expect(undoneTime > tombTime).toBe(true);
+  });
+});
+
+/* ---------- ۴) اصلاح ۱.۱۱.۱ — لیست خالیِ ساخته‌شده توسط کاربر نامزد نمی‌شود ---------- */
+
+describe('اصلاح ۱ — لیست خالی کاربر هرگز نامزد پاک‌سازی نمی‌شود', () => {
+  test('کاربر لیست خالی «کاری» می‌سازد و ریلود می‌کند (بدون دمو) ⇒ scan=null — نامزد نمی‌شود', () => {
+    const def = mkList(DEFAULT_LIST_NAME, { id: DEFAULT_LIST_ID, createdAt: LATER, updatedAt: LATER });
+    const userWork = mkList('کاری', { createdAt: LATER, updatedAt: LATER, sortOrder: 5 }); // خالی — تازه‌ساخت کاربر
+    const scan = scanLegacyDemos([], [def, userWork]);
+    expect(scan).toBeNull();
+    expect(scan?.lists?.some((l) => l.id === userWork.id) ?? false).toBe(false);
+  });
+
+  test('همین سناریو با کار واقعی در لیست پیش‌فرض ⇒ باز هم scan=null', () => {
+    const def = mkList(DEFAULT_LIST_NAME, { id: DEFAULT_LIST_ID, createdAt: LATER, updatedAt: LATER });
+    const userWork = mkList('کاری', { createdAt: LATER, updatedAt: LATER, sortOrder: 5 });
+    const t1 = mkTask(def.id, 'خرید نان', { createdAt: LATER, updatedAt: LATER });
+    expect(scanLegacyDemos([t1], [def, userWork])).toBeNull();
+  });
+
+  test('لیست خالیِ تازه‌ساخت کاربر با نام سید، روی دستگاهی که دمو دارد ⇒ نامزد نمی‌شود', () => {
+    const [homeName, shopName] = SEED_LIST_NAMES as unknown as string[];
+    const seyed = mkList(homeName, { createdAt: T0, updatedAt: T0 });
+    const demoTasks = [0, 1, 2].map((i) => mkTask(seyed.id, DEMO_TASK_TITLES[i], { createdAt: T0, updatedAt: T0 }));
+    const freshUserList = mkList(shopName, { createdAt: LATER, updatedAt: LATER, sortOrder: 30 }); // ماه‌ها بعد — خالی
+    const scan = scanLegacyDemos(demoTasks, [seyed, freshUserList]);
+    expect(scan).not.toBeNull(); // دموی سید پاک می‌شود
+    expect(scan!.lists.some((l) => l.id === freshUserList.id)).toBe(false); // ولی لیست کاربر نه
+  });
+
+  test('لیست خالیِ سیدِ «از همان ابتدا خالی» در نصب قدیمی با دمو ⇒ همچنان پاک می‌شود (شرط الف)', () => {
+    const [homeName, shopName] = SEED_LIST_NAMES as unknown as string[];
+    const seyed = mkList(homeName, { createdAt: T0, updatedAt: T0 });
+    const demoTasks = [0, 1, 2].map((i) => mkTask(seyed.id, DEMO_TASK_TITLES[i], { createdAt: T0, updatedAt: T0 }));
+    const emptySeed = mkList(shopName, { createdAt: T0, updatedAt: T0, sortOrder: 7 }); // هم‌دوره — از ابتدا خالی
+    const scan = scanLegacyDemos(demoTasks, [seyed, emptySeed]);
+    expect(scan).not.toBeNull();
+    expect(scan!.lists.map((l) => l.id)).toContain(emptySeed.id);
+  });
+
+  test('کارهای دمو ویرایش‌شده‌اند (پراکنده) ⇒ فقط کارِ روی مُد نامزد می‌شود؛ لیست خالیِ هم‌دوره‌ی سید هنوز نامزد است (شرط الف با pool)', () => {
+    const [homeName, shopName] = SEED_LIST_NAMES as unknown as string[];
+    const seyed = mkList(homeName, { createdAt: T0, updatedAt: T0 });
+    // ۳ کار دمو که هرکدام در زمان متفاوتی ویرایش شده‌اند ⇒ ویرایش‌های واقعی هرگز نامزد نمی‌شوند
+    // (فقط کارِ روی مُدِ updatedAt خوشه — اثر مهاجرت v1.2.5 — از قاعده‌ی «هرگز ویرایش‌نشده» می‌گذرد)
+    const edited = [0, 1, 2].map((i) =>
+      mkTask(seyed.id, DEMO_TASK_TITLES[i], {
+        createdAt: T0,
+        updatedAt: new Date(Date.parse(T0) + (i + 1) * 600_000).toISOString(), // هر کدام ده دقیقه بعد
+      }),
+    );
+    const emptySeed = mkList(shopName, { createdAt: T0, updatedAt: T0, sortOrder: 7 });
+    const scan = scanLegacyDemos(edited, [seyed, emptySeed]);
+    expect(scan!.tasks.length).toBe(1); // فقط کارِ مُد — دو ویرایشِ واقعیِ پراکنده هرگز
+    expect(scan!.tasks[0].id).toBe(edited[0].id);
+    expect(scan!.lists.map((l) => l.id)).toContain(emptySeed.id); // لیست هم‌دوره با پنجره‌ی pool نامزد است
+    expect(scan!.lists.some((l) => l.id === seyed.id)).toBe(false); // لیست دارای کارِ زنده‌ی ویرایش‌شده — نه
+  });
+
+  test('لیست‌هایی که با همین پاک‌سازی خالی می‌شوند (فقط کار دمو داشتند) هم نامزدند (شرط ب)', () => {
+    const w = legacyWorld();
+    const scan = scanLegacyDemos([...w.demoTasks, w.realTask, w.realInSeedNamed], w.lists);
+    const ids = scan!.lists.map((l) => l.id);
+    for (const l of w.lists.filter((x) => x.id !== w.work.id && x.id !== w.userList.id)) {
+      expect(ids).toContain(l.id); // پوسته‌ی لیست‌هایی که فقط کار دمو داشتند
+    }
+    expect(ids).not.toContain(w.work.id); // کار واقعی دارد
+    expect(ids).not.toContain(w.userList.id); // لیست واقعی کاربر
+  });
+
+  test('کمتر از حداقل دسته (۲ کار دمو) ⇒ هیچ‌چیزی نامزد نمی‌شود — حتی لیست هم‌دوره (محافظه‌کارانه)', () => {
+    const [homeName, shopName] = SEED_LIST_NAMES as unknown as string[];
+    const seyed = mkList(homeName, { createdAt: T0, updatedAt: T0 });
+    const two = [0, 1].map((i) => mkTask(seyed.id, DEMO_TASK_TITLES[i], { createdAt: T0, updatedAt: T0 }));
+    const emptySeed = mkList(shopName, { createdAt: T0, updatedAt: T0, sortOrder: 7 });
+    expect(scanLegacyDemos(two, [seyed, emptySeed])).toBeNull();
+  });
+
+  test('گذر دوم runDemoCleanup هم لیست خالیِ تازه‌ساخت کاربر را تومب‌استون نمی‌کند', async () => {
+    const [homeName, shopName] = SEED_LIST_NAMES as unknown as string[];
+    const seyed = mkList(homeName, { createdAt: T0, updatedAt: T0 });
+    const demoTasks = [0, 1, 2].map((i) => mkTask(seyed.id, DEMO_TASK_TITLES[i], { createdAt: T0, updatedAt: T0 }));
+    const freshUserList = mkList(shopName, { createdAt: LATER, updatedAt: LATER, sortOrder: 30 }); // خالی — کاربر
+    await seedIdb([seyed, freshUserList], demoTasks);
+    const scan = scanLegacyDemos(demoTasks, [seyed, freshUserList]);
+    expect(scan!.lists.some((l) => l.id === freshUserList.id)).toBe(false);
+    await runDemoCleanup(scan!);
+    const row = mem.lists.get(freshUserList.id) as unknown as ListEntity;
+    expect(row.deletedAt).toBeNull(); // لیست کاربر زنده ماند
+    expect((mem.lists.get(seyed.id) as unknown as ListEntity).deletedAt).not.toBeNull(); // پوسته‌ی سید پاک شد
+  });
+});
+
+/* ---------- ۵) اصلاح ۱.۱۱.۱ — توقف دائمی اسکن (decideCleanupPref) ---------- */
+
+describe('اصلاح ۲ — اسکن فقط تا اولین تصمیم قطعی (decideCleanupPref)', () => {
+  test('نامزد پیدا شد ⇒ cleaned — همیشه قطعی (مهمان یا حساب ابری، سینک موفق یا نه)', () => {
+    expect(decideCleanupPref({ found: true, hasSession: false, syncStatusOk: false })).toBe('cleaned');
+    expect(decideCleanupPref({ found: true, hasSession: false, syncStatusOk: true })).toBe('cleaned');
+    expect(decideCleanupPref({ found: true, hasSession: true, syncStatusOk: false })).toBe('cleaned');
+    expect(decideCleanupPref({ found: true, hasSession: true, syncStatusOk: true })).toBe('cleaned');
+  });
+
+  test('مهمان + چیزی نیافت ⇒ empty-local — قطعی (داده‌ی دستگاه کامل بار شده؛ دیگر اسکن نمی‌شود)', () => {
+    expect(decideCleanupPref({ found: false, hasSession: false, syncStatusOk: false })).toBe('empty-local');
+    expect(decideCleanupPref({ found: false, hasSession: false, syncStatusOk: true })).toBe('empty-local');
+  });
+
+  test('حساب ابری + اولین سینک کامل و موفق + چیزی نیافت ⇒ empty-synced — قطعی (اسکن بعد از اولین سینک)', () => {
+    expect(decideCleanupPref({ found: false, hasSession: true, syncStatusOk: true })).toBe('empty-synced');
+  });
+
+  test('حساب ابری + سینک هنوز کامل/موفق نشده + چیزی نیافت ⇒ deferred — pref ثبت نمی‌شود و بوت بعدی دوباره اسکن می‌کند', () => {
+    expect(decideCleanupPref({ found: false, hasSession: true, syncStatusOk: false })).toBe('deferred');
   });
 });
