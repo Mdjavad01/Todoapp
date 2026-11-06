@@ -143,10 +143,12 @@ bun run build      # خروجی → dist/ (آپلود در /panel هاست)
 
 ```bash
 # پیش‌نیاز: scripts/README-نصب-vN.N.md + بیلد تازه‌ی frontend/dist و frontend/admin/dist
-bash scripts/build-host-pack.sh v1.12.1   # خروجی: <مخزن>/../public/karam-host-update-v1.12.1.zip
+bash scripts/build-host-pack.sh v1.12.2   # خروجی: <مخزن>/../public/karam-host-update-v1.12.2.zip
 ```
 
 > نسخه‌ی APK (کافه‌بازار + سایت) با workflow «بیلد اندروید کارام» در GitHub Actions ساخته می‌شود — بیلد دوگانه‌ی `karam-latest.apk` (پرداخت‌دار) و `karam-bazaar.apk` (بدون پرداخت، با اسکن صداقت باندل).
+>
+> ⚠️ **v1.12.2 — قاعده‌ی منبع APK:** فایل ارسالی به بازار **فقط آرتیفکت CI** با نام `karam-bazaar-apk` (از تب Actions) است — **نه هیچ فایل داخل ریپو**. هیچ APK/AAB ای در گیت ردیابی نمی‌شود (`*.apk`/`*.aab` در `.gitignore` + گام fail-loud در workflow که هر یافته را قرمز می‌کند) — باینری‌های کهنه‌ی `pack-work/apks/` با rebase از تاریخچه‌ی شاخه حذف شدند.
 
 راهنمای کامل در [`docs/INSTALL.md`](docs/INSTALL.md) آمده است. خلاصه:
 

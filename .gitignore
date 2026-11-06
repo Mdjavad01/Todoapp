@@ -46,3 +46,14 @@ backend/storage/cron/
 
 # v1.12.0 (ممیزی m-09) — وضعیت موقتی mock زیبال در اجرای تست‌ها ساخته می‌شود؛ مالک هر محیط
 tests/zibal-mock-state.json
+
+# v1.12.2 — بهداشت مخزن: خروجی‌های بیلد هرگز کامیت نمی‌شوند
+# pack-work/ — پوشه‌ی کار موقت APK (دو APK کهنه‌ی ردیابی‌شده در آن با rebase از تاریخچه‌ی شاخه حذف شد)
+# mobile/www/ — خروجی build-www.mjs که CI هر بار از نو می‌سازد (bun run build:www)
+pack-work/
+mobile/www/
+
+# v1.12.2 — سد CI «منع APK/AAB در مخزن»: هیچ *.apk یا *.aab در گیت ردیابی نمی‌شود؛
+# فایل ارسالی به بازار فقط آرتیفکت CI با نام karam-bazaar-apk است
+*.apk
+*.aab

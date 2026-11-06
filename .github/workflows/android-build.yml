@@ -33,6 +33,18 @@ jobs:
       - name: دریافت مخزن
         uses: actions/checkout@v4
 
+      # v1.12.2 — منع باینری‌های APK/AAB در مخزن (fail-loud): خروجی بیلد فقط در آرتیفکت CI زندگی می‌کند؛
+      # باینری کهنه در گیت کهنه می‌شود و خطر آپلود اشتباه به بازار دارد — هر یافته = شکست workflow
+      - name: منع APK/AAB در مخزن (fail-loud)
+        run: |
+          TRACKED=$(git ls-files '*.apk' '*.aab')
+          if [ -n "$TRACKED" ]; then
+            echo '✗ فایل‌های APK/AAB در گیت ردیابی شده‌اند — بیلد رد شد (فایل ارسالی به بازار فقط آرتیفکت CI با نام karam-bazaar-apk است):' >&2
+            echo "$TRACKED" >&2
+            exit 1
+          fi
+          echo '✅ هیچ فایل APK/AAB در گیت ردیابی نمی‌شود'
+
       - name: نصب Bun
         uses: oven-sh/setup-bun@v2
         with:
