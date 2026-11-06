@@ -322,7 +322,7 @@ push دسته‌ای: چانک ۵۰۰ کارِ تغییرکرده = ۲۳۷.۷KB 
 | IP/UA اقدامات ادمین | `audit_logs` (`:407-421`) | دائمی | — |
 | گیرنده/متن پیام‌ها | `provider_logs.identity/message` (`:423-435`) | دائمی | — |
 | شماره موبایل → درگاه زیبال | `PaymentController.php:200-208` | سمت زیبال | — |
-| **کد OTP خام** | فایل `storage/cache/issued-otp.jsonl` (`Otp.php:279`؛ سقف ۲۰۰ رکورد، چرخش ۶۴KB `:216-222`) | چند روز | **متن ساده** |
+| ~~**کد OTP خام**~~ | **حذف در v1.12.0 (ممیزی M-06)** — ژورنال `storage/cache/issued-otp.jsonl` و `recordIssued` کلاً از کد حذف شد؛ کد خام دیگر روی دیسک نوشته نمی‌شود (تضمین `tests/otp-no-disk-test.php`) | — | — |
 | **رازها** | `settings`: `smtp_pass`, `telegram_bot_token`, `zibal_merchant` (`install.sql:493,495`، `AdminController.php:1144,1147,1157`) | دائمی | **متن ساده** + بدون mask در GET ادمین (`:1195-1199`) |
 | dump کامل DB | `storage/backups/*.sql.gz` (۷ نسخه) + چت تلگرام (`backup-db.php:266-283`) | تا چرخش | gzip |
 

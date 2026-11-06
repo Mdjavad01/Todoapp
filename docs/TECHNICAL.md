@@ -448,7 +448,7 @@ POST /api/admin/otp/verify       {channel, target?|ticket?, code} → نشست �
 ```
 
 - دسترسی: `users.manage` + CSRF؛ همه‌ی اعمال در audit با `otp.shortcut_request` / `otp.shortcut_login` (بدون کد در لاگ).
-- زیرساخت نمایش کد: ژورنال `storage/cache/issued-otp.jsonl` (۲۰۰ رکورد آخر؛ بیرون از web root؛ نوشته‌شده در `Otp::createCode` و `BaleBot::linkChatToTicket` با پیوند ticket). فقط این مسیر ادمین آن را می‌خواند.
+- زیرساخت نمایش کد: **ژورنال `storage/cache/issued-otp.jsonl` در v1.12.0 (ممیزی M-06) کلاً حذف شد** — `recordIssued` و ژورنال حذف شدند و کد خام روی دیسک نوشته نمی‌شود (`Otp.php`؛ تضمین `tests/otp-no-disk-test.php`).
 - بله: بعد از «شروع اتصال»، مالک باید از حساب بله‌ی خودش روی لینک بزند و START بفرستد؛ پنل هر ۳ ثانیه poll می‌زند و به‌محض اتصال چت، کد را نشان می‌دهد.
 - ادمین از محدودسازی ارسال OTP معاف است (اکشن کنترل‌شده + audit)؛ جریان عمومی محدودسازی خودش را دارد.
 
