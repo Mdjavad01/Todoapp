@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  کارام — v1.12.0 (ممیزی M-01): FileProvider فقط زیرمسیرِ اختصاصیِ اشتراک را می‌بیند.
+  قبلاً کل external storage (external-path path=".") و کل cache با دو قانون باز بود —
+  هر فایلی که تصادفاً در cache نوشته می‌شد از طریق منوی share قابل نشت بود.
+  از این نسخه: فقط cache/karam-share/ در معرض است و saveFile.ts همه‌ی فایل‌های
+  اشتراک (بکاپ JSON و export حساب) را در همین زیرمسیر می‌نویسد.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <cache-path name="share" path="karam-share/" />
 </paths>

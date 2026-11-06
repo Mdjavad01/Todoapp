@@ -71,13 +71,27 @@ export function shareSuccessText(name: string, detail: string): string {
   return `فایل ${name} (${detail}) آماده شد و به مقصدی که انتخاب کردی سپرده شد`;
 }
 
-/** اپ اندروید — نوشتن در Cache + منوی اشتراک سیستم (مقصد را کاربر انتخاب می‌کند) */
+/** اپ اندروید — نوشتن در cache/karam-share/ + منوی اشتراک سیستم (مقصد را کاربر انتخاب می‌کند)
+ *  v1.12.0 (ممیزی M-01): مقصد فقط زیرمسیر اختصاصی karam-share/ است — file_paths.xml
+ *  همین زیرمسیر را به FileProvider می‌دهد (کل cache و external storage دیگر در معرض نیستند) */
 async function saveNative(name: string, content: string): Promise<SaveFileOutcome> {
   const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
   const { Share } = await import('@capacitor/share');
 
+  // FileOutputStream پلاگین پوشه‌ی والد را نمی‌سازد — خودمان یک‌بار recursive می‌سازیم
+  // (خطای «از قبل هست» بی‌اهمیت است و نادیده گرفته می‌شود)
+  try {
+    await Filesystem.mkdir({
+      path: 'karam-share',
+      directory: Directory.Cache,
+      recursive: true,
+    });
+  } catch {
+    /* از قبل وجود دارد */
+  }
+
   const written = await Filesystem.writeFile({
-    path: name,
+    path: `karam-share/${name}`,
     data: content,
     directory: Directory.Cache,
     encoding: Encoding.UTF8,
