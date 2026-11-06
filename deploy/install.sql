@@ -451,7 +451,7 @@ ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
 INSERT INTO `plans` (`uuid`, `code`, `title`, `months`, `price_tomans`, `description`, `is_active`, `sort_order`) VALUES
   (UUID(), 'monthly',  'اشتراک ماهانه',  1, 49000,   'یک ماه دسترسی کامل به کارام پرو', 1, 1),
-  (UUID(), 'annual',   'اشتراک سالانه', 12, 190000,  'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف', 1, 2),
+  (UUID(), 'annual',   'اشتراک سالانه', 12, 190000,  'دوازده ماه دسترسی کامل — حدود ۶۸٪ تخفیف', 1, 2),
   (UUID(), 'lifetime', 'دائمی',          0, 490000,  'یکبار پرداخت، همیشه پرو', 1, 3)
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 

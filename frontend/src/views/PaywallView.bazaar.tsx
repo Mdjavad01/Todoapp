@@ -96,7 +96,7 @@ export function PaywallView() {
                 {premium.lifetime
                   ? 'اشتراک دائمی — همیشه پرو'
                   : premium.daysLeft !== null
-                    ? `${premium.source === 'trial' ? 'آزمایشی' : premium.plan?.title ?? 'اشتراک پرو'} · ${toFa(premium.daysLeft)} روز باقی‌مانده${premium.source === 'trial' ? ' — در پایان، یکی از پلن‌های زیر را فعال کنید' : ''}`
+                    ? `${premium.source === 'trial' ? 'آزمایشی' : premium.plan?.title ?? 'اشتراک پرو'} · ${toFa(premium.daysLeft)} روز باقی‌مانده${premium.source === 'trial' ? ' — در پایان، در این نسخه خرید انجام نمی‌شود؛ کد هدیه دارید؟' : ''}`
                     : premium.plan?.title ?? 'اشتراک پرو'}
               </p>
             </div>
@@ -105,7 +105,7 @@ export function PaywallView() {
           <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-4 flex items-center gap-3">
             <Icon name="star" size={24} className="text-on-surface-variant shrink-0" />
             <p className="text-body-sm text-on-surface-variant flex-1">
-              در حال حاضر از نسخه‌ی رایگان استفاده می‌کنید؛ با خرید یکی از پلن‌های زیر همه‌ی امکانات پرو باز می‌شود.
+              در حال حاضر از نسخه‌ی رایگان استفاده می‌کنید؛ در این نسخه خرید انجام نمی‌شود؛ کد هدیه دارید؟
             </p>
           </div>
         )
@@ -181,7 +181,7 @@ export function PaywallView() {
           </div>
           {giftQuote?.valid ? (
             <p className="text-xs text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 rounded-xl p-2.5 leading-5">
-              کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {formatToman(giftQuote.discountTomans ?? 0)} تخفیف — دفعه‌ی بعد که خرید باز شد اعمال می‌شود
+              کد <span dir="ltr" className="font-bold">{giftQuote.code}</span> معتبر است: {formatToman(giftQuote.discountTomans ?? 0)} تخفیف — این کد در نسخه‌ی کامل کارام (karam-latest از سایت) قابل استفاده است
             </p>
           ) : null}
           {giftError ? (

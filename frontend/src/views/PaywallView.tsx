@@ -32,7 +32,7 @@ import {
 
 const FALLBACK_PLANS: Plan[] = [
   { code: 'monthly', title: 'اشتراک ماهانه', months: 1, priceTomans: 49000, description: 'یک ماه دسترسی کامل به کارام پرو' },
-  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceTomans: 190000, description: 'دوازده ماه دسترسی کامل — ۶۰٪ تخفیف' },
+  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceTomans: 190000, description: 'دوازده ماه دسترسی کامل — حدود ۶۸٪ تخفیف' },
   { code: 'lifetime', title: 'دائمی', months: 0, priceTomans: 490000, description: 'یکبار پرداخت، همیشه پرو' },
 ];
 
@@ -529,7 +529,7 @@ export function PaywallView() {
                 >
                   {featured ? (
                     <span className="absolute -top-2.5 right-1/2 translate-x-1/2 bg-primary text-on-primary text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
-                      ۶۰٪ تخفیف ویژه
+                      حدود ۶۸٪ تخفیف ویژه
                     </span>
                   ) : null}
                   <span className={`text-xs font-bold ${featured ? 'text-primary' : 'text-outline'}`}>
