@@ -12,14 +12,15 @@ declare(strict_types=1);
  *      + کدِ نرسیده باطل شود (بدون کد زنده‌ی یتیم)
  *   ۳) تلاش مجدد کاربر (پیام /start تازه) → code_sent + فقط «یک کد زنده» به‌ازای بلیت
  *   ۴) سقف نرخ به‌ازای chat_id — فاصله‌ی حداقلی: اتصالِ بلافاصله بعد از کد قبلی رد می‌شود
- *   ۵) تلاش مجدد Worker بدون پیام جدید → هیچ کد و پیام جدیدی ساخته نمی‌شود (idempotent)
- *   ۶) کدِ رسیده واقعاً برای ورود کار می‌کند (verify → توکن)
- *   ۷) سقف نرخ به‌ازای chat_id — سقف ساعتی: کد یازدهم ساخته نمی‌شود
- *   ۸) سقف تلاش‌های ارسال هر بلیت (۳): بعد از سقف حتی با رفع خطا کد جدید ساخته نمی‌شود
- *   ۹) حذف حساب با دو هویت: channel=telegram → کد به چت تلگرام می‌رود؛ شکست ارسال →
- *      خطای روشن 502 send_failed و کدِ نرسیده باطل؛ بدون channel → هویت اصلی (رفتار قدیم)؛
- *      تأیید حذف با channel=telegram و کدِ رسیده → حذف کامل
- *   ۱۰) سازگاری کلاینت قدیمی: شکل پاسخ poll ثابت می‌ماند (ok/status/botUsername) و مقدار
+ *   ۵) شمار ردیف‌ها بعد از بخش ۳ و ۴ (بدون ردیف اضافه)
+ *   ۶) تلاش مجدد Worker بدون پیام جدید → هیچ کد و پیام جدیدی ساخته نمی‌شود (idempotent)
+ *   ۷) کدِ رسیده واقعاً برای ورود کار می‌کند (verify → توکن)
+ *   ۸) سقف نرخ به‌ازای chat_id — سقف ساعتی: کد یازدهم ساخته نمی‌شود
+ *   ۹) سقف تلاش‌های ارسال هر بلیت (۳): بعد از سقف حتی با رفع خطا کد جدید ساخته نمی‌شود
+ *   ۱۰) حذف حساب با دو هویت: channel=telegram → کد به چت تلگرام می‌رود؛ شکست ارسال →
+ *       خطای روشن 502 send_failed و کدِ نرسیده باطل؛ بدون channel → هویت اصلی (رفتار قدیم)؛
+ *       تأیید حذف با channel=telegram و کدِ رسیده → حذف کامل
+ *   ۱۱) سازگاری کلاینت قدیمی: شکل پاسخ poll ثابت می‌ماند (ok/status/botUsername) و مقدار
  *       ناشناس send_failed برای کلاینت قدیمی فقط «منتظر ماندن تا expired» است (بدون کرش)
  *
  * پیش‌نیاز اجرا:
@@ -218,7 +219,7 @@ function pollTicket(string $ticket): array
 /** poll فوری — فقط با forceFetch() معنی‌دار است */
 function pollTicketFast(string $ticket): array
 {
-    usleep(300_000);
+    usleep(100_000);
     return http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket]);
 }
 
@@ -291,6 +292,7 @@ check('health → 200 و ok', $st === 200 && ($j['ok'] ?? false) === true);
 echo "\n۲) شکست گذرای sendMessage (HTTP 500) → send_failed و بلیت زنده\n";
 setMockFailMode(['status' => 500, 'description' => 'Internal Server Error (mock)']);
 [$t1, $exp1] = newTicket();
+[$t2] = newTicket(); // بلیت دوم از همین ابتدا — برای تست فاصله‌ی حداقلی در بخش ۴ (بدون هدررفتن زمان بین دو کد)
 check('درخواست بلیت → expiresIn=600 (TTL ده‌دقیقه‌ای)', $exp1 === 600, (string) $exp1);
 mockAddStartUpdate($t1, 777001);
 [$st, $j] = pollTicket($t1);
@@ -311,15 +313,13 @@ mockAddStartUpdate($t1, 777001);
 check('poll → status=code_sent', $st === 200 && ($j['status'] ?? '') === 'code_sent', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
 $row = ticketRow($t1);
 check('بلیت بعد از ارسال موفق مصرف شد', $row !== null && $row['consumed_at'] !== null);
-check('فقط یک کد زنده برای این chat', chatCodeRows(777001, true) === 1, (string) chatCodeRows(777001, true));
-check('مجموع ردیف‌های کد = ۲ (اولی باطل، دومی زنده)', chatCodeRows(777001, false) === 2, (string) chatCodeRows(777001, false));
-check('پیام رسیده ثبت شد', mockSentCount() === 1, (string) mockSentCount());
 $code1 = mockExtractCode(0);
 check('کد ورود از متن پیام استخراج شد', $code1 !== null && strlen((string) $code1) === 6);
 
-/* ================= ۴) سقف نرخ chat — فاصله‌ی حداقلی ================= */
+/* ================= ۴) سقف نرخ chat — فاصله‌ی حداقلی =================
+   بلافاصله بعد از کدِ بخش ۳ (زیر یک ثانیه — همان دو چک بالا + poll فوری): اگر نرخ‌سنج
+   فاصله‌ی حداقلی درست کار کند، کد جدیدی ساخته نمی‌شود و بلیت دوم pending می‌ماند. */
 echo "\n۴) سقف نرخ به‌ازای chat_id — فاصله‌ی حداقلی (بلافاصله بعد از کد قبلی)\n";
-$t2 = newTicket(); // بدون تأخیر — بلیت‌ها سقف فاصله ندارند
 mockAddStartUpdate($t2, 777001);
 forceFetch(); // کش ۲ ثانیه‌ای را بشکن تا poll واقعاً پیام تازه را ببیند و نرخ‌سنج رد کند
 [$st, $j] = pollTicketFast($t2);
@@ -328,8 +328,13 @@ check('بلیت دوم مصرف نشد', (ticketRow($t2)['consumed_at'] ?? null)
 check('کد جدیدی برای chat ساخته نشد', chatCodeRows(777001, false) === 2, (string) chatCodeRows(777001, false));
 check('پیام جدیدی ارسال نشد', mockSentCount() === 1, (string) mockSentCount());
 
-/* ================= ۵) Worker بدون پیام جدید → idempotent ================= */
-echo "\n۵) تلاش مجدد Worker بدون پیام جدید → هیچ چیز تازه‌ای ساخته نمی‌شود\n";
+/* ================= ۵) شمار ردیف‌ها بعد از بخش ۳ و ۴ ================= */
+check('فقط یک کد زنده برای این chat', chatCodeRows(777001, true) === 1, (string) chatCodeRows(777001, true));
+check('مجموع ردیف‌های کد = ۲ (اولی باطل، دومی زنده)', chatCodeRows(777001, false) === 2, (string) chatCodeRows(777001, false));
+check('پیام رسیده ثبت شد', mockSentCount() === 1, (string) mockSentCount());
+
+/* ================= ۶) Worker بدون پیام جدید → idempotent ================= */
+echo "\n۶) تلاش مجدد Worker بدون پیام جدید → هیچ چیز تازه‌ای ساخته نمی‌شود\n";
 $beforeCalls = mockSendMessageCalls();
 [$st, $j] = pollTicket($t1);
 check('poll بعدی → همان code_sent', $st === 200 && ($j['status'] ?? '') === 'code_sent');
@@ -337,8 +342,8 @@ check('هیچ پیام جدیدی ارسال نشد', mockSentCount() === 1, (st
 check('هیچ فراخوانی sendMessage جدید نبود', mockSendMessageCalls() === $beforeCalls);
 check('هیچ کد جدیدی ساخته نشد', chatCodeRows(777001, true) === 1, (string) chatCodeRows(777001, true));
 
-/* ================= ۶) کد رسیده واقعاً برای ورود کار می‌کند ================= */
-echo "\n۶) ورود با کدِ رسیده (verify) → توکن صادر شد\n";
+/* ================= ۷) کد رسیده واقعاً برای ورود کار می‌کند ================= */
+echo "\n۷) ورود با کدِ رسیده (verify) → توکن صادر شد\n";
 [$st, $j] = http('POST', '/api/auth/otp/verify', [
     'channel' => 'telegram', 'ticket' => $t1, 'code' => $code1,
     'deviceUuid' => 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', 'deviceName' => 'تست موج ۱',
@@ -346,8 +351,8 @@ echo "\n۶) ورود با کدِ رسیده (verify) → توکن صادر شد\
 check('verify تلگرام → 200 و accessToken', $st === 200 && !empty($j['accessToken']), (string) $st);
 check('پاسخ ورود chat_id همان چت است', ($j['user']['telegramChatId'] ?? '') === '777001');
 
-/* ================= ۷) سقف نرخ chat — سقف ساعتی ================= */
-echo "\n۷) سقف نرخ به‌ازای chat_id — سقف ساعتی (۱۰ کد در ساعت)\n";
+/* ================= ۸) سقف نرخ chat — سقف ساعتی ================= */
+echo "\n۸) سقف نرخ به‌ازای chat_id — سقف ساعتی (۱۰ کد در ساعت)\n";
 // chat 777001 الان ۲ ردیف کد دارد (۱ باطل + ۱ زنده) — ۸ موفق دیگر تا سقف ۱۰
 for ($i = 0; $i < 8; $i++) {
     [$tk] = newTicket();
@@ -365,8 +370,8 @@ mockAddStartUpdate($t9, 777001);
 check('کد یازدهم ساخته نشد → pending', $st === 200 && ($j['status'] ?? '') === 'pending');
 check('بعد از سقف: هیچ ردیف و پیام جدیدی نبود', chatCodeRows(777001, false) === 10 && mockSentCount() === 9, chatCodeRows(777001, false) . '/' . mockSentCount());
 
-/* ================= ۸) سقف تلاش‌های ارسال هر بلیت ================= */
-echo "\n۸) سقف تلاش ارسال بلیت (۳) — با خطای گذرای ۵۰۰\n";
+/* ================= ۹) سقف تلاش‌های ارسال هر بلیت ================= */
+echo "\n۹) سقف تلاش ارسال بلیت (۳) — با خطای گذرای ۵۰۰\n";
 setMockFailMode(['status' => 500, 'description' => 'Internal Server Error (mock)']);
 [$t3] = newTicket();
 $chat3 = 777009;
@@ -386,8 +391,8 @@ mockAddStartUpdate($t3, $chat3); // حتی با رفع خطا — سقف بلی�
 [$st, $j] = pollTicket($t3);
 check('رفع خطا هم بعد از سقف کد نمی‌سازد (تا پایان TTL)', ($j['status'] ?? '') === 'send_failed' && chatCodeRows($chat3, false) === 3);
 
-/* ================= ۹) حذف حساب با دو هویت — کانال نشست ================= */
-echo "\n۹) حذف حساب با دو هویت — کد به کانال نشست فعلی می‌رود\n";
+/* ================= ۱۰) حذف حساب با دو هویت — کانال نشست ================= */
+echo "\n۱۰) حذف حساب با دو هویت — کد به کانال نشست فعلی می‌رود\n";
 $delEmail = 'delwave1@test.ir';
 $delCode = requestEmailCode($delEmail);
 [$st, $j] = http('POST', '/api/auth/otp/verify', [
@@ -409,7 +414,7 @@ db()->prepare(
 
 [$st, $j] = http('POST', '/api/v1/me/delete-request', ['channel' => 'telegram'], $tok);
 check('delete-request با channel=telegram → 200 و کانال تلگرام', $st === 200 && ($j['channel'] ?? '') === 'telegram_chat_id', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
-check('هدف ماسک شده (بدون chat_id کامل)', ($j['target'] ?? '') === '••••0001', (string) ($j['target'] ?? ''));
+check('هدف ماسک شده (بدون chat_id کامل)', ($j['target'] ?? '') === '••••8001', (string) ($j['target'] ?? ''));
 check('کد حذف به چت تلگرام 888001 رفت', mockSentCount() === 10 && (string) mockState()['sent'][9]['chat_id'] === '888001', (string) mockSentCount());
 $delCodeTg = mockExtractCode(9);
 check('کد حذف از پیام تلگرام استخراج شد', $delCodeTg !== null);
@@ -434,8 +439,8 @@ check('delete با channel=telegram و کد رسیده → حذف کامل', $st
 $status = (string) db()->query("SELECT status FROM users WHERE id = {$uid}")->fetchColumn();
 check('وضعیت کاربر بعد از حذف = deleted', $status === 'deleted', $status);
 
-/* ================= ۱۰) سازگاری کلاینت قدیمی ================= */
-echo "\n۱۰) سازگاری کلاینت قدیمی با وضعیت ناشناس send_failed\n";
+/* ================= ۱۱) سازگاری کلاینت قدیمی ================= */
+echo "\n۱۱) سازگاری کلاینت قدیمی با وضعیت ناشناس send_failed\n";
 // بلیت تازه در وضعیت send_failed — شکل پاسخ باید همان سه کلید همیشگی باشد (بدون کلید/فیلد جدید)
 setMockFailMode(['status' => 500, 'description' => 'Internal Server Error (mock)']);
 [$t4] = newTicket();

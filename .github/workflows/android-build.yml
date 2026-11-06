@@ -95,7 +95,7 @@ jobs:
           php -S 127.0.0.1:8098 tests/telegram-mock.php >/tmp/tg-mock.log 2>&1 &
           php -S 127.0.0.1:8099 -t backend/public >/tmp/php-server-wave1.log 2>&1 &
           sleep 2
-          php tests/multi-login-wave1-test.php
+          php tests/multi-login-wave1-test.php || { echo '--- php-error.log (ریشه‌یابی) ---'; tail -40 backend/storage/logs/php-error.log || true; exit 1; }
 
       - name: نصب وابستگی‌های موبایل
         working-directory: mobile

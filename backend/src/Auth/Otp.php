@@ -21,7 +21,8 @@ final class Otp
     /** الفبای بلیت تلگرام — بدون کاراکترهای گنگ (0/O و 1/I حذف شده‌اند) */
     private const TICKET_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-    private const PURPOSE_LOGIN = 'login';
+    /** موج ۱ — عمومی شد تا TelegramBot (اتصال بلیت) و مسیرهای آینده از همان مقدار استفاده کنند */
+    public const PURPOSE_LOGIN = 'login';
 
     /** v1.9 — کد دومرحله‌ای حذف حساب؛ جدا از کد ورود (یکی برای دیگری قابل استفاده نیست) */
     public const PURPOSE_ACCOUNT_DELETE = 'account_delete';
