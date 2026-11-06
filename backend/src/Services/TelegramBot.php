@@ -378,25 +378,64 @@ final class TelegramBot
         }
     }
 
-    /** اتصال چت فرستنده به بلیت: بلیت مصرف + کد OTP جدید برای همان چت */
+    /**
+     * اتصال چت فرستنده به بلیت — موج ۱ (چندروش ورود): ترتیب جدید «اول ارسال، بعد مصرف».
+     *
+     *  ۱) سقف تلاش: هر بلیت حداکثر Otp::ticketMaxSendAttempts() بار تلاشِ ارسال دارد؛
+     *     بعد از سقف تا پایان TTL دیگر کد ساخته نمی‌شود (وضعیت poll همان send_failed می‌ماند).
+     *  ۲) یک کد به‌ازای هر بلیت (idempotent): اگر کد زنده‌ای از تلاش قبلیِ همین بلیت مانده باشد
+     *     (id بزرگ‌تر از ردیف بلیت — یعنی بعد از ساخت بلیت ساخته شده)، باطل می‌شود تا برای هر
+     *     بلیت در هر لحظه حداکثر یک کد زنده باشد. Worker هرگز خودش برای بلیت شکست‌خورده
+     *     کد جدید نمی‌سازد؛ تنها retry همان یک تلاش کوتاه داخل sendMessage است با همان کد
+     *     (کد خام فقط در حافظه‌ی همان درخواست است — ممیزی M-06: هرگز روی دیسک نمی‌رود).
+     *  ۳) بلیت فقط بعد از ارسال موفق مصرف می‌شود → code_sent دقیقاً یعنی «کد واقعاً رفت».
+     *  ۴) در شکست ارسال: بلیت مصرف نمی‌شود (تا پایان TTL زنده می‌ماند)، رکورد کدِ بی‌مصرف
+     *     همان لحظه باطل می‌شود و ستون attempts بلیت +۱ می‌شود → وضعیت poll = send_failed.
+     */
     private static function linkChatToTicket(PDO $pdo, string $ticket, int|string $chatId): void
     {
+        $now = gmdate('Y-m-d H:i:s');
+
         $pdo->beginTransaction();
         try {
             // دوباره بررسی می‌کنیم که بلیت هنوز زنده است (مسابقه‌ی دو poll)
             $stmt = $pdo->prepare(
-                'SELECT id FROM otp_requests
+                'SELECT id, attempts FROM otp_requests
                  WHERE identity_type = :t AND identity_value = :v AND consumed_at IS NULL AND expires_at > :now
                  LIMIT 1'
             );
-            $stmt->execute([':t' => 'telegram', ':v' => $ticket, ':now' => gmdate('Y-m-d H:i:s')]);
-            if ($stmt->fetchColumn() === false) {
+            $stmt->execute([':t' => 'telegram', ':v' => $ticket, ':now' => $now]);
+            $ticketRow = $stmt->fetch();
+            if ($ticketRow === false) {
                 $pdo->rollBack();
                 return;
             }
+            $ticketId = (int) $ticketRow['id'];
+            $attempts = (int) $ticketRow['attempts'];
+
+            // ۱) سقف تلاش‌های ارسال همین بلیت
+            if ($attempts >= Otp::ticketMaxSendAttempts()) {
+                $pdo->rollBack();
+                error_log('[karam][telegram] بلیت ' . $ticket . ' به سقف تلاش ارسال رسید — کد جدید ساخته نمی‌شود (تا پایان TTL وضعیت send_failed می‌ماند)');
+                return;
+            }
+
+            // ۲) یک کد به‌ازای هر بلیت — کدِ زنده‌ی متعلق به تلاش قبلی همین بلیت باطل می‌شود
+            //    (فقط کدهای همین chat که بعد از ردیف این بلیت ساخته شده‌اند؛ کد بلیت‌های دیگر دست‌نخورده می‌ماند)
+            $pdo->prepare(
+                'UPDATE otp_requests SET consumed_at = :now
+                 WHERE identity_type = :t AND identity_value = :c AND consumed_at IS NULL
+                   AND id > :tid AND purpose = :p'
+            )->execute([
+                ':now' => $now,
+                ':t' => 'telegram',
+                ':c' => (string) $chatId,
+                ':tid' => $ticketId,
+                ':p' => Otp::PURPOSE_LOGIN,
+            ]);
 
             $code = Otp::createCode($pdo, 'telegram', (string) $chatId, ''); // ip خالی = ارسال سمت سرور
-            Otp::consumeTicket($pdo, $ticket);
+            $codeRowId = (int) $pdo->lastInsertId();
             // v1.12.0 (ممیزی M-06) — recordIssued حذف شد: کد خام فقط به چت تلگرام می‌رود،
             // هرگز روی دیسک ژورنال نمی‌شود. پنل فقط وضعیت اتصال را می‌بیند، نه کد را.
 
@@ -409,7 +448,7 @@ final class TelegramBot
         }
 
         // کد داخل بلوک <code> تلگرام: فونت مونو + لمس → کپی (به درخواست مالک)
-        self::sendMessage(
+        $sent = self::sendMessage(
             $chatId,
             "کارام 🌿\n"
             . "کد ورود شما: <code>" . htmlspecialchars($code['code'], ENT_QUOTES, 'UTF-8') . "</code>\n"
@@ -417,5 +456,20 @@ final class TelegramBot
             . "اگر شما درخواست نداده بودید، این پیام را نادیده بگیرید.",
             'HTML'
         );
+
+        if ($sent) {
+            // ۳) مصرف بلیت فقط بعد از ارسال موفق → status = code_sent (رفتار قبلی برای کلاینت‌ها)
+            Otp::consumeTicket($pdo, $ticket);
+        } else {
+            // ۴) شکست ارسال: بلیت زنده می‌ماند + attempts بلیت +۱ → status = send_failed؛
+            //     کدِ بی‌مصرفِ به‌جامانده همان لحظه باطل می‌شود تا کد زنده‌ی یتیم باقی نماند.
+            $pdo->prepare('UPDATE otp_requests SET attempts = attempts + 1 WHERE id = :id')
+                ->execute([':id' => $ticketId]);
+            $pdo->prepare(
+                'UPDATE otp_requests SET consumed_at = :now
+                 WHERE id = :id AND consumed_at IS NULL AND purpose = :p'
+            )->execute([':now' => gmdate('Y-m-d H:i:s'), ':id' => $codeRowId, ':p' => Otp::PURPOSE_LOGIN]);
+            error_log('[karam][telegram] ارسال کد برای بلیت ' . $ticket . ' ناموفق بود — وضعیت poll: send_failed (کاربر می‌تواند لینک را دوباره باز کند یا با ایمیل وارد شود)');
+        }
     }
 }

@@ -59,6 +59,17 @@ final class Otp
     }
 
     /**
+     * موج ۱ (چندروش ورود) — سقف تلاش‌های ارسال کد برای یک بلیت تلگرام.
+     * هر «تلاش» = یک اتصال چت (پیام /start) + یک ارسال با حداکثر یک retry کوتاه داخل sendMessage.
+     * Worker هرگز خودش برای بلیت شکست‌خورده کد جدید نمی‌سازد؛ تلاش مجدد فقط با پیام جدید کاربر
+     * (زدن دوباره‌ی لینک) — و همین سقف جلوی چرخه‌ی بی‌پایان کدساز را می‌گیرد.
+     */
+    public static function ticketMaxSendAttempts(): int
+    {
+        return max(1, (int) (Config::get('OTP_TICKET_MAX_SEND_ATTEMPTS', '3') ?? 3));
+    }
+
+    /**
      * گام ۱ — آیا محیط جاری production است؟
      * APP_ENV نامشخص/خالی = production (محتاطانه — fail-closed).
      */
@@ -247,11 +258,16 @@ final class Otp
 
     /* ---------------- بازیابی و تأیید ---------------- */
 
-    /** وضعیت بلیت تلگرام: pending / code_sent / expired / unknown */
+    /**
+     * وضعیت بلیت تلگرام: pending / code_sent / send_failed / expired / unknown
+     * موج ۱ — send_failed: حداقل یک تلاش ارسال کد شکست خورده و بلیت هنوز زنده است
+     * (مصرف نشده و TTL تمام نشده). کلاینت‌های قدیمی این مقدار را نمی‌شناسند و
+     * مثل قبل تا expired منتظر می‌مانند (شاهد سازگاری در گزارش موج ۱).
+     */
     public static function ticketStatus(PDO $pdo, string $ticket): string
     {
         $stmt = $pdo->prepare(
-            'SELECT consumed_at, expires_at FROM otp_requests
+            'SELECT consumed_at, expires_at, attempts FROM otp_requests
              WHERE identity_type = :t AND identity_value = :v AND purpose = :p
              ORDER BY id DESC LIMIT 1'
         );
@@ -265,6 +281,9 @@ final class Otp
         }
         if (strtotime((string) $row['expires_at']) < time()) {
             return 'expired';
+        }
+        if ((int) $row['attempts'] >= 1) {
+            return 'send_failed';
         }
         return 'pending';
     }
