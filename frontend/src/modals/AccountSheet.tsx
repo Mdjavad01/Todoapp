@@ -31,6 +31,7 @@ import {
   methodsLaterLabel,
 } from '@/lib/bazaarTexts';
 import { METHODS_SNOOZE_KEY, methodRowsOf, snoozeIsActive, snoozeValueFor } from '@/lib/loginMethods';
+import { ApiError } from '@/sync/api';
 
 /**
  * شیت «حساب کاربری و سینک» — فاز ۳ (فاز ۵: بله ← تلگرام)
@@ -103,6 +104,9 @@ export function AccountSheet() {
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linkResendIn, setLinkResendIn] = useState(0);
+  // رفع اشکال گزارش مالک — ۴۲۹ نرخ‌سنج با شمارش معکوس زنده: «همان لحظه» معلوم است کِی می‌شود دوباره زد
+  const [linkRetryIn, setLinkRetryIn] = useState(0);
+  const [tgRetryIn, setTgRetryIn] = useState(0); // همان رفتار برای «ساخت کد اتصال» ورود مهمان
   const [linkDevCode, setLinkDevCode] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -135,6 +139,7 @@ export function AccountSheet() {
       setLinkTtl(0);
       setLinkTgFailed(false);
       setLinkDevCode(null);
+      setLinkRetryIn(0);
       void fetchMyIdentities().then(setIdentities).catch(() => setIdentities(null));
       void repo.prefsGet<string>(METHODS_SNOOZE_KEY, '').then((v) => setMethodsSnooze(v || null)).catch(() => setMethodsSnooze(null));
     }
@@ -167,6 +172,19 @@ export function AccountSheet() {
     const t = setTimeout(() => setLinkTtl((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [linkTtl]);
+
+  // رفع اشکال — شمارش معکوس ۴۲۹ اتصال روش دوم و ورود تلگرام
+  useEffect(() => {
+    if (linkRetryIn <= 0) return;
+    const t = setTimeout(() => setLinkRetryIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [linkRetryIn]);
+
+  useEffect(() => {
+    if (tgRetryIn <= 0) return;
+    const t = setTimeout(() => setTgRetryIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [tgRetryIn]);
 
   // poll تلگرام — در هر دو حالت waiting و send_failed ادامه دارد؛ send_failed از این بعد
   // فقط پیام وضعیت است نه پایان مسیر: با زدن دوباره‌ی لینک (تا پایان TTL) کد می‌تواند برسد
@@ -301,6 +319,12 @@ export function AccountSheet() {
       // موج ۱ — شمارش معکوس مهلت بلیت (expiresIn ثانیه؛ پیش‌فرض سرور ۶۰۰ = ۱۰ دقیقه)
       setTicketTtl(Math.max(0, Math.floor(res.expiresIn ?? 600)));
     } catch (e) {
+      // رفع اشکال — ۴۲۹ با شمارش معکوس زنده؛ دکمه تا فعال‌شدن دوباره شفاف و غیرفعال است
+      if (e instanceof ApiError && e.code === 'rate_limited' && typeof e.retryAfter === 'number' && e.retryAfter > 0) {
+        setTgRetryIn(e.retryAfter);
+        setError(`${e.message} — دکمه پس از ${toFaDigits(e.retryAfter)} ثانیه فعال می‌شود`);
+        return;
+      }
       setError(e instanceof Error ? e.message : 'دریافت بلیت ناموفق بود');
     } finally {
       setBusy(false);
@@ -450,11 +474,12 @@ export function AccountSheet() {
   const emailLinked = methodRows[0].linked;
   const telegramLinked = methodRows[1].linked;
   const bothMethods = emailLinked && telegramLinked;
-  // نشان غیرمزاحم = دکمه‌ی اتصال + توضیح یک‌خطی داخل همین کارت (بدون بنر تمام‌صفحه)؛
-  // دوروشی‌ها فقط سطرهای وضعیت می‌بینند؛ «بعداً» = pref محلی METHODS_SNOOZE_KEY تا ۳۰ روز
-  // (بعد از snooze فقط وضعیت‌ها می‌مانند — خود snooze هیچ داده‌ی ابری نمی‌سازد و فقط محلی است)
-  const methodsNudgeVisible =
+  // نشان غیرمزاحم = توضیح یک‌خطی + «بعداً» (قابل خواب تا ۳۰ روز)؛ اما دکمه‌ی اتصال هرگز
+  // از دسترس خارج نمی‌شود — رفع اشکال گزارش مالک: بعد از «بعداً» دیگر هیچ راهی برای اتصال نمی‌ماند.
+  // دوروشی‌ها فقط سطرهای وضعیت می‌بینند؛ snooze هیچ داده‌ی ابری نمی‌سازد و فقط محلی است
+  const methodsHintVisible =
     identities !== null && !bothMethods && !snoozeIsActive(methodsSnooze) && linkStep === 'idle';
+  const connectAlwaysVisible = identities !== null && !bothMethods && linkStep === 'idle';
   // روش ناقص حساب — اتصال تلگرام فقط وقتی پیشنهاد می‌شود که سرور تلگرام را فعال دارد؛ اتصال ایمیل همیشه ممکن است
   const missingChannel: 'email' | 'telegram' | null = emailLinked ? (telegramLinked ? null : 'telegram') : 'email';
   const missingAvailable = missingChannel === 'telegram' ? !!channels?.telegram : true;
@@ -470,6 +495,17 @@ export function AccountSheet() {
     setLinkError(null);
     setLinkResendIn(0);
     setLinkDevCode(null);
+    setLinkRetryIn(0);
+  };
+
+  /** خطای جریان اتصال — ۴۲۹ نرخ‌سنج با retryAfter سرور به شمارش معکوس زنده تبدیل می‌شود */
+  const linkApplyError = (e: unknown, fallback: string) => {
+    if (e instanceof ApiError && e.code === 'rate_limited' && typeof e.retryAfter === 'number' && e.retryAfter > 0) {
+      setLinkRetryIn(e.retryAfter);
+      setLinkError(`${e.message} — دکمه پس از ${toFaDigits(e.retryAfter)} ثانیه فعال می‌شود`);
+      return;
+    }
+    setLinkError(e instanceof Error ? e.message : fallback);
   };
 
   const refreshIdentities = () => {
@@ -493,6 +529,13 @@ export function AccountSheet() {
       // TTL بلیت اتصال همان ۱۰ دقیقه‌ی سرور است (expiresIn؛ پیش‌فرض ۶۰۰)
       setLinkTtl(Math.max(0, Math.floor(res.expiresIn ?? 600)));
     } catch (e) {
+      // ۴۲۹ → به گام شروع برمی‌گردیم تا دکمه با شمارش معکوس همین‌جا دیده شود
+      if (e instanceof ApiError && e.code === 'rate_limited' && typeof e.retryAfter === 'number' && e.retryAfter > 0) {
+        setLinkStep('idle');
+        setLinkRetryIn(e.retryAfter);
+        setLinkError(`${e.message} — دکمه پس از ${toFaDigits(e.retryAfter)} ثانیه فعال می‌شود`);
+        return;
+      }
       setLinkError(e instanceof Error ? e.message : 'دریافت بلیت ناموفق بود');
     } finally {
       setLinkBusy(false);
@@ -508,7 +551,7 @@ export function AccountSheet() {
       setLinkDevCode(res.devCode ?? null);
       setLinkStep('email-code');
     } catch (e) {
-      setLinkError(e instanceof Error ? e.message : 'ارسال کد ناموفق بود');
+      linkApplyError(e, 'ارسال کد ناموفق بود');
     } finally {
       setLinkBusy(false);
     }
@@ -523,7 +566,7 @@ export function AccountSheet() {
       setLinkDevCode(res.devCode ?? null);
       setLinkCode('');
     } catch (e) {
-      setLinkError(e instanceof Error ? e.message : 'ارسال مجدد ناموفق بود');
+      linkApplyError(e, 'ارسال مجدد ناموفق بود');
     } finally {
       setLinkBusy(false);
     }
@@ -543,7 +586,7 @@ export function AccountSheet() {
       refreshIdentities();
     } catch (e) {
       // ۴۰۹ conflict_identity — پیام فارسی سرور (ارجاع به پشتیبانی) مستقیم نشان داده می‌شود
-      setLinkError(e instanceof Error ? e.message : 'اتصال ناموفق بود');
+      linkApplyError(e, 'اتصال ناموفق بود');
     } finally {
       setLinkBusy(false);
     }
@@ -666,26 +709,36 @@ export function AccountSheet() {
                 </div>
               ))}
 
-              {/* نشان غیرمزاحم — فقط برای تک‌روشی‌ها داخل همین کارت؛ دوروشی‌ها: فقط وضعیت، بدون دکمه */}
-              {methodsNudgeVisible && missingChannel && missingAvailable ? (
+              {/* نشان اتصال — دکمه حتی بعد از «بعداً» همیشه همین‌جاست (ضد بن‌بست — رفع اشکال گزارش مالک)؛
+                  فقط توضیح یک‌خطی و «بعداً» با snooze ۳۰ روزه خواب می‌روند */}
+              {connectAlwaysVisible && missingChannel && missingAvailable ? (
                 <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
-                  <p className="text-[11px] leading-5 text-on-surface-variant">{methodsConnectHint}</p>
+                  {methodsHintVisible ? (
+                    <p className="text-[11px] leading-5 text-on-surface-variant">{methodsConnectHint}</p>
+                  ) : null}
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="flex-1 py-2.5 rounded-xl border-2 border-primary text-primary font-bold text-body-sm active:scale-95 transition-transform"
+                      className="flex-1 py-2.5 rounded-xl border-2 border-primary text-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
                       onClick={() => (missingChannel === 'email' ? openLinkEmail() : void startLinkTelegram())}
+                      disabled={linkBusy || linkRetryIn > 0}
                     >
-                      {missingChannel === 'email' ? methodsConnectEmail : methodsConnectTelegram}
+                      {linkRetryIn > 0
+                        ? `تلاش مجدد تا ${toFaDigits(linkRetryIn)}ث`
+                        : missingChannel === 'email'
+                          ? methodsConnectEmail
+                          : methodsConnectTelegram}
                     </button>
-                    <button
-                      type="button"
-                      className="px-3 py-2.5 text-xs text-on-surface-variant font-bold"
-                      onClick={() => void snoozeMethods()}
-                      aria-label="به بعد موکول کن"
-                    >
-                      {methodsLaterLabel}
-                    </button>
+                    {methodsHintVisible ? (
+                      <button
+                        type="button"
+                        className="px-3 py-2.5 text-xs text-on-surface-variant font-bold"
+                        onClick={() => void snoozeMethods()}
+                        aria-label="به بعد موکول کن"
+                      >
+                        {methodsLaterLabel}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -1118,9 +1171,9 @@ export function AccountSheet() {
                   <button
                     className="w-full py-3.5 rounded-2xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
                     onClick={() => void startTelegramLogin()}
-                    disabled={busy}
+                    disabled={busy || tgRetryIn > 0}
                   >
-                    {busy ? '…' : 'ساخت کد اتصال'}
+                    {busy ? '…' : tgRetryIn > 0 ? `تلاش مجدد تا ${toFaDigits(tgRetryIn)}ث` : 'ساخت کد اتصال'}
                   </button>
                 </>
               ) : null}

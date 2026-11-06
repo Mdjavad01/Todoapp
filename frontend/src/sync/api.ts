@@ -18,6 +18,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    public retryAfter?: number, // رفع اشکال ۴۲۹ — ثانیه تا تلاش مجدد (شمارش معکوس در UI)
   ) {
     super(message);
     this.name = 'ApiError';
@@ -67,6 +68,7 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
       res.status,
       (payload.error as string) ?? `خطای سرور (${res.status})`,
       payload.code as string | undefined,
+      typeof payload.retryAfter === 'number' ? payload.retryAfter : undefined,
     );
   }
   return payload as T;
