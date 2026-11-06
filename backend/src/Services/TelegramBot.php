@@ -140,6 +140,18 @@ final class TelegramBot
         return substr($s, 0, 1) . '•••' . substr($s, -1) . ' (len=' . $len . ')';
     }
 
+    /** ماسک شناسه‌ی بلیت برای لاگ — مثل maskedChatId: نویسه‌ی ابتدا/انتها + طول؛
+     *  مقدار کامل بلیت هرگز در error_log نمی‌رود (اصلاحیه موج ۱). */
+    private static function maskedTicketId(string $ticket): string
+    {
+        $s = (string) $ticket;
+        $len = strlen($s);
+        if ($len <= 2) {
+            return 'len=' . $len;
+        }
+        return substr($s, 0, 1) . '•••' . substr($s, -1) . ' (len=' . $len . ')';
+    }
+
     /** بررسی اعتبار توکن ربات (پنل ادمین هنگام ذخیره‌ی توکن صدایش می‌زند) */
     public static function getMe(): array
     {
@@ -401,7 +413,7 @@ final class TelegramBot
         //    پیش از این، هیچ سقفی روی تعداد کد به‌ازای هر چت نبود.
         $limit = Otp::checkRateLimit($pdo, 'telegram', (string) $chatId, '');
         if (!$limit['ok']) {
-            error_log('[karam][telegram] اتصال بلیت ' . $ticket . ' به chat=' . self::maskedChatId($chatId)
+            error_log('[karam][telegram] اتصال بلیت ' . self::maskedTicketId($ticket) . ' به chat=' . self::maskedChatId($chatId)
                 . ' به‌ازای محدودیت نرخ رد شد: ' . $limit['reason']);
             return; // بدون ساخت کد و بدون پیام — بلیت همان وضعیت قبلی‌اش را نگه می‌دارد
         }
@@ -426,7 +438,7 @@ final class TelegramBot
             // ۱) سقف تلاش‌های ارسال همین بلیت
             if ($attempts >= Otp::ticketMaxSendAttempts()) {
                 $pdo->rollBack();
-                error_log('[karam][telegram] بلیت ' . $ticket . ' به سقف تلاش ارسال رسید — کد جدید ساخته نمی‌شود (تا پایان TTL وضعیت send_failed می‌ماند)');
+                error_log('[karam][telegram] بلیت ' . self::maskedTicketId($ticket) . ' به سقف تلاش ارسال رسید — کد جدید ساخته نمی‌شود (تا پایان TTL وضعیت send_failed می‌ماند)');
                 return;
             }
 
@@ -479,7 +491,7 @@ final class TelegramBot
                 'UPDATE otp_requests SET consumed_at = :now
                  WHERE id = :id AND consumed_at IS NULL AND purpose = :p'
             )->execute([':now' => gmdate('Y-m-d H:i:s'), ':id' => $codeRowId, ':p' => Otp::PURPOSE_LOGIN]);
-            error_log('[karam][telegram] ارسال کد برای بلیت ' . $ticket . ' ناموفق بود — وضعیت poll: send_failed (کاربر می‌تواند لینک را دوباره باز کند یا با ایمیل وارد شود)');
+            error_log('[karam][telegram] ارسال کد برای بلیت ' . self::maskedTicketId($ticket) . ' ناموفق بود — وضعیت poll: send_failed (کاربر می‌تواند لینک را دوباره باز کند یا با ایمیل وارد شود)');
         }
     }
 }
