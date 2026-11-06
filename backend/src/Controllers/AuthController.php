@@ -20,6 +20,8 @@ declare(strict_types=1);
  *  DELETE /api/v1/me/sessions/{id}
  *  GET    /api/v1/me/referral            → وضعیت دعوت دوستان (v20)
  *  POST   /api/v1/me/referral {code}     → فعال‌سازی کد دعوت (v20)
+ *  POST   /api/v1/me/identities          → درخواست کد اتصال روش دوم (موج ۲ — IdentityController)
+ *  POST   /api/v1/me/identities/confirm  → تأیید کد و اتصال هویت (موج ۲ — IdentityController)
  *
  * POST /api/auth/session (ورود مستقیم بدون کد) از فاز ۲ باقی مانده و فقط وقتی
  * OPEN_SESSION=1 باشد کار می‌کند — پیش‌فرض فاز ۳: بسته (0).
@@ -348,6 +350,9 @@ final class AuthController
             'verifiedAt' => $r['verified_at'] !== null
                 ? gmdate('Y-m-d\TH:i:s\Z', strtotime((string) $r['verified_at']))
                 : null,
+            // موج ۲ — فیلد ماسک‌شده برای نمایش در کارت «روش‌های ورود»؛
+            // کلیدهای قبلی (type/value/verifiedAt) عیناً حفظ شده‌اند — فقط افزودنی
+            'masked' => self::maskTarget((string) $r['value']),
         ], (array) $stmt->fetchAll());
 
         unset($user['id']);
@@ -588,8 +593,8 @@ final class AuthController
         };
     }
 
-    /** ماسک هدف برای نمایش (سمت کلاینت کامل نشان داده نشود) */
-    private static function maskTarget(string $value): string
+    /** ماسک هدف برای نمایش (سمت کلاینت کامل نشان داده نشود) — موج ۲: عمومی شد تا IdentityController هم از همین یک الگو استفاده کند */
+    public static function maskTarget(string $value): string
     {
         if (str_contains($value, '@')) {
             $at = (int) strpos($value, '@');

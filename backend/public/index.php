@@ -51,6 +51,7 @@ require $srcDir . '/src/Services/GiftCode.php'; // v20 — کد هدیه
 require $srcDir . '/src/Services/AccountDeletion.php'; // v1.9 — حذف حساب و دریافت داده
 require $srcDir . '/src/Controllers/HealthController.php';
 require $srcDir . '/src/Controllers/AuthController.php';
+require $srcDir . '/src/Controllers/IdentityController.php'; // موج ۲ — اتصال روش دوم ورود
 require $srcDir . '/src/Controllers/RestEntityController.php';
 require $srcDir . '/src/Controllers/SyncController.php';
 require $srcDir . '/src/Controllers/PaymentController.php';
@@ -123,6 +124,11 @@ $router->post('/api/v1/me/referral', [$auth, 'referralRedeem']);
 $router->get('/api/v1/me/export', [$auth, 'exportData']);
 $router->post('/api/v1/me/delete-request', [$auth, 'deleteAccountRequest']);
 $router->post('/api/v1/me/delete', [$auth, 'deleteAccountConfirm']);
+
+// ---- موج ۲ — اتصال روش دوم ورود (ایمیل/تلگرام) به حساب جاری ----
+$identities = new IdentityController();
+$router->post('/api/v1/me/identities', [$identities, 'request']);
+$router->post('/api/v1/me/identities/confirm', [$identities, 'confirm']);
 
 // ---- CRUD موجودیت‌ها (Bearer) ----
 $lists = new RestEntityController(Entities::ENTITY_LISTS);
