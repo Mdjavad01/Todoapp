@@ -1,5 +1,5 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.05.20.06.41) */
-const CACHE_NAME = 'karam-cache-2026.11.05.20.06.41';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.06.01.40.29) */
+const CACHE_NAME = 'karam-cache-2026.11.06.01.40.29';
 const PRECACHE_URLS = [
   "./.htaccess",
   "./assets/base-CU1Bxrze.js",
@@ -23,7 +23,9 @@ const PRECACHE_URLS = [
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./index.html",
-  "./manifest.webmanifest"
+  "./manifest.webmanifest",
+  "./privacy/index.html",
+  "./terms/index.html"
 ];
 
 self.addEventListener('install', (event) => {

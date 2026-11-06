@@ -47,9 +47,41 @@ final class Request
         return is_string($v) && $v !== '' ? $v : $default;
     }
 
-    /** IP کاربر — برای محدودسازی و لاگ */
+    /**
+     * IP کاربر — برای محدودسازی و لاگ.
+     *
+     * پیش‌فرض: فقط REMOTE_ADDR (رفتار بومی PHP — امن در نصب مستقیم بدون پروکسی).
+     *
+     * پشت CDN/پروکسی (مثل Cloudflare) REMOTE_ADDR آی‌پی پروکسی است و سقف نرخ
+     * OTP بر پایه‌ی IP برای همه‌ی کاربران یکی می‌شود (یا با دستکاری هدر دور زده
+     * می‌شود). با کلید «TRUST_PROXY=1» (در .env هاست یا متغیر محیطی سیستم —
+     * خواندن با Config::get که .env را هم می‌بیند) این متد هدر پروکسی را می‌خواند؛
+     * هرگز پیش‌فرض نیست — چون در نصب بدون پروکسی، هدرها از سمت کلاینت قابل
+     * جعل‌اند و فعال‌کردن کورکورانه یعنی دورزدن کل سقف‌های نرخ.
+     */
     public static function ip(): string
     {
+        if (Config::get('TRUST_PROXY') === '1') {
+            // Cloudflare: آی‌پی واقعی مشتری
+            $cf = trim((string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
+            if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP) !== false) {
+                return $cf;
+            }
+            // زنجیره‌ی X-Forwarded-For: از راست به چپ می‌خوانیم — راست‌ترین IP
+            // همان است که نزدیک‌ترین پروکسیِ مطمئن اضافه کرده (راست‌ترین عضو
+            // جعل‌ناپذیرترین عضو از دید سرور است؛ چپ‌ترین عضو را کلاینت می‌تواند
+            // خودش تزریق کند). هر عضو نامعتبر نادیده گرفته می‌شود.
+            $xff = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+            if ($xff !== '') {
+                $parts = explode(',', $xff);
+                for ($i = count($parts) - 1; $i >= 0; $i--) {
+                    $cand = trim($parts[$i]);
+                    if ($cand !== '' && filter_var($cand, FILTER_VALIDATE_IP) !== false) {
+                        return $cand;
+                    }
+                }
+            }
+        }
         return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
     }
 
