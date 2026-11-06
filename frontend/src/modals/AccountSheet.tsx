@@ -13,11 +13,24 @@ import {
   listSessions,
   revokeSession,
   updateProfile,
+  fetchMyIdentities,
+  requestLinkCode,
+  confirmLinkIdentity,
   type ActiveSession,
   type AuthChannels,
+  type MeIdentity,
 } from '@/sync/auth';
 import { fetchReferral, redeemReferral, referralShareText, type ReferralInfo } from '@/sync/referral';
 import { referralShareLabel, referralShareAria } from '@/lib/bazaarTexts';
+// موج ۲ — کارت «روش‌های ورود»: متن‌ها از خزانه‌ی دو‌شاخه‌ای (bazaarTexts) + منطق خالص (loginMethods)
+import {
+  methodsCardTitle,
+  methodsConnectHint,
+  methodsConnectEmail,
+  methodsConnectTelegram,
+  methodsLaterLabel,
+} from '@/lib/bazaarTexts';
+import { METHODS_SNOOZE_KEY, methodRowsOf, snoozeIsActive, snoozeValueFor } from '@/lib/loginMethods';
 
 /**
  * شیت «حساب کاربری و سینک» — فاز ۳ (فاز ۵: بله ← تلگرام)
@@ -77,6 +90,22 @@ export function AccountSheet() {
   const [refError, setRefError] = useState<string | null>(null);
   const [refCopied, setRefCopied] = useState(false);
 
+  // موج ۲ — روش‌های ورود: کارت وضعیت + جریان اتصال روش دوم + snooze نشان
+  const [identities, setIdentities] = useState<MeIdentity[] | null>(null);
+  const [methodsSnooze, setMethodsSnooze] = useState<string | null>(null);
+  const [linkStep, setLinkStep] = useState<'idle' | 'email' | 'email-code' | 'telegram' | 'telegram-code'>('idle');
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkCode, setLinkCode] = useState('');
+  const [linkTicket, setLinkTicket] = useState('');
+  const [linkDeepLink, setLinkDeepLink] = useState('');
+  const [linkTtl, setLinkTtl] = useState(0);
+  const [linkTgFailed, setLinkTgFailed] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkResendIn, setLinkResendIn] = useState(0);
+  const [linkDevCode, setLinkDevCode] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   // باز شدن شیت: کانال‌ها + نشست‌ها را بگیر
   useEffect(() => {
     if (!open) return;
@@ -95,6 +124,19 @@ export function AccountSheet() {
       fetchReferral()
         .then((r) => setReferral(r.enabled ? r : { ...r, enabled: false }))
         .catch(() => setReferral(null));
+      // موج ۲ — identities حساب برای کارت «روش‌های ورود» + وضعیت snooze نشان
+      setIdentities(null);
+      setLinkStep('idle');
+      setLinkError(null);
+      setLinkEmail('');
+      setLinkCode('');
+      setLinkTicket('');
+      setLinkDeepLink('');
+      setLinkTtl(0);
+      setLinkTgFailed(false);
+      setLinkDevCode(null);
+      void fetchMyIdentities().then(setIdentities).catch(() => setIdentities(null));
+      void repo.prefsGet<string>(METHODS_SNOOZE_KEY, '').then((v) => setMethodsSnooze(v || null)).catch(() => setMethodsSnooze(null));
     }
   }, [open]);
 
@@ -111,6 +153,20 @@ export function AccountSheet() {
     const t = setTimeout(() => setTicketTtl((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [ticketTtl]);
+
+  // موج ۲ — شمارش معکوس ارسال مجدد کد اتصال ایمیل
+  useEffect(() => {
+    if (linkResendIn <= 0) return;
+    const t = setTimeout(() => setLinkResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [linkResendIn]);
+
+  // موج ۲ — شمارش معکوس مهلت بلیت اتصال تلگرام
+  useEffect(() => {
+    if (linkTtl <= 0) return;
+    const t = setTimeout(() => setLinkTtl((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [linkTtl]);
 
   // poll تلگرام — در هر دو حالت waiting و send_failed ادامه دارد؛ send_failed از این بعد
   // فقط پیام وضعیت است نه پایان مسیر: با زدن دوباره‌ی لینک (تا پایان TTL) کد می‌تواند برسد
@@ -141,6 +197,33 @@ export function AccountSheet() {
       clearInterval(iv);
     };
   }, [step, tgState, ticket]);
+
+  // موج ۲ — poll بلیت اتصال تلگرام (مثل poll ورود: code_sent → گام کد؛ send_failed → پیام روشن با بلیت زنده)
+  useEffect(() => {
+    if (linkStep !== 'telegram' || !linkTicket) return;
+    let alive = true;
+    const iv = setInterval(async () => {
+      try {
+        const res = await pollTelegramTicket(linkTicket);
+        if (!alive) return;
+        if (res.status === 'code_sent') {
+          setLinkStep('telegram-code');
+        } else if (res.status === 'send_failed') {
+          setLinkTgFailed(true);
+        } else if (res.status === 'expired') {
+          setLinkError('مهلت بلیت تمام شد؛ اتصال را دوباره شروع کنید');
+          setLinkTicket('');
+          setLinkStep('idle');
+        }
+      } catch {
+        /* خطای شبکه در poll بی‌اهمیت است — دور بعد تلاش می‌شود */
+      }
+    }, 3000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [linkStep, linkTicket]);
 
   const startEmail = () => {
     setError(null);
@@ -361,6 +444,132 @@ export function AccountSheet() {
     }
   };
 
+  /* ---------- موج ۲ — اتصال روش دوم ---------- */
+
+  const methodRows = methodRowsOf(identities);
+  const emailLinked = methodRows[0].linked;
+  const telegramLinked = methodRows[1].linked;
+  const bothMethods = emailLinked && telegramLinked;
+  // نشان غیرمزاحم = دکمه‌ی اتصال + توضیح یک‌خطی داخل همین کارت (بدون بنر تمام‌صفحه)؛
+  // دوروشی‌ها فقط سطرهای وضعیت می‌بینند؛ «بعداً» = pref محلی METHODS_SNOOZE_KEY تا ۳۰ روز
+  // (بعد از snooze فقط وضعیت‌ها می‌مانند — خود snooze هیچ داده‌ی ابری نمی‌سازد و فقط محلی است)
+  const methodsNudgeVisible =
+    identities !== null && !bothMethods && !snoozeIsActive(methodsSnooze) && linkStep === 'idle';
+  // روش ناقص حساب — اتصال تلگرام فقط وقتی پیشنهاد می‌شود که سرور تلگرام را فعال دارد؛ اتصال ایمیل همیشه ممکن است
+  const missingChannel: 'email' | 'telegram' | null = emailLinked ? (telegramLinked ? null : 'telegram') : 'email';
+  const missingAvailable = missingChannel === 'telegram' ? !!channels?.telegram : true;
+
+  const resetLinkFlow = () => {
+    setLinkStep('idle');
+    setLinkEmail('');
+    setLinkCode('');
+    setLinkTicket('');
+    setLinkDeepLink('');
+    setLinkTtl(0);
+    setLinkTgFailed(false);
+    setLinkError(null);
+    setLinkResendIn(0);
+    setLinkDevCode(null);
+  };
+
+  const refreshIdentities = () => {
+    void fetchMyIdentities().then(setIdentities).catch(() => setIdentities(null));
+  };
+
+  const openLinkEmail = () => {
+    setLinkError(null);
+    setLinkStep('email');
+  };
+
+  const startLinkTelegram = async () => {
+    setLinkError(null);
+    setLinkTgFailed(false);
+    setLinkStep('telegram');
+    setLinkBusy(true);
+    try {
+      const res = await requestLinkCode('telegram');
+      setLinkTicket(res.ticket ?? '');
+      setLinkDeepLink(res.deepLink ?? '');
+      // TTL بلیت اتصال همان ۱۰ دقیقه‌ی سرور است (expiresIn؛ پیش‌فرض ۶۰۰)
+      setLinkTtl(Math.max(0, Math.floor(res.expiresIn ?? 600)));
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'دریافت بلیت ناموفق بود');
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const sendLinkEmailCode = async () => {
+    setLinkError(null);
+    setLinkBusy(true);
+    try {
+      const res = await requestLinkCode('email', linkEmail.trim());
+      setLinkResendIn(res.resendAfter ?? 60);
+      setLinkDevCode(res.devCode ?? null);
+      setLinkStep('email-code');
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'ارسال کد ناموفق بود');
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const resendLinkEmailCode = async () => {
+    setLinkError(null);
+    setLinkBusy(true);
+    try {
+      const res = await requestLinkCode('email', linkEmail.trim());
+      setLinkResendIn(res.resendAfter ?? 60);
+      setLinkDevCode(res.devCode ?? null);
+      setLinkCode('');
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'ارسال مجدد ناموفق بود');
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const confirmLink = async () => {
+    if (linkCode.trim().length < 4 || linkBusy) return;
+    setLinkError(null);
+    setLinkBusy(true);
+    try {
+      const res =
+        linkStep === 'telegram-code'
+          ? await confirmLinkIdentity({ channel: 'telegram', ticket: linkTicket, code: linkCode.trim() })
+          : await confirmLinkIdentity({ channel: 'email', target: linkEmail.trim(), code: linkCode.trim() });
+      showToast(res.already ? 'این روش از قبل به حساب شما متصل بود' : 'روش دوم به حساب شما متصل شد ✓');
+      resetLinkFlow();
+      refreshIdentities();
+    } catch (e) {
+      // ۴۰۹ conflict_identity — پیام فارسی سرور (ارجاع به پشتیبانی) مستقیم نشان داده می‌شود
+      setLinkError(e instanceof Error ? e.message : 'اتصال ناموفق بود');
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  /** «بعداً» — نشان ۳۰ روز خواب می‌شود (pref محلی؛ بدون هیچ تماس سروری) */
+  const snoozeMethods = async () => {
+    try {
+      const v = snoozeValueFor();
+      await repo.prefsSet(METHODS_SNOOZE_KEY, v);
+      setMethodsSnooze(v);
+    } catch {
+      /* pref در دسترس نیست — نادیده */
+    }
+  };
+
+  const copyLinkTicket = async () => {
+    try {
+      await navigator.clipboard.writeText(linkTicket);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      /* کلیپ‌بورد در دسترس نیست */
+    }
+  };
+
   const syncLabel = (): string => {
     if (syncState.status === 'syncing') return 'در حال سینک…';
     if (syncState.status === 'error') return 'خطا در سینک';
@@ -429,6 +638,230 @@ export function AccountSheet() {
             </div>
             <span className="text-xs font-bold text-primary whitespace-nowrap">{syncLabel()}</span>
           </div>
+
+          {/* ---------- موج ۲ — کارت «روش‌های ورود» (فقط داخل شیت حساب؛ مهمان رندر نمی‌شود) ---------- */}
+          {identities !== null ? (
+            <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-4 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Icon name="manage_accounts" size={18} className="text-primary shrink-0" />
+                <p className="text-body-sm font-bold text-on-surface dark:text-slate-100 flex-1">{methodsCardTitle}</p>
+              </div>
+
+              {/* دو سطر وضعیت — فقط ماسک نمایش داده می‌شود، هرگز مقدار خام */}
+              {methodRows.map((row) => (
+                <div key={row.channel} className="flex items-center gap-2">
+                  <Icon
+                    name={row.channel === 'email' ? 'mail' : 'fingerprint'}
+                    size={17}
+                    className={row.linked ? 'text-primary' : 'text-outline'}
+                  />
+                  <span className="text-body-sm font-bold flex-1">{row.channel === 'email' ? 'ایمیل' : 'تلگرام'}</span>
+                  {row.linked ? (
+                    <span className="text-xs text-primary font-bold truncate max-w-[55%]" dir="ltr">
+                      متصل ✓{row.masked ? ` · ${row.masked}` : ''}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-on-surface-variant">متصل نیست</span>
+                  )}
+                </div>
+              ))}
+
+              {/* نشان غیرمزاحم — فقط برای تک‌روشی‌ها داخل همین کارت؛ دوروشی‌ها: فقط وضعیت، بدون دکمه */}
+              {methodsNudgeVisible && missingChannel && missingAvailable ? (
+                <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
+                  <p className="text-[11px] leading-5 text-on-surface-variant">{methodsConnectHint}</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 py-2.5 rounded-xl border-2 border-primary text-primary font-bold text-body-sm active:scale-95 transition-transform"
+                      onClick={() => (missingChannel === 'email' ? openLinkEmail() : void startLinkTelegram())}
+                    >
+                      {missingChannel === 'email' ? methodsConnectEmail : methodsConnectTelegram}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-2.5 text-xs text-on-surface-variant font-bold"
+                      onClick={() => void snoozeMethods()}
+                      aria-label="به بعد موکول کن"
+                    >
+                      {methodsLaterLabel}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* جریان اتصال ایمیل — گام ۱: گرفتن ایمیل و ارسال کد */}
+              {linkStep === 'email' ? (
+                <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
+                  <label className="text-[11px] font-bold text-on-surface-variant block" htmlFor="karam-link-email">
+                    ایمیل جدید برای اتصال به این حساب
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      id="karam-link-email"
+                      type="email"
+                      dir="ltr"
+                      inputMode="email"
+                      autoComplete="email"
+                      autoFocus
+                      placeholder="you@example.com"
+                      value={linkEmail}
+                      onChange={(e) => setLinkEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && linkEmail.includes('@') && !linkBusy) void sendLinkEmailCode();
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-surface-container dark:bg-slate-700/60 text-body-sm outline-none border border-outline-variant/40 focus:border-primary text-on-surface dark:text-slate-100 placeholder:text-outline"
+                    />
+                    <button
+                      type="button"
+                      className="shrink-0 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
+                      onClick={() => void sendLinkEmailCode()}
+                      disabled={linkBusy || !linkEmail.includes('@')}
+                    >
+                      {linkBusy ? '…' : 'دریافت کد'}
+                    </button>
+                  </div>
+                  {linkError ? <p className="text-[11px] text-red-600 dark:text-red-300">{linkError}</p> : null}
+                  <button type="button" className="text-[11px] text-primary font-bold" onClick={resetLinkFlow}>
+                    انصراف
+                  </button>
+                </div>
+              ) : null}
+
+              {/* جریان اتصال ایمیل — گام ۲: کد */}
+              {linkStep === 'email-code' ? (
+                <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
+                  <p className="text-[11px] text-on-surface-variant">کد اتصال به ایمیل وارد‌شده رفت؛ کد ۶ رقمی را وارد کنید</p>
+                  <input
+                    id="karam-link-code"
+                    type="text"
+                    dir="ltr"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    placeholder="······"
+                    value={linkCode}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/[^0-9۰-۹]/g, ''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && linkCode.trim().length >= 4 && !linkBusy) void confirmLink();
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-surface-container dark:bg-slate-700/60 text-body-md text-center tracking-[0.5em] outline-none border border-outline-variant/40 focus:border-primary text-on-surface dark:text-slate-100 placeholder:text-outline"
+                  />
+                  {linkDevCode ? (
+                    <p className="text-[10px] text-on-surface-variant bg-amber-50 dark:bg-amber-950/30 rounded-lg px-3 py-1.5" dir="ltr">
+                      dev: {linkDevCode}
+                    </p>
+                  ) : null}
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
+                      onClick={() => void confirmLink()}
+                      disabled={linkBusy || linkCode.trim().length < 4}
+                    >
+                      {linkBusy ? '…' : 'تأیید اتصال'}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-2.5 rounded-xl bg-surface-container text-on-surface font-bold text-xs disabled:opacity-40"
+                      onClick={() => void resendLinkEmailCode()}
+                      disabled={linkResendIn > 0 || linkBusy}
+                    >
+                      {linkResendIn > 0 ? `ارسال مجدد ${toFaDigits(linkResendIn)}ث` : 'ارسال مجدد'}
+                    </button>
+                  </div>
+                  {linkError ? <p className="text-[11px] text-red-600 dark:text-red-300">{linkError}</p> : null}
+                  <button type="button" className="text-[11px] text-primary font-bold" onClick={resetLinkFlow}>
+                    انصراف
+                  </button>
+                </div>
+              ) : null}
+
+              {/* جریان اتصال تلگرام — بلیت + انتظار اتصال چت (send_failed: پیام روشن + بلیت تا پایان TTL زنده) */}
+              {linkStep === 'telegram' && linkTicket ? (
+                <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
+                  <p className="text-[11px] text-on-surface-variant leading-5">
+                    این کد را برای ربات <span dir="ltr" className="font-bold">@{channels?.botUsername}</span> در تلگرام بفرستید؛ کد اتصال به همان چت می‌آید:
+                  </p>
+                  <div className="flex items-center justify-center py-2.5 rounded-xl bg-surface-container dark:bg-slate-700/60 border border-outline-variant/30">
+                    <span className="text-body-lg font-black tracking-[0.4em] text-primary" dir="ltr">{linkTicket}</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {linkDeepLink ? (
+                      <button
+                        type="button"
+                        className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-bold text-body-sm text-center active:scale-95 transition-transform"
+                        onClick={() => void openExternal(linkDeepLink)}
+                      >
+                        باز کردن تلگرام
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-bold text-body-sm active:scale-95 transition-transform"
+                      onClick={() => void copyLinkTicket()}
+                    >
+                      {linkCopied ? 'کپی شد ✓' : 'کپی کد'}
+                    </button>
+                  </div>
+                  {linkTtl > 0 ? (
+                    <p className="text-[11px] text-on-surface-variant text-center" dir="ltr">
+                      {toFaDigits(fmtTtl(linkTtl))}
+                    </p>
+                  ) : null}
+                  {linkTgFailed ? (
+                    <p className="text-[11px] leading-5 text-red-600 dark:text-red-300">
+                      ارسال کد به تلگرام ناموفق بود — بعد از Unblock کردن ربات، «باز کردن تلگرام» را دوباره بزنید یا با ایمیل متصل شوید.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      در انتظار پیام شما به ربات…
+                    </p>
+                  )}
+                  {linkError ? <p className="text-[11px] text-red-600 dark:text-red-300">{linkError}</p> : null}
+                  <button type="button" className="text-[11px] text-primary font-bold" onClick={resetLinkFlow}>
+                    انصراف
+                  </button>
+                </div>
+              ) : null}
+
+              {/* جریان اتصال تلگرام — گام کد */}
+              {linkStep === 'telegram-code' ? (
+                <div className="border-t border-outline-variant/20 pt-2.5 space-y-2">
+                  <p className="text-[11px] text-on-surface-variant">کد ارسال‌شده به چت تلگرام‌تان را وارد کنید</p>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    placeholder="······"
+                    value={linkCode}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/[^0-9۰-۹]/g, ''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && linkCode.trim().length >= 4 && !linkBusy) void confirmLink();
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-surface-container dark:bg-slate-700/60 text-body-md text-center tracking-[0.5em] outline-none border border-outline-variant/40 focus:border-primary text-on-surface dark:text-slate-100 placeholder:text-outline"
+                  />
+                  <button
+                    type="button"
+                    className="w-full py-2.5 rounded-xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform disabled:opacity-50"
+                    onClick={() => void confirmLink()}
+                    disabled={linkBusy || linkCode.trim().length < 4}
+                  >
+                    {linkBusy ? '…' : 'تأیید اتصال'}
+                  </button>
+                  {linkError ? <p className="text-[11px] text-red-600 dark:text-red-300">{linkError}</p> : null}
+                  <button type="button" className="text-[11px] text-primary font-bold" onClick={resetLinkFlow}>
+                    انصراف
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {syncState.status === 'error' && syncState.error ? (
             <p className="text-body-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-950/40 rounded-xl p-3">

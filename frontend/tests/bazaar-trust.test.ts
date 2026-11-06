@@ -53,6 +53,12 @@ const TEXT_KEYS = [
   'rulesSubscription',
   'rulesPayment',
   'supportIntro',
+  // موج ۲ — کارت «روش‌های ورود» (AccountSheet)
+  'methodsCardTitle',
+  'methodsConnectHint',
+  'methodsConnectEmail',
+  'methodsConnectTelegram',
+  'methodsLaterLabel',
 ] as const;
 
 /** همه‌ی فایل‌های ts/tsx سورس به‌صورت بازگشتی */
@@ -140,6 +146,12 @@ describe('خزانه‌ی متن‌های بازار (bazaarTexts — قرارد
     expect(L.supportIntro).toBe(
       'مشکل در پرداخت، حذف حساب یا هر سؤال دیگر؟ از همین راه‌ها پیام بدهید؛ سریع جواب می‌گیرید.',
     );
+    // موج ۲ — کارت «روش‌های ورود» (بدون معنای پرداختی؛ پین رفتار)
+    expect(L.methodsCardTitle).toBe('روش‌های ورود');
+    expect(L.methodsConnectHint).toBe('با اتصال هر دو، اگر یکی کد نفرستاد، از دیگری وارد می‌شوی.');
+    expect(L.methodsConnectEmail).toBe('اتصال ایمیل');
+    expect(L.methodsConnectTelegram).toBe('اتصال تلگرام');
+    expect(L.methodsLaterLabel).toBe('بعداً');
   });
 
   test('متن‌های شاخه‌ی بازار صادقانه به کد هدیه اشاره می‌کنند', () => {

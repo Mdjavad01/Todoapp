@@ -234,3 +234,66 @@ export async function confirmAccountDeletion(code: string, confirmText: string, 
     body: { code, confirmText, ...(channel ? { channel } : {}) },
   });
 }
+
+/* ---------------- موج ۲ — اتصال روش دوم ورود ---------------- */
+
+/** یک ردیف هویت از GET /api/v1/me — کلیدهای قدیمی (type/value/verifiedAt) عیناً حفظ شده‌اند؛ masked افزودنی موج ۲ است */
+export interface MeIdentity {
+  type: string;
+  value: string;
+  verifiedAt: string | null;
+  /** ماسک نمایشی از سرور (موج ۲) — سرورهای قدیمی این کلید را ندارند */
+  masked?: string;
+}
+
+/** خواندن identities حساب جاری برای کارت «روش‌های ورود» (موج ۲) */
+export async function fetchMyIdentities(): Promise<MeIdentity[]> {
+  const res = await authedFetch<{ identities: MeIdentity[] }>('/v1/me');
+  return Array.isArray(res.identities) ? res.identities : [];
+}
+
+export interface LinkRequestResult {
+  channel: 'email' | 'telegram';
+  target?: string;
+  ticket?: string;
+  botUsername?: string;
+  deepLink?: string;
+  expiresIn: number;
+  resendAfter: number;
+  devCode?: string; // فقط در حالت توسعه‌ی سرور
+}
+
+/**
+ * درخواست کد اتصال روش دوم — POST /v1/me/identities.
+ * قرارداد عدم افشا: پاسخ برای هر ایمیل/چت یک شکل دارد؛ وجود حساب اینجا هرگز اعلام نمی‌شود؛
+ * تعارض ۴۰۹ فقط بعد از تأیید کد در confirm می‌آید.
+ */
+export async function requestLinkCode(channel: 'email' | 'telegram', target?: string): Promise<LinkRequestResult> {
+  const body: Record<string, unknown> = { channel };
+  if (target) body.target = target;
+  return authedFetch<LinkRequestResult>('/v1/me/identities', { method: 'POST', body });
+}
+
+export interface LinkConfirmResult {
+  linked: boolean;
+  /** true = این روش از قبل به همین حساب متصل بود (idempotent) */
+  already?: boolean;
+  identity?: { type: string; masked?: string };
+}
+
+/**
+ * تأیید کد اتصال — POST /v1/me/identities/confirm.
+ * هویت متعلق به حساب دیگر = ۴۰۹ conflict_identity (فقط بعد از تأیید صحیح کد) —
+ * پیام فارسیِ سرور (ارجاع به پشتیبانی) مستقیم به کاربر نشان داده می‌شود.
+ */
+export async function confirmLinkIdentity(params: {
+  channel: 'email' | 'telegram';
+  target?: string;
+  ticket?: string;
+  code: string;
+}): Promise<LinkConfirmResult> {
+  return authedFetch<LinkConfirmResult>('/v1/me/identities/confirm', {
+    method: 'POST',
+    body: params,
+  });
+}
