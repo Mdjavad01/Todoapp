@@ -31,6 +31,8 @@ import { Icon } from '@/components/Icon';
 import { onAppResume, onAppPause, isNativeApp } from '@/lib/native';
 import { syncReminders } from '@/lib/reminderScheduler';
 import { openExactAlarmSettings } from '@/lib/reminderBridge';
+import { UpdateBanner } from '@/components/UpdateBanner';
+import { initInstallPrompt } from '@/lib/pwa';
 
 /** پوسته‌ی اپ — قاب موبایل مطابق طرح (فول‌اسکرین در موبایل، قاب ۴۱۰px در دسکتاپ) */
 export default function App() {
@@ -45,6 +47,9 @@ export default function App() {
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', dark ? '#283044' : '#00685f');
   }, [dark]);
+
+  // نصب وب‌اپ (PWA) — رویداد beforeinstallprompt یک‌بار در سطح اپ گرفته می‌شود (v1.11.3)
+  useEffect(() => initInstallPrompt(), []);
 
   // اسکرول به بالای محتوا در تغییر صفحه (مطابق رفتار طرح)
   useEffect(() => {
@@ -95,6 +100,7 @@ export default function App() {
         <StatusBar />
         <TopBar />
         <ReminderWarningBanner />
+        <UpdateBanner />
 
         <main className="flex-1 overflow-y-auto no-scrollbar relative pb-36" id="appContent" ref={mainRef}>
           {!ready ? (

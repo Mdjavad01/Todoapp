@@ -1,21 +1,21 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.06.01.40.29) */
-const CACHE_NAME = 'karam-cache-2026.11.06.01.40.29';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.06.03.32.18) */
+const CACHE_NAME = 'karam-cache-2026.11.06.03.32.18';
 const PRECACHE_URLS = [
   "./.htaccess",
-  "./assets/base-CU1Bxrze.js",
-  "./assets/index-BRs-Yd9O.js",
-  "./assets/index-C-Sz0H_L.js",
-  "./assets/index-C9gXmItT.js",
-  "./assets/index-CywGiUaO.js",
-  "./assets/index-D5j0I7jy.js",
+  "./assets/base-BM_zkYZJ.js",
+  "./assets/index-Bolg4_I5.js",
+  "./assets/index-BuqW7kPP.js",
+  "./assets/index-C0Ya5UqF.js",
+  "./assets/index-D17-Aafk.js",
+  "./assets/index-DYlODxdT.js",
   "./assets/index-DpqdSxeH.css",
-  "./assets/native-DD9PCWfQ.js",
-  "./assets/web-BAI4BtaM.js",
-  "./assets/web-BBomMCIu.js",
-  "./assets/web-BzJpf4cD.js",
-  "./assets/web-D-yz9Xwv.js",
-  "./assets/web-DbEI04L-.js",
-  "./assets/web-IkKNjJq-.js",
+  "./assets/native-DdyPHlM4.js",
+  "./assets/web-1W4vcZsj.js",
+  "./assets/web-BCLCd5Q-.js",
+  "./assets/web-BVtNCTBw.js",
+  "./assets/web-BYDudcEL.js",
+  "./assets/web-DOyzubmA.js",
+  "./assets/web-DkY7-IDE.js",
   "./fonts/Vazirmatn-Variable.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.svg",
@@ -29,8 +29,10 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // skipWaiting خودکار نیست: نسخه‌ی نو در صف waiting می‌ماند تا بنر «بروزرسانی» در اپ
+  // نشان داده شود و کاربر با کلیک، ریلود کند (src/pwa/register.ts — پیام SKIP_WAITING)
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
 });
 

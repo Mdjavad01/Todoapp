@@ -22,6 +22,13 @@ import { sendTestReminder } from '@/lib/reminderScheduler';
 import { queueSync } from '@/sync/engine';
 import { syncReminders } from '@/lib/reminderScheduler';
 import { openExactAlarmSettings } from '@/lib/reminderBridge';
+import {
+  detectPwaEnv,
+  hasInstallPrompt,
+  installVariant,
+  promptInstall,
+  subscribeInstall,
+} from '@/lib/pwa';
 
 const APP_VERSION = '۴.۴.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
@@ -82,6 +89,11 @@ export function SettingsView() {
   // چک‌کننده به‌روزرسانی (v17) — «آخرین نسخه» از پنل ادمین ثبت می‌شود
   const update = appSettings.update;
   const hasUpdate = isNewerVersion(update?.latest, APP_VERSION_RAW);
+
+  // نصب وب‌اپ (PWA) — «نصب سریع کارام» (v1.11.3): رویداد beforeinstallprompt در App گرفته می‌شود
+  const [bipReady, setBipReady] = useState(hasInstallPrompt());
+  useEffect(() => subscribeInstall(() => setBipReady(hasInstallPrompt())), []);
+  const install = installVariant(detectPwaEnv(bipReady));
 
   // پشتیبان‌گیری و بازیابی (P1.3 — دو بلوک شماره‌دار + تأیید و نتیجه)
   const fileRef = useRef<HTMLInputElement>(null);
@@ -299,6 +311,52 @@ export function SettingsView() {
               برای به‌روزرسانی، پک جدید را از داشبورد فرماندهی بگیرید و طبق نصب.txt در هاست استخراج کنید.
             </p>
           )}
+        </div>
+      ) : null}
+
+      {/* نصب سریع کارام (PWA) — فقط وب؛ در اپ اندروید نشان داده نمی‌شود (v1.11.3) */}
+      {install !== 'native' && install !== 'none' ? (
+        <div
+          className="rounded-2xl border border-outline-variant/30 bg-surface-container-lowest dark:bg-slate-800 p-4"
+          id="settings-install"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+              <Icon name="smartphone" size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              {install === 'installed' ? (
+                <>
+                  <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">کارام به‌صورت اپ نصب است ✅</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">از صفحه‌ی اصلی دستگاه — کامل و آفلاین، مثل اپ</p>
+                </>
+              ) : install === 'button' ? (
+                <>
+                  <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">نصب سریع کارام</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">بدون فروشگاه — روی صفحه‌ی اصلی گوشی یا دسکتاپ</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-black text-body-md text-on-surface dark:text-inverse-on-surface">نصب روی آیفون/آیپد</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">در سفاری: دکمه‌ی هم‌رسانی ← «Add to Home Screen»</p>
+                </>
+              )}
+            </div>
+            {install === 'button' ? (
+              <button
+                className="shrink-0 rounded-xl bg-primary px-4 py-2 text-body-sm font-black text-on-primary active:scale-95 transition-transform"
+                onClick={() => {
+                  void promptInstall().then((r) => {
+                    if (r === 'accepted') showToast('نصب شد ✅ — کارام روی صفحه‌ی اصلی دستگاه شماست');
+                    else if (r === 'dismissed') showToast('نصب لغو شد — هر وقت خواستید از همین‌جا نصب کنید');
+                  });
+                }}
+                aria-label="نصب سریع کارام روی دستگاه"
+              >
+                نصب
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
