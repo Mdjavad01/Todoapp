@@ -483,7 +483,7 @@ INSERT INTO `settings` (`key`, `value`) VALUES
   ('app_update_notes', ''),
   ('support_email', ''),
   ('support_telegram', ''),
-  ('trial_enabled', '0'),
+  ('trial_enabled', '1'),
   ('trial_days', '7'),
   ('backup_telegram_chat', ''),
   ('referral_enabled', '0'),
