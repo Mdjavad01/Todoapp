@@ -32,6 +32,13 @@ declare(strict_types=1);
 
 const KARAM_RETENTION_CHECK_KEY = 'karam-retention-check';
 
+/** v1.12.0 (ممیزی m-06/m-09) — کلید صفحه‌ی وضعیت وب از .env: RETENTION_CHECK_KEY (خالی/ناموجود = پیش‌فرض سازگار با عقب) */
+function karam_retention_check_key(): string
+{
+    $fromEnv = trim((string) (Config::get('RETENTION_CHECK_KEY', '') ?? ''));
+    return $fromEnv !== '' ? $fromEnv : KARAM_RETENTION_CHECK_KEY;
+}
+
 date_default_timezone_set('UTC');
 
 /* ---------- بارگذاری هسته‌ی کارام (هر دو چیدمان: مخزن و هاست) ---------- */
@@ -82,7 +89,7 @@ $dry = $isCli
 $checkKey = $isCli ? null : (string) ($_GET['check'] ?? '');
 
 // وب: بدون کلید check هیچ (کشف خودکار مسیرها نباید پاک‌سازی اجرا کند)
-if (!$isCli && !hash_equals(KARAM_RETENTION_CHECK_KEY, $checkKey)) {
+if (!$isCli && !hash_equals(karam_retention_check_key(), $checkKey)) {
     http_response_code(404);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['ok' => false, 'error' => 'یافت نشد'], JSON_UNESCAPED_UNICODE);

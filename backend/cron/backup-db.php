@@ -701,7 +701,8 @@ function h(string $v): string
     <li>زمان: هر روز <b>03:30</b> (دقیقه=<code dir="ltr">30</code>، ساعت=<code dir="ltr">3</code>)</li>
     <li>دستور (کپی کنید — مسیر php را اگر فرق داشت از راهنمای کرون تلگرام بگیرید):</li>
   </ol>
-  <div class="pre"><?= h('/usr/local/bin/php ' . str_replace(dirname(__DIR__, 2), '', __FILE__)) ?></div>
+  <div class="pre"><?= h('/usr/local/bin/php <مسیر-هاست>' . str_replace(dirname(__DIR__, 2), '', __FILE__)) ?></div>
+  <p class="muted">⚠️ v1.12.0 (ممیزی m-09): مسیر مطلق واقعی سرور دیگر در همین صفحه نمایش داده نمی‌شود — به‌جای <code>&lt;مسیر-هاست&gt;</code> مسیر کامل پوشه‌ی والد public_html را طبق راهنمای نصب (بخش کرون) بگذارید؛ دستور دقیق آماده در «نصب.txt».</p>
   <p class="muted">⚠️ در هر نسخه‌ی بکاپ، مقدار ۵ کلید راز جدول settings خالی می‌شود (smtp_pass، telegram_bot_token، zibal_merchant، provider_sms_url، provider_sms_headers) — بعد از بازیابی، همین کلیدها را در «پنل ← تنظیمات» دوباره وارد کنید. نسخه‌ی تلگرامی مشمول پاک‌سازی خودکار نسخه‌های محلی (BACKUP_KEEP) نیست؛ خودتان از گفتگوی ربات پاکش کنید.</p>
   <p class="muted">⚠️ اگر فایل را هنوز آپلود نکرده‌اید: فایل <code>backup-db.php</code> داخل پوشه‌ی <code>api/cron/</code> در پک v19 است.</p>
   <p class="muted">برای گزارش روزانه در تلگرام: پنل ← تنظیمات ← «بکاپ و پشتیبان» ← شناسه چت ادمین (عددی) را بنویسید؛ ربات همان فایل بکاپ را می‌فرستد (تا ۴۵MB، بزرگ‌تر = فقط گزارش).</p>

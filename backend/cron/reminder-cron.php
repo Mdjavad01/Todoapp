@@ -30,6 +30,13 @@ const KARAM_REMINDER_CHECK_KEY = 'karam-reminder-check';
 const KARAM_REMINDER_BATCH = 300;     // سقف گیرنده در هر اجرا
 const KARAM_SEND_GAP_MICRO = 200000;  // ۰٫۲ ثانیه بین پیام‌ها
 
+/** v1.12.0 (ممیزی m-06/m-09) — کلید صفحه‌ی وضعیت وب از .env: REMINDER_CHECK_KEY (خالی/ناموجود = پیش‌فرض سازگار با عقب) */
+function karam_reminder_check_key(): string
+{
+    $fromEnv = trim((string) (Config::get('REMINDER_CHECK_KEY', '') ?? ''));
+    return $fromEnv !== '' ? $fromEnv : KARAM_REMINDER_CHECK_KEY;
+}
+
 date_default_timezone_set('UTC');
 
 /* ---------- بارگذاری هسته‌ی کارام (هر دو چیدمان: مخزن و هاست) ---------- */
@@ -98,13 +105,14 @@ function karam_reminder_fail(string $message, bool $cli): void
 }
 
 /* ================= صفحه‌ی وضعیت وب ================= */
-if (!$isCli && (string) ($_GET['check'] ?? '') === KARAM_REMINDER_CHECK_KEY) {
+if (!$isCli && hash_equals(karam_reminder_check_key(), (string) ($_GET['check'] ?? ''))) {
     header('Content-Type: text/html; charset=utf-8');
     $state = karam_reminder_readState();
     $enabled = Settings::bool('reminder_enabled');
     $lookback = Settings::int('reminder_lookback_days', 30, 1, 365);
     $host = $_SERVER['HTTP_HOST'] ?? 'دامنه';
-    $cronCmd = 'php ' . __FILE__ . ' > /dev/null 2>&1';
+    // v1.12.0 (ممیزی m-09) — __FILE__ (مسیر مطلق سرور) از صفحه‌ی وب حذف شد؛ مسیر نسبی طبق راهنمای نصب
+    $cronCmd = 'php /مسیر-هاست/api/cron/reminder-cron.php > /dev/null 2>&1';
     $lastAt = (string) ($state['at'] ?? '');
     $statusOk = (bool) ($state['ok'] ?? false);
     $err = (string) ($state['error'] ?? '');

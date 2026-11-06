@@ -29,7 +29,7 @@ fi
 [ -f "$ROOT/backend/public/index.php" ] || { echo "✗ backend نیست." >&2; exit 1; }
 
 rm -rf "$STAGE"
-mkdir -p "$STAGE/api/storage/cache" "$STAGE/api/storage/logs" "$STAGE/panel" "$STAGE/deploy"
+mkdir -p "$STAGE/api/storage/cache" "$STAGE/api/storage/logs" "$STAGE/panel" "$STAGE/deploy-sql"
 
 # ۱) ریشه‌ی وب‌اپ (بیلد تازه + htaccess واحد روت — v1.12.0: از deploy/.htaccess؛
 #    ترکیب امنیت + CSP + HSTS + کش immutable؛ فایل اپِ سابق frontend/public/.htaccess حذف شد)
@@ -48,8 +48,11 @@ cp "$ROOT/backend/storage/.htaccess" "$STAGE/api/storage/.htaccess"
 cp "$ROOT/backend/storage/.htaccess" "$STAGE/api/storage/cache/.htaccess"
 touch "$STAGE/api/storage/logs/.gitkeep"
 
-# ۴) همه‌ی SQLها — نسخه‌ای (v0.5…v1.10) + تجمعی + install
-cp "$ROOT"/deploy/*.sql "$STAGE/deploy/"
+# ۴) همه‌ی SQLها — نسخه‌ای (v0.5…v1.10) + تجمعی + install — v1.12.0: نام پوشه deploy-sql (نه deploy)
+#    تا کسی آن را با «deploy واقعی مخزن» اشتباه نگیرد؛ با htaccess سد کامل داخل خودش —
+#    حتی اگر اشتباهاً روی هاست آپلود شود، وب قابل دسترسی نیست (نصب.txt: «روی هاست آپلود نشود»)
+cp "$ROOT"/deploy/*.sql "$STAGE/deploy-sql/"
+printf '# v1.12.0 — این پوشه فقط مرجع/phpMyAdmin است؛ روی هاست آپلود نشود.\nRequire all denied\n' > "$STAGE/deploy-sql/.htaccess"
 
 # ۵) راهنماها (نام داخل بسته ثابت است: README-نصب.md و نصب.txt)
 cp "$README_SRC" "$STAGE/README-نصب.md"
@@ -76,4 +79,4 @@ if find "$VERIFY" -type f \( -name '*╪*' -o -name '*┘*' -o -name '*╪╪*' 
   exit 1
 fi
 echo "✅ بدون نام mojibake — پک استقرار کامل آماده است."
-echo "— فایل‌های SQL داخل deploy/: $(ls "$STAGE/deploy" | wc -l)"
+echo "— فایل‌های SQL داخل deploy-sql/ (فقط مرجع — روی هاست آپلود نشود): $(ls "$STAGE/deploy-sql" | grep -c '\.sql$')"

@@ -43,3 +43,6 @@ tests/telegram-mock-state.json
 backend/storage/cache/retention-state.json
 backend/storage/backups/
 backend/storage/cron/
+
+# v1.12.0 (ممیزی m-09) — وضعیت موقتی mock زیبال در اجرای تست‌ها ساخته می‌شود؛ مالک هر محیط
+tests/zibal-mock-state.json

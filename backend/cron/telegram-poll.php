@@ -43,6 +43,13 @@ declare(strict_types=1);
 
 const KARAM_CHECK_KEY = 'karam-bot-check';
 
+/** v1.12.0 (ممیزی m-06/m-09) — کلید صفحه‌ی وضعیت وب از .env: TELEGRAM_POLL_CHECK_KEY (خالی/ناموجود = پیش‌فرض سازگار با عقب) */
+function karam_telegram_check_key(): string
+{
+    $fromEnv = trim((string) (Config::get('TELEGRAM_POLL_CHECK_KEY', '') ?? ''));
+    return $fromEnv !== '' ? $fromEnv : KARAM_CHECK_KEY;
+}
+
 /* ---------- بارگذاری هسته‌ی کارام (هر دو چیدمان: مخزن و هاست) ---------- */
 
 $srcDir = dirname(__DIR__) . '/src';
@@ -58,7 +65,7 @@ $isCli = PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
 
 if (!$isCli) {
     // دسترسی وب: فقط صفحه‌ی وضعیت با کلید — بقیه‌ی درخواست‌ها بی‌صدا ۴۰۴
-    if (($_GET['check'] ?? '') !== KARAM_CHECK_KEY) {
+    if (!hash_equals(karam_telegram_check_key(), (string) ($_GET['check'] ?? ''))) {
         http_response_code(404);
         exit;
     }
