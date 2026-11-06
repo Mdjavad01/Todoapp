@@ -31,9 +31,10 @@ fi
 rm -rf "$STAGE"
 mkdir -p "$STAGE/api/storage/cache" "$STAGE/api/storage/logs" "$STAGE/panel" "$STAGE/deploy"
 
-# ۱) ریشه‌ی وب‌اپ (بیلد تازه + htaccess مخفی)
+# ۱) ریشه‌ی وب‌اپ (بیلد تازه + htaccess واحد روت — v1.12.0: از deploy/.htaccess؛
+#    ترکیب امنیت + CSP + HSTS + کش immutable؛ فایل اپِ سابق frontend/public/.htaccess حذف شد)
 cp -r "$ROOT/frontend/dist/." "$STAGE/"
-cp "$ROOT/frontend/public/.htaccess" "$STAGE/.htaccess"
+cp "$ROOT/deploy/.htaccess" "$STAGE/.htaccess"
 
 # ۲) پنل ادمین
 cp -r "$ROOT/frontend/admin/dist/." "$STAGE/panel/"

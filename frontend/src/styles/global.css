@@ -305,3 +305,11 @@ html.font-large .text-\[11px\] {
   background: #bcc9c6;
   border-radius: 9999px;
 }
+
+/* ---------- v1.12.0 — پیام noscript (جای صفت style inline — سازگار با CSP) ---------- */
+.noscript-tip {
+  font-family: sans-serif;
+  text-align: center;
+  padding: 2rem;
+  direction: rtl;
+}

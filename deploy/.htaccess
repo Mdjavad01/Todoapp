@@ -1,6 +1,8 @@
 # ============================================================
-#  کارام — .htaccess اصلی روت دامین (public_html)
+#  کارام — .htaccess اصلی روت دامین (public_html) — v1.12.0
 #  SPA fallback + محافظت فایل‌های حساس + هدرهای امنیتی + CSP سخت‌گیرانه
+#  + کش یک‌ساله‌ی immutable + فشرده‌سازی (ادغام‌شده با htaccess اپِ سابق —
+#  از این نسخه فقط همین یک فایل در ریشه است؛ frontend/public/.htaccess حذف شد)
 # ============================================================
 
 Options -Indexes
@@ -40,7 +42,28 @@ ServerSignature Off
     Require all denied
 </FilesMatch>
 
-# ---------------- هدرهای امنیتی ----------------
+# ---------------- فشرده‌سازی — حجم انتقال JS/CSS/فونت/JSON تا ~۸۰٪ کم می‌شود ----------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml
+    AddOutputFilterByType DEFLATE application/javascript application/json application/manifest+json
+    AddOutputFilterByType DEFLATE image/svg+xml font/woff font/woff2
+</IfModule>
+
+# ---------------- کش مرورگر (Expires) ----------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    # اسکریپت/استایل hash‌دار + فونت‌ها و آیکن‌ها: یک سال، بی‌بازپرسی
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    # صفحه‌ی ورود و مانیفست و سرویس‌ورکر: همیشه تازه تا به‌روزرسانی‌ها فوراً دیده شود
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType application/manifest+json "access plus 0 seconds"
+</IfModule>
+
+# ---------------- هدرهای امنیتی + کش ----------------
 <IfModule mod_headers.c>
     # CSP سخت‌گیرانه: فقط خود دامین (قانون اینترنت ملی)
     # استثنای وویس‌به‌متن بعداً با دامنه‌ی مشخص سرویس اضافه می‌شود
@@ -51,11 +74,20 @@ ServerSignature Off
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
 
-    # HSTS — فقط وقتی HTTPS کامل شد فعال بماند
-    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    # HSTS — rollout تدریجی (v1.12.0): max-age=300 یعنی مرورگر حداکثر ۵ دقیقه
+    # https را به‌خاطر می‌سپارد؛ اگر مشکلی پیش بیاید حداکثر ۵ دقیقه بعد خودش رفع
+    # می‌شود. بدون includeSubDomains و بدون preload.
+    # ⚠️ بعد از تأیید کامل (اپ وب + پنل + api + صفحات /privacy و /terms چند روز سالم):
+    #    همین خط را به "max-age=31536000; includeSubDomains" افزایش دهید (در نصب.txt بخش د)
+    Header always set Strict-Transport-Security "max-age=300"
 
-    # کش فایل‌های hash‌شده‌ی بیلد
-    <FilesMatch "\.(js|css|woff2|png|svg|jpg|webp)$">
+    # immutable = مرورگر حتی If-None-Match هم نمی‌پرسد — صفر درخواست برای assets
+    # فایل‌های assets نام hash شده دارند (نام فایل = محتوا) → کش یک‌ساله؛
+    # بار دوم باز کردن اپ، هیچ فایلی دوباره دانلود نمی‌شود — حتی با ۲۰۰۰ کاربر همزمان
+    <FilesMatch "\-[^/]*\.(js|css)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(woff2|png|svg|jpg|webp)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
     </FilesMatch>
 
@@ -64,7 +96,7 @@ ServerSignature Off
         Header set Cache-Control "no-cache, must-revalidate"
     </FilesMatch>
 
-    # sw.js همیشه تازه (تشخیص نسخه‌ی جدید Service Worker)
+    # sw.js همیشه تازه (تشخیص نسخه‌ی جدید Service Worker) — وگرنه به‌روزرسانی PWA گیر می‌کند
     <FilesMatch "^sw\.js$">
         Header set Cache-Control "no-cache, must-revalidate"
     </FilesMatch>

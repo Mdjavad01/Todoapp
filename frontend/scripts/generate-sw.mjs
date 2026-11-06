@@ -24,7 +24,11 @@ function walk(dir, base = dir) {
   return out;
 }
 
-const files = walk(distDir).filter((f) => !f.endsWith('sw.js') && !f.endsWith('.DS_Store'));
+const files = walk(distDir)
+  // v1.12.0 — فایل‌های نقطه‌دار (مثل .htaccess) هرگز precache نمی‌شوند: آپاچی آن‌ها را
+  // سرو نمی‌کند (FilesMatch "^\.") و fetch ناموفق → cache.addAll رد می‌شود و کل
+  // نصب سرویس‌ورکر می‌شکند. dotfile‌ها برای آفلاین لازم نیستند.
+  .filter((f) => !f.endsWith('sw.js') && !f.endsWith('.DS_Store') && !/\/\.[^/]*$/.test(f));
 const version = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '.');
 
 const sw = `/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه ${version}) */

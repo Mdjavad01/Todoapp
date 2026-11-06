@@ -9,9 +9,9 @@ OUT="/home/z/my-project/public/karam-fix-$VER.zip"
 
 rm -rf "$STAGE" && mkdir -p "$STAGE/api/storage/cache" "$STAGE/api/storage/logs" "$STAGE/deploy"
 
-# ۱) ریشه اپ (dist) + htaccess اپ
+# ۱) ریشه اپ (dist) + htaccess واحد روت — v1.12.0: از deploy/.htaccess (ترکیب امنیت + کش)
 cp -r "$ROOT/frontend/dist/." "$STAGE/"
-cp "$ROOT/frontend/public/.htaccess" "$STAGE/.htaccess"
+cp "$ROOT/deploy/.htaccess" "$STAGE/.htaccess"
 
 # ۲) پنل ادمین
 mkdir -p "$STAGE/panel"

@@ -21,7 +21,8 @@
     <!-- پس‌زمینه‌ی صفحه در global.css تعریف شده (هم‌رنگ اپ در هر دو تم) — نه مشکی ثابت -->
     <div id="root"></div>
     <noscript>
-      <div style="font-family: sans-serif; text-align: center; padding: 2rem; direction: rtl">
+      <!-- v1.12.0 — استایل inline حذف شد (سازگار با CSP style-src 'self') — کلاس در global.css -->
+      <div class="noscript-tip">
         برای استفاده از کارام باید جاوااسکریپت مرورگر فعال باشد.
       </div>
     </noscript>
