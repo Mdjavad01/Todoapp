@@ -22,6 +22,8 @@ export function DeleteAccountSheet() {
   const premium = useAppStore((s) => s.premium);
   const showToast = useAppStore((s) => s.showToast);
   const signOut = useAppStore((s) => s.signOut);
+  // موج ۱ (چندروش ورود) — کد حذف حساب به کانال نشست فعلی می‌رود (نه همیشه اولین هویت)
+  const session = useAppStore((s) => s.session);
 
   const [step, setStep] = useState<Step>('intro');
   const [req, setReq] = useState<DeleteRequestResult | null>(null);
@@ -60,11 +62,18 @@ export function DeleteAccountSheet() {
     setBusy(true);
     setError(null);
     try {
-      const r = await requestAccountDeletion();
+      const r = await requestAccountDeletion(session?.channel);
       setReq(r);
       setResendIn(Math.max(0, Math.floor((r.resendAfter ?? 60) / 1)));
       setStep('code');
-      showToast('کد تأیید به راه ارتباطی حساب شما ارسال شد');
+      // موج ۱ — پیام «ارسال شد» دقیقاً به کانال واقعیِ استفاده‌شده (پاسخ سرور) اشاره می‌کند
+      showToast(
+        r.channel === 'telegram_chat_id'
+          ? 'کد تأیید به چت تلگرام شما ارسال شد'
+          : r.channel === 'mobile'
+            ? 'کد تأیید پیامکی ارسال شد'
+            : 'کد تأیید به ایمیل حساب شما ارسال شد',
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'درخواست کد ناموفق بود');
     } finally {
@@ -81,7 +90,7 @@ export function DeleteAccountSheet() {
     setBusy(true);
     setError(null);
     try {
-      await confirmAccountDeletion(code.trim(), confirmText);
+      await confirmAccountDeletion(code.trim(), confirmText, session?.channel);
       setStep('final');
       // پاک‌سازی کامل محلی + خروج (wipeUserData داخل logout است)
       setTimeout(() => {

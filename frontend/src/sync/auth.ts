@@ -213,15 +213,18 @@ export interface DeleteRequestResult {
   devCode?: string;
 }
 
-/** گام ۱ حذف حساب: درخواست کد تأیید (ایمیل/موبایل/تلگرامِ هویت اصلی) */
-export async function requestAccountDeletion(): Promise<DeleteRequestResult> {
-  return authedFetch<DeleteRequestResult>('/v1/me/delete-request', { method: 'POST' });
+/** گام ۱ حذف حساب: درخواست کد تأیید — موج ۱: کانال نشست فعلی فرستاده می‌شود تا کد به همان راه برود */
+export async function requestAccountDeletion(channel?: AuthChannel): Promise<DeleteRequestResult> {
+  return authedFetch<DeleteRequestResult>('/v1/me/delete-request', {
+    method: 'POST',
+    body: channel ? { channel } : {},
+  });
 }
 
 /** گام ۲ حذف حساب: کد + تایپ دقیق متن تأیید — موفق = همه‌چیز پاک شده و توکن‌ها باطل */
-export async function confirmAccountDeletion(code: string, confirmText: string): Promise<{ deleted: boolean; message: string }> {
+export async function confirmAccountDeletion(code: string, confirmText: string, channel?: AuthChannel): Promise<{ deleted: boolean; message: string }> {
   return authedFetch<{ deleted: boolean; message: string }>('/v1/me/delete', {
     method: 'POST',
-    body: { code, confirmText },
+    body: { code, confirmText, ...(channel ? { channel } : {}) },
   });
 }

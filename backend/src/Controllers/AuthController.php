@@ -449,13 +449,18 @@ final class AuthController
     /**
      * POST /api/v1/me/delete-request — گام ۱ حذف حساب: ارسال کد تأیید دومرحله‌ای
      * به هویت اصلی حساب (ایمیل/موبایل/تلگرام) با purpose جداگانه (account_delete).
+     * موج ۱ (چندروش ورود) — کلاینت می‌تواند کانالِ نشست فعلی را بفرستد
+     * {channel:'email'|'telegram'|'sms'} تا کد به همان راه برود، نه همیشه اولین هویت؛
+     * کلاینت‌های قدیمی که channel نمی‌فرستند، مثل قبل به هویت اصلی می‌روند (رفتار بدون تغییر).
      * کد حذف حساب برای ورود کار نمی‌کند. اگر اشتراک فعال باشد هشدار برمی‌گردد.
      */
     public function deleteAccountRequest(): void
     {
         $user = Guard::requireUser();
         $pdo = Database::pdo();
-        $identity = AccountDeletion::primaryIdentity((int) $user['id']);
+        $body = Request::json();
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms'], null, false);
+        $identity = self::identityForChannelOrPrimary((int) $user['id'], $channel);
         if ($identity === null) {
             Response::error('حساب شما هویت تأییدشده‌ای ندارد؛ با پشتیبانی تماس بگیرید', 409, ['code' => 'no_identity']);
             return;
@@ -469,9 +474,25 @@ final class AuthController
         }
 
         $created = Otp::createCode($pdo, self::otpChannelType($identity['type']), $identity['value'], Request::ip(), Otp::PURPOSE_ACCOUNT_DELETE);
+        $codeRowId = (int) $pdo->lastInsertId();
         $sent = self::sendDeletionCode($identity['type'], $identity['value'], $created['code']);
-        if (!$sent && Mailer::transport() !== 'log') {
-            Response::error('ارسال کد تأیید ناموفق بود؛ بعداً تلاش کنید', 502, ['code' => 'send_failed']);
+        // موج ۱ — شکست ارسال برای همه‌ی کانال‌ها خطای روشن می‌دهد؛
+        // استثنای transport=log فقط برای ایمیلِ محیط توسعه است (که همیشه true می‌دهد).
+        $devLogTransport = $identity['type'] === 'email' && Mailer::transport() === 'log';
+        if (!$sent && !$devLogTransport) {
+            // کدِ نرسیده همان لحظه باطل می‌شود — وگرنه به‌عنوان «آخرین کد زنده» کدِ بعدیِ
+            // رسیده را سایه می‌اندازد و کاربر کد درست را می‌زند و «نادرست» می‌گیرد.
+            try {
+                $pdo->prepare('UPDATE otp_requests SET consumed_at = :now WHERE id = :id AND consumed_at IS NULL')
+                    ->execute([':now' => gmdate('Y-m-d H:i:s'), ':id' => $codeRowId]);
+            } catch (Throwable $e) {
+                error_log('[karam][account-delete] ابطال کدِ نرسیده ناموفق: ' . $e->getMessage());
+            }
+            Response::error(
+                'ارسال کد تأیید به ' . self::channelFaName($identity['type']) . ' ناموفق بود؛ بعداً تلاش کنید یا از روش دیگر حساب‌تان استفاده کنید',
+                502,
+                ['code' => 'send_failed']
+            );
             return;
         }
 
@@ -488,8 +509,10 @@ final class AuthController
     }
 
     /**
-     * POST /api/v1/me/delete — گام ۲ حذف حساب: {code, confirmText}
+     * POST /api/v1/me/delete — گام ۲ حذف حساب: {code, confirmText, channel?}
      * تأیید دومرحله‌ای: کد تازه (purpose=account_delete) + تایپ دقیق متن تأیید.
+     * موج ۱ — همان کانالی که در گام ۱ کد به آن رفت باید اینجا هم انتخاب شود؛
+     * کلاینت channel نشست خود را می‌فرستد (کلاینت قدیمی: بدون channel → هویت اصلی، مثل قبل).
      * پس از موفقیت: همه‌ی داده پاک، توکن‌ها باطل، پوسته‌ی بی‌نام برای حسابداری می‌ماند.
      */
     public function deleteAccountConfirm(): void
@@ -505,7 +528,8 @@ final class AuthController
             throw new ValidationError('برای تأیید، عبارت «' . AccountDeletion::CONFIRM_TEXT . '» را دقیقاً تایپ کنید');
         }
 
-        $identity = AccountDeletion::primaryIdentity((int) $user['id']);
+        $channel = Validator::enum($body, 'channel', ['email', 'telegram', 'sms'], null, false);
+        $identity = self::identityForChannelOrPrimary((int) $user['id'], $channel);
         if ($identity === null) {
             Response::error('هویتی برای تأیید یافت نشد', 409, ['code' => 'no_identity']);
             return;
@@ -525,6 +549,43 @@ final class AuthController
     private static function otpChannelType(string $identityType): string
     {
         return $identityType === 'telegram_chat_id' ? 'telegram' : $identityType;
+    }
+
+    /**
+     * موج ۱ — انتخاب هویت برای کد حذف حساب:
+     * اگر کلاینت کانال نشست فعلی را فرستاده باشد و حساب دقیقاً یک هویت تأییدشده از همان نوع داشته باشد،
+     * همان انتخاب می‌شود؛ در غیر این صورت (بدون channel / کانال نامعتبر) رفتار قبلی: هویت اصلی.
+     * هیچ پیام خطای جدیدی وجود هویت‌ها را فاش نمی‌کند؛ پاسخ channel همان کانال واقعاً استفاده‌شده را نشان می‌دهد.
+     * @return array{type:string, value:string}|null
+     */
+    public static function identityForChannelOrPrimary(int $userId, ?string $channel): ?array
+    {
+        $identities = AccountDeletion::identitiesOf($userId);
+        if ($channel !== null) {
+            $want = $channel === 'telegram' ? 'telegram_chat_id' : ($channel === 'sms' ? 'mobile' : 'email');
+            foreach ($identities as $i) {
+                if ($i['type'] === $want) {
+                    return $i;
+                }
+            }
+            // کانال درخواستی روی حساب نیست → بدون خطای اضافه، به هویت اصلی برمی‌گردیم
+            // (پاسخ channel نشان می‌دهد کد کجا رفت — کلاینت همان را نمایش می‌دهد)
+        }
+        foreach ($identities as $i) {
+            return $i; // اولین فهرست = هویت اصلی (مثل AccountDeletion::primaryIdentity)
+        }
+        return null;
+    }
+
+    /** نام فارسی کانال برای پیام خطای ارسال (حذف حساب) */
+    private static function channelFaName(string $identityType): string
+    {
+        return match ($identityType) {
+            'email' => 'ایمیل',
+            'mobile' => 'پیامک',
+            'telegram_chat_id' => 'تلگرام',
+            default => 'راه ارتباطی',
+        };
     }
 
     /** ماسک هدف برای نمایش (سمت کلاینت کامل نشان داده نشود) */
