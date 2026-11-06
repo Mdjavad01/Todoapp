@@ -57,8 +57,12 @@ export function AccountSheet() {
   // تلگرام
   const [ticket, setTicket] = useState('');
   const [deepLink, setDeepLink] = useState('');
-  const [tgState, setTgState] = useState<'waiting' | 'sent'>('waiting');
+  // موج ۱ — waiting = در انتظار پیام کاربر به ربات؛ send_failed = ارسال کد شکست خورد
+  // ولی بلیت تا پایان TTL زنده است (لینک دوباره باز می‌شود یا با ایمیل وارد می‌شوند)
+  const [tgState, setTgState] = useState<'waiting' | 'send_failed'>('waiting');
   const [copied, setCopied] = useState(false);
+  // موج ۱ — ثانیه‌های باقی‌مانده تا پایان مهلت بلیت (از expiresIn پاسخ درخواست بلیت)
+  const [ticketTtl, setTicketTtl] = useState(0);
 
   // پروفایل
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
@@ -81,6 +85,7 @@ export function AccountSheet() {
     setCode('');
     setDevCode(null);
     setTgState('waiting');
+    setTicketTtl(0);
     void fetchChannels().then(setChannels).catch(() => setChannels({ email: true, telegram: false, sms: false, botUsername: '' }));
     if (useAppStore.getState().session) {
       void listSessions().then(setSessions).catch(() => setSessions([]));
@@ -100,19 +105,29 @@ export function AccountSheet() {
     return () => clearTimeout(t);
   }, [resendIn]);
 
-  // poll تلگرام — تا وقتی روی مرحله‌ی تلگرامی‌ایم و منتظر کد هستیم
+  // موج ۱ — شمارش معکوس مهلت بلیت تلگرام (TTL)
   useEffect(() => {
-    if (step !== 'telegram' || tgState !== 'waiting' || !ticket) return;
+    if (ticketTtl <= 0) return;
+    const t = setTimeout(() => setTicketTtl((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [ticketTtl]);
+
+  // poll تلگرام — در هر دو حالت waiting و send_failed ادامه دارد؛ send_failed از این بعد
+  // فقط پیام وضعیت است نه پایان مسیر: با زدن دوباره‌ی لینک (تا پایان TTL) کد می‌تواند برسد
+  useEffect(() => {
+    if (step !== 'telegram' || !ticket) return;
     let alive = true;
     const iv = setInterval(async () => {
       try {
         const res = await pollTelegramTicket(ticket);
         if (!alive) return;
         if (res.status === 'code_sent') {
-          setTgState('sent');
+          // «ارسال شد» فقط برای وضعیت واقعی ارسال موفق از سرور می‌آید (موج ۱)
           setResendIn(0);
           setStep('code');
           setTimeout(() => codeRef.current?.focus(), 50);
+        } else if (res.status === 'send_failed') {
+          setTgState('send_failed');
         } else if (res.status === 'expired') {
           setError('مهلت بلیت تمام شد؛ کد جدید بگیرید');
           setStep('choose');
@@ -200,12 +215,17 @@ export function AccountSheet() {
       setTicket(res.ticket ?? '');
       setDeepLink(res.deepLink ?? '');
       setTgState('waiting');
+      // موج ۱ — شمارش معکوس مهلت بلیت (expiresIn ثانیه؛ پیش‌فرض سرور ۶۰۰ = ۱۰ دقیقه)
+      setTicketTtl(Math.max(0, Math.floor(res.expiresIn ?? 600)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت بلیت ناموفق بود');
     } finally {
       setBusy(false);
     }
   };
+
+  /** موج ۱ — قالب m:ss برای نمایش مهلت بلیت */
+  const fmtTtl = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const confirmCode = async () => {
     setError(null);
@@ -237,6 +257,7 @@ export function AccountSheet() {
       setTicket('');
       setDevCode(null);
       setTgState('waiting');
+      setTicketTtl(0);
       // آنبوردینگ کامل (v10) — حساب تازه: خوش‌آمد + ثبت نام + انتخاب ظاهر
       if (res.isNew) {
         await repo.prefsSet('welcome-done', 'none');
@@ -670,7 +691,9 @@ export function AccountSheet() {
                   </button>
                 </>
               ) : null}
-              {tgState === 'waiting' && ticket ? (
+              {/* موج ۱ — کارت بلیت در هر دو حالت waiting و send_failed نمایان است تا کاربر بتواند
+                  لینک را دوباره باز کند (تلاش مجدد ارسال تا پایان TTL — سقف تلاش سمت سرور رعایت می‌شود) */}
+              {ticket ? (
                 <>
                   <p className="text-body-sm text-on-surface-variant leading-relaxed">
                     این کد را برای ربات <span dir="ltr" className="font-bold">@{channels?.botUsername}</span> در تلگرام
@@ -695,14 +718,35 @@ export function AccountSheet() {
                       {copied ? 'کپی شد ✓' : 'کپی کد'}
                     </button>
                   </div>
-                  <p className="text-body-sm text-on-surface-variant flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    در انتظار پیام شما به ربات…
-                  </p>
+                  {ticketTtl > 0 ? (
+                    <p className="text-label-md text-on-surface-variant text-center" dir="ltr">
+                      {toFaDigits(fmtTtl(ticketTtl))}
+                    </p>
+                  ) : null}
+                  {tgState === 'waiting' ? (
+                    <p className="text-body-sm text-on-surface-variant flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      در انتظار پیام شما به ربات…
+                    </p>
+                  ) : (
+                    <div className="rounded-2xl border border-red-300/50 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 p-3 flex flex-col gap-2">
+                      <p className="text-body-sm text-red-700 dark:text-red-300 font-bold">
+                        ارسال کد به تلگرام ناموفق بود.
+                      </p>
+                      <p className="text-body-xs text-red-700/90 dark:text-red-300/90 leading-relaxed">
+                        معمولاً یعنی ربات اجازه‌ی فرستادن پیام به شما را ندارد (مثلاً ربات را بلاک کرده‌اید). بعد از
+                        Unblock کردن ربات، «باز کردن تلگرام» را دوباره بزنید — یا با ایمیل وارد شوید.
+                      </p>
+                      <button
+                        type="button"
+                        className="w-full py-3 rounded-xl bg-primary text-on-primary font-bold text-body-sm active:scale-95 transition-transform"
+                        onClick={startEmail}
+                      >
+                        ورود با ایمیل
+                      </button>
+                    </div>
+                  )}
                 </>
-              ) : null}
-              {tgState === 'sent' ? (
-                <p className="text-body-sm text-primary font-bold">کد ورود به چت تلگرام شما ارسال شد ✓</p>
               ) : null}
               {error ? <p className="text-body-sm text-red-600 dark:text-red-300">{error}</p> : null}
               <button
@@ -711,6 +755,7 @@ export function AccountSheet() {
                   setError(null);
                   setTicket('');
                   setTgState('waiting');
+                  setTicketTtl(0);
                   setStep('choose');
                 }}
               >
@@ -814,6 +859,21 @@ export function AccountSheet() {
                 ) : null}
               </div>
               {error ? <p className="text-body-sm text-red-600 dark:text-red-300 mt-2">{error}</p> : null}
+              {/* موج ۱ (تصمیم مالک) — متن ثابت همیشه‌نمایش در گام کد همه‌ی کانال‌ها؛
+                  بدون هیچ شرط روی حساب و بدون هیچ endpoint جدید: فقط برمی‌گرداند به انتخاب روش.
+                  چون شرطی ندارد، هیچ چیزی درباره‌ی وجود/نبود حساب افشا نمی‌شود. */}
+              <button
+                type="button"
+                className="text-body-sm text-primary font-bold mt-3"
+                onClick={() => {
+                  setError(null);
+                  setCode('');
+                  setChannel(null);
+                  setStep('choose');
+                }}
+              >
+                کد نرسید؟ با روش دیگر وارد شو
+              </button>
               <button
                 className="text-body-sm text-primary font-bold mt-3"
                 onClick={() => {

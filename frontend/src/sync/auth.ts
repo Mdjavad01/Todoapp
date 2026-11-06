@@ -51,7 +51,13 @@ export async function requestOtp(channel: AuthChannel, target?: string): Promise
   return apiFetch<OtpRequestResult>('/auth/otp/request', { method: 'POST', body });
 }
 
-export type TelegramPollStatus = 'pending' | 'code_sent' | 'expired' | 'unknown';
+/**
+ * وضعیت بلیت تلگرام از POST /auth/otp/telegram/poll.
+ * موج ۱ (چندروش ورود) — وضعیت جدید send_failed: ارسال کد به تلگرام شکست خورده ولی بلیت
+ * هنوز تا پایان TTL خود زنده است (زدن دوباره‌ی لینک می‌تواند بعد از رفع مشکل کد بفرستد).
+ * کلاینت‌های قدیمی این مقدار را نمی‌شناسند و مثل قبل تا expired منتظر می‌مانند.
+ */
+export type TelegramPollStatus = 'pending' | 'code_sent' | 'send_failed' | 'expired' | 'unknown';
 
 export async function pollTelegramTicket(ticket: string): Promise<{ status: TelegramPollStatus }> {
   return apiFetch<{ status: TelegramPollStatus }>('/auth/otp/telegram/poll', {
