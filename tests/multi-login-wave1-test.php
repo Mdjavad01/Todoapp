@@ -209,10 +209,21 @@ function forceFetch(): void
     }
 }
 
+/** تا وقتی کسر ثانیه‌ی ساعت کوچک شود صبر کن — جلوگیری از مرزگیری ثانیه در نرخ‌سنج Otp::checkRateLimit
+ *  (created_at با دقت ثانیه ذخیره می‌شود؛ اگر ردیف در X.9 ساخته شود و چک در X+1.2 برسد،
+ *   elapsed_computed=1 ولی elapsed واقعی<1 است → رد فوری لرزان می‌شود) */
+function waitFreshSecond(): void
+{
+    while (microtime(true) - floor(microtime(true)) > 0.2) {
+        usleep(15_000);
+    }
+}
+
 /** poll با فاصله‌ی کافی از fetch قبلی (کش ۲ ثانیه‌ای داخل pollAndMatchTickets) */
 function pollTicket(string $ticket): array
 {
     usleep(2_200_000);
+    waitFreshSecond(); // کدِ ساخته‌شده در همین پرسش در آغاز ثانیه می‌نشیند تا چک فوریِ بعدی همان ثانیه را ببیند
     return http('POST', '/api/auth/otp/telegram/poll', ['ticket' => $ticket]);
 }
 

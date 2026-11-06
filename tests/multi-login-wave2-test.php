@@ -316,6 +316,7 @@ check('expiresIn بلیت = ۶۰۰ ثانیه', (int) ($j['expiresIn'] ?? 0) ===
 $tgTicket = (string) $j['ticket'];
 $chatTg = 999002;
 mockAddStartUpdate($tgTicket, $chatTg);
+forceFetch(); // کش ۲ ثانیه‌ای getUpdates را بشکن — وگرنه poll شاید پیام تازه را نبیند
 [$st, $j] = pollTicket($tgTicket);
 check('poll بلیت اتصال → code_sent', ($j['status'] ?? '') === 'code_sent', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
 $tgCode = mockExtractCode(0);
@@ -340,6 +341,7 @@ echo "\n۸) تعارض تلگرام برای حساب B + بلیت بدون /sta
 [$st, $j] = http('POST', '/api/v1/me/identities', ['channel' => 'telegram'], $tokB);
 $tgTicketB = (string) $j['ticket'];
 mockAddStartUpdate($tgTicketB, $chatTg); // همان چتِ حساب A
+forceFetch(); // کش ۲ ثانیه‌ای getUpdates را بشکن — وگرنه poll شاید پیام تازه را نبیند
 [$st, $j] = pollTicket($tgTicketB);
 check('poll بلیت B → code_sent (کد به همان چت رفت)', ($j['status'] ?? '') === 'code_sent', (string) json_encode($j, JSON_UNESCAPED_UNICODE));
 $tgCodeB = mockExtractCode(1);
