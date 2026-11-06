@@ -13,7 +13,7 @@
 | APP_VERSION در `backend/.env` | `1.12.0` | نسخه‌ی استقرار هاست فعلی روی سرور (پک جدید: v1.12.4) |
 | APK `versionCode` / `versionName` | `11` / `1.0.10` | در `mobile/android/app/build.gradle` — انتشار بازار با همین نسخه |
 | `BACKUP_VERSION` | `1` | فرمت فایل بکاپ |
-| پک هاست | `karam-host-update-v1.12.4.zip` | خروجی `scripts/build-host-pack.sh` (اسکریپت رسمی واحد) — sha256: f2d300d957ca6b715aeb8579b77d9e8b6447c0f71d19353b3670bbaad3c60dff |
+| پک هاست | `karam-host-update-v1.12.4.zip` | خروجی `scripts/build-host-pack.sh` (اسکریپت رسمی واحد) — sha256: c3223112ed324d76ff78a641dc89117ee3df6ceb6f2722cb87b01d4090e6d84a (بازسازی روی `0dad314` با بخش مسیر «هاست v1.12.0 → v1.12.4» در README-نصب — بدون هیچ SQL) |
 | `app_latest_version` پنل (اعلام APK) | `1.0.10` | پنل ← تنظیمات ← به‌روزرسانی اپ — فقط بعد از انتشار APK نو عوض شود |
 
 ## [1.12.4] — ادغام چندروش ورود به main + انتشار v1.0.10 (versionCode 11) — بدون SQL
