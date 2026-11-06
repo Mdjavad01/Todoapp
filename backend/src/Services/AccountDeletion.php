@@ -15,7 +15,7 @@ declare(strict_types=1);
  *     - همه‌ی هویت‌ها (ایمیل/موبایل/chat_id تلگرام) و توکن‌های دستگاه‌ها
  *     - رکوردهای OTPِ هویت‌های همان کاربر (هر دو هدف: ورود و حذف حساب)
  *     - مقدار هویت در provider_logs بی‌نام می‌شود (تطهیر — لاگ سالم می‌ماند)
- *     - ژورنال محلی issued-otp.jsonl هم از مقدار هویت پاک می‌شود
+ *     - (v1.12.0 M-06) ژورنال دیسکی OTP کلاً حذف شده — کد خام هرگز روی دیسک نبوده و نیست
  *   بی‌نام می‌شود (پوسته‌ی کاربر):
  *     - users: status='deleted'، نام NULL، جنسیت unset، premium NULL، کد رفرال NULL
  *       (فقط id/uuid/created_at می‌ماند — لنگر حسابداری)
@@ -311,35 +311,7 @@ final class AccountDeletion
         } catch (Throwable $e) {
             error_log('[karam][account-delete] تطهیر provider_logs ناموفق: ' . $e->getMessage());
         }
-        try {
-            self::scrubIssuedOtpJournal($identities);
-        } catch (Throwable $e) {
-            error_log('[karam][account-delete] پاک‌سازی ژورنال OTP ناموفق: ' . $e->getMessage());
-        }
-    }
-
-    /** حذف سطرهای هویتِ حذف‌شده از ژورنال محلی کدهای ورود (storage/cache/issued-otp.jsonl) */
-    private static function scrubIssuedOtpJournal(array $identities): void
-    {
-        $path = dirname(__DIR__, 2) . '/storage/cache/issued-otp.jsonl';
-        if (!is_file($path)) {
-            return;
-        }
-        $values = array_map(static fn (array $i): string => strtolower($i['value']), $identities);
-        $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if (!is_array($lines)) {
-            return;
-        }
-        $kept = [];
-        foreach ($lines as $line) {
-            $e = json_decode((string) $line, true);
-            if (is_array($e) && in_array(strtolower((string) ($e['value'] ?? '')), $values, true)) {
-                continue; // سطر هویتِ حذف‌شده — نمی‌ماند
-            }
-            $kept[] = $line;
-        }
-        if (count($kept) !== count($lines)) {
-            @file_put_contents($path, implode("\n", $kept) . (count($kept) > 0 ? "\n" : ''), LOCK_EX);
-        }
+        // v1.12.0 (ممیزی M-06) — ژورنال issued-otp.jsonl کلاً حذف شده؛ چیزی برای
+        // تطهیر در دیسک نیست. provider_logs در بالا تطهیر می‌شود.
     }
 }

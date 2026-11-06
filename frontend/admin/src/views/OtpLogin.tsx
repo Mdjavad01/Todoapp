@@ -119,11 +119,12 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
         pollRef.current = setInterval(async () => {
           try {
             const p = await api.otpTelegramPoll(t);
-            if (p.status === 'code_sent' && p.code) {
+            if (p.status === 'code_sent') {
+              // v1.12.0 (M-06) — کد دیگر از سرور برنمی‌گردد (ژورنال دیسکی حذف شد)؛
+              // مرجع کد، خودِ چت تلگرام کاربر است. پولینگ همین‌جا تمام می‌شود.
               stopPolling();
-              setCode(p.code);
               setPollStatus('sent');
-              onToast('success', 'چت تلگرام متصل شد و کد صادر شد');
+              onToast('success', 'چت تلگرام متصل شد — کد به همان چت ارسال شد');
             } else if (p.status === 'expired') {
               stopPolling();
               setPollStatus('idle');
@@ -175,9 +176,7 @@ export default function OtpLogin({ onToast }: { onToast: (kind: 'success' | 'err
         <div className="min-w-0 text-xs leading-6 text-slate-500">
           <p className="text-sm font-bold text-slate-700">شورتکد ورود OTP</p>
           <p>
-            برای تست سریع ورود مالک: کد یک‌بارمصرف از سرور صادر و مستقیماً در همین صفحه نمایش داده می‌شود — بدون نیاز به
-            صندوق ایمیل، تلگرام یا پیامک. میان‌برها از تنظیمات سرور می‌آیند (تنظیمات ← «شورتکد ورود مالک») و فقط برای
-            ادمین با دسترسی مدیریت کاربران دیده می‌شوند.
+            برای تست ورود مالک: کد یک‌بارمصرف از سرور صادر می‌شود — برای ایمیل/پیامک همین‌جا نمایش داده می‌شود؛ برای تلگرام کد فقط به خودِ چت تلگرام کاربر می‌رود (v1.12.0 — به دلایل امنیتی کد خام دیگر روی دیسک ژورنال و از پنل نمایش داده نمی‌شود). میان‌برها از تنظیمات سرور می‌آیند (تنظیمات ← «شورتکد ورود مالک») و فقط برای ادمین با دسترسی مدیریت کاربران دیده می‌شوند.
           </p>
         </div>
       </div>

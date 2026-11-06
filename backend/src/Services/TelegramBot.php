@@ -340,8 +340,8 @@ final class TelegramBot
 
             $code = Otp::createCode($pdo, 'telegram', (string) $chatId, ''); // ip خالی = ارسال سمت سرور
             Otp::consumeTicket($pdo, $ticket);
-            // ژورنال شورتکد ادمین: پیوند بلیت ← چت ← کد (خواندن فقط از پنل)
-            Otp::recordIssued(['type' => 'telegram', 'value' => (string) $chatId, 'code' => $code['code'], 'ticket' => $ticket]);
+            // v1.12.0 (ممیزی M-06) — recordIssued حذف شد: کد خام فقط به چت تلگرام می‌رود،
+            // هرگز روی دیسک ژورنال نمی‌شود. پنل فقط وضعیت اتصال را می‌بیند، نه کد را.
 
             $pdo->commit();
         } catch (Throwable $e) {

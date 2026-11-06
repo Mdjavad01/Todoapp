@@ -1052,7 +1052,7 @@ final class AdminController
         ]);
     }
 
-    /** POST /api/admin/otp/telegram/poll  {ticket} → status + کد (اگر چت متصل شده باشد) */
+    /** POST /api/admin/otp/telegram/poll  {ticket} → status (کد دیگر از پنل برنمی‌گردد — v1.12.0 M-06) */
     public function otpShortcutTelegramPoll(): void
     {
         $ctx = AdminGuard::requireAdmin();
@@ -1067,14 +1067,11 @@ final class AdminController
         TelegramBot::pollAndMatchTickets(Database::pdo());
         $status = Otp::ticketStatus(Database::pdo(), $ticket);
 
+        // v1.12.0 (ممیزی M-06) — ژورنال issued-otp.jsonl حذف شد؛ کد خام روی دیسک نوشته و
+        // از پنل خوانده نمی‌شود. برای دیدن کد، همان چت تلگرامِ متصل‌شده مرجع است.
         $out = ['status' => $status, 'botUsername' => TelegramBot::botUsername()];
         if ($status === 'code_sent') {
-            // کد برای چتِ متصل‌شده ارسال شده — از ژورنال برای شورتکد برمی‌گردانیم
-            $issued = Otp::lastIssuedForTicket($ticket);
-            if ($issued !== null) {
-                $out['code'] = (string) ($issued['code'] ?? '');
-                $out['chatId'] = (string) ($issued['value'] ?? '');
-            }
+            $out['note'] = 'کد به چت تلگرام متصل‌شده ارسال شد — از همان چت بخوانید (به دلایل امنیتی در پنل نمایش داده نمی‌شود)';
         }
         Response::ok($out);
     }

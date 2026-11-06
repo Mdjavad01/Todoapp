@@ -107,7 +107,7 @@ function resetEnvironment(): void
             $pdo->exec($stmt);
         }
     }
-    // ژورنال کدهای OTP هم از نو
+    // v1.12.0 (M-06) — ژورنال issued-otp.jsonl حذف شده؛ فایل قدیمی اگر ماند پاک می‌شود
     @unlink(ROOT . '/backend/storage/cache/issued-otp.jsonl');
 }
 
@@ -126,6 +126,28 @@ function uuid4(): string
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($d), 4));
 }
 
+/** v1.12.0 (M-06) — آیا رشته‌ی داده‌شده (کد خام OTP) در storage/cache هست؟
+ *  دامنه‌ی عمداً فقط cache/ است (محل ژورنال سابق): در محیط محلی MAIL_TRANSPORT=log
+ *  کد را به‌طور عمد در storage/logs/mail.log می‌نویسد (فقط توسعه — روی هاست mail/smtp است). */
+function karamStorageContains(string $needle): bool
+{
+    $dir = ROOT . '/backend/storage/cache';
+    if (!is_dir($dir)) {
+        return false;
+    }
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $f) {
+        if (!$f->isFile() || $f->getSize() > 8 * 1024 * 1024) {
+            continue;
+        }
+        $content = @file_get_contents($f->getPathname());
+        if ($content !== false && $needle !== '' && str_contains($content, $needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function seedAdmin(string $username, string $password, string $roleCode): int
 {
     $pdo = db();
@@ -137,22 +159,8 @@ function seedAdmin(string $username, string $password, string $roleCode): int
     return (int) $pdo->lastInsertId();
 }
 
-/** آخرین کد صادرشده برای یک هویت از ژورنال سرور (شورتکد ادمین) */
-function lastIssued(string $type, string $value): ?string
-{
-    $path = ROOT . '/backend/storage/cache/issued-otp.jsonl';
-    if (!is_file($path)) {
-        return null;
-    }
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
-    for ($i = count($lines) - 1; $i >= 0; $i--) {
-        $e = json_decode((string) $lines[$i], true);
-        if (is_array($e) && ($e['type'] ?? '') === $type && strtolower((string) ($e['value'] ?? '')) === strtolower($value)) {
-            return (string) $e['code'];
-        }
-    }
-    return null;
-}
+/* (v1.12.0 M-06) — هلپر lastIssued ژورنال حذف شد: کد خام دیگر روی دیسک نوشته نمی‌شود؛
+   تست‌ها کد را از پاسخ API (OTP_DEBUG در محیط محلی) می‌گیرند */
 
 /* ================= setup ================= */
 resetEnvironment();
@@ -269,8 +277,11 @@ check('بستن ثبت‌نام → 200', $st === 200);
 
 [$st, $j] = http('POST', '/api/auth/otp/request', ['channel' => 'email', 'target' => 'newuser45@test.ir']);
 check('درخواست کد عمومی برای حساب جدید → 200', $st === 200, (string) ($j['error'] ?? ''));
-$codeNew = lastIssued('email', 'newuser45@test.ir');
-check('کد در ژورنال ثبت شد', is_string($codeNew) && preg_match('/^\d{6}$/', (string) $codeNew) === 1);
+// v1.12.0 (M-06) — کد از پاسخ محیط تست خوانده می‌شود (ژورنال دیسکی حذف شده)
+$codeNew = (string) ($j['code'] ?? '');
+check('کد در پاسخ محیط تست است (OTP_DEBUG)', preg_match('/^\d{6}$/', $codeNew) === 1, $codeNew);
+check('ژورنال issued-otp.jsonl دیگر ساخته نمی‌شود (M-06)', !is_file(ROOT . '/backend/storage/cache/issued-otp.jsonl'));
+check('هیچ فایلی در storage/cache کد خام ندارد (M-06)', $codeNew === '' || !karamStorageContains($codeNew));
 [$st, $j] = http('POST', '/api/auth/otp/verify', ['channel' => 'email', 'target' => 'newuser45@test.ir', 'code' => $codeNew, 'deviceName' => 'تست']);
 check('تأیید حساب جدید با ثبت‌نام بسته → 403', $st === 403 && ($j['code'] ?? '') === 'registration_closed', (string) ($j['error'] ?? ''));
 
