@@ -13,7 +13,8 @@ import {
   HUB_CARDS,
 } from '@/lib/selectors';
 import { toFa } from '@/lib/format';
-import type { ListEntity, HubKey } from '@/types';
+import { traderListIdSet } from '@/db/traderTemplate';
+import type { ListEntity, HubKey, TaskEntity } from '@/types';
 
 /**
  * فاز الف — صفحه‌ی خانه‌ی ساده (الگوی سادگی):
@@ -47,21 +48,24 @@ export function HomeView() {
   const today = new Date();
 
   /* ---- شمارنده‌های ردیف‌های هوشمند (هم‌جهت با مقصدهای واقعی) ---- */
+  /* v1.13.0 — شمارنده‌ی «برنامه‌ریزی‌شده» با تب مقصدش (پلن‌ها) هم‌قرارداد است: چک‌لیست تریدر در آن شمرده نمی‌شود */
+  const traderIds = useMemo(() => traderListIdSet(lists), [lists]);
   const counts: Record<HubKey, number> = useMemo(() => {
     const stats = homeStats(tasks, today);
     const planner = plannerSections(tasks, today);
+    const dated = (arr: TaskEntity[]) => arr.filter((t) => !traderIds.has(t.listId)).length;
     return {
       today: myDayTasks(tasks, myDayIds, today).filter((t) => !t.completedAt).length,
       urgent: starredPending(tasks).length,
       planned:
-        planner.overdue.length +
-        planner.today.length +
-        planner.tomorrow.length +
-        planner.thisWeek.length +
-        planner.later.length,
+        dated(planner.overdue) +
+        dated(planner.today) +
+        dated(planner.tomorrow) +
+        dated(planner.thisWeek) +
+        dated(planner.later),
       all: stats.allCount,
     };
-  }, [tasks, myDayIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tasks, myDayIds, traderIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hubClicks: Record<HubKey, () => void> = {
     today: () => setView('myday'),

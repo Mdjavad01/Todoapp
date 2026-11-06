@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { homeStats, myDayTasks } from '@/lib/selectors';
+import { traderListIdSet } from '@/db/traderTemplate';
 import { toFa, faFullDate, weekdayName } from '@/lib/format';
 import { SmartTaskList, SmartEmpty } from '@/views/SmartViews';
 
@@ -15,11 +16,14 @@ import { SmartTaskList, SmartEmpty } from '@/views/SmartViews';
  */
 export function TodayTab() {
   const tasks = useAppStore((s) => s.tasks);
+  const lists = useAppStore((s) => s.lists);
   const myDayIds = useAppStore((s) => s.myDayIds);
   const moveOverdueToToday = useAppStore((s) => s.moveOverdueToToday);
   const today = new Date();
 
-  const stats = homeStats(tasks, today);
+  // v1.13.0 — معوقه‌های چک‌لیست تریدر در هشدار این تب نمی‌آیند (روتین بازار، مدیریت خودش را دارد)
+  const traderIds = useMemo(() => traderListIdSet(lists), [lists]);
+  const stats = homeStats(tasks, today, traderIds);
   const overdue = stats.overdue;
 
   const pending = useMemo(() => myDayTasks(tasks, myDayIds, today).filter((t) => !t.completedAt), [tasks, myDayIds]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -11,7 +11,10 @@ import {
   TRADER_PREF_KEY,
   normalizeTime,
   addMinutesToTime,
-  nextWeekdayIso,
+  nextMarketDayIso,
+  traderMarketMeta,
+  traderMarketDayUpgrades,
+  traderListIdSet,
   findTraderLists,
   type TraderPref,
 } from '@/db/traderTemplate';
@@ -19,7 +22,7 @@ import { JOB_PACKS, findPackLists } from '@/db/jobPacks';
 import { findTemplateList, templateListKey } from '@/db/templateKey';
 import { toIsoDate, faShort, toFa } from '@/lib/format';
 import { defaultListId, sortedLists } from '@/lib/selectors';
-import { pruneMyDay, type RepeatMeta } from '@/lib/repeat';
+import { pruneMyDay, nextWeeklyDayIso, type RepeatMeta } from '@/lib/repeat';
 import { applySectionOrder } from '@/lib/dragSort';
 import { uuid } from '@/lib/uuid';
 import { queueSync, runSync, setSyncConfig, setSyncListeners, startSyncLoop, type SyncState } from '@/sync/engine';
@@ -163,6 +166,8 @@ interface AppState {
   myDayIds: string[];
   /** پیش‌نویس نوار افزودن سریع — برای انتقال به شیت کامل */
   quickDraft: string;
+  /** v1.13.0 — روز انتخاب‌شده در تب «پلن‌ها» (null = امروز) — نوار افزودن هم به همین روز می‌نویسد */
+  planDay: string | null;
 
   init(): Promise<void>;
   refresh(): Promise<void>;
@@ -248,6 +253,8 @@ interface AppState {
   addMyDayTask(title: string): Promise<void>;
   /** فاز ۳ — پیش‌نویس نوار افزودن سریع */
   setQuickDraft(text: string): void;
+  /** v1.13.0 — انتخاب روز در تب «پلن‌ها» (null = امروز) */
+  setPlanDay(iso: string | null): void;
   createList(name: string, emoji: string): Promise<void>;
   /** P2.0 — افزودن قالب رایگان — ایدمپوتنت با کلید (فعال‌سازی دوباره هیچ آیتم/لیست تکراری نمی‌سازد) */
   applyTemplate(tpl: TemplateDef): Promise<void>;
@@ -273,6 +280,8 @@ interface AppState {
   traderPref: TraderPref | null;
   /** تازه‌کردن pref تریدر از مخزن (بعد از init/refresh) */
   reloadTraderPref(): Promise<void>;
+  /** v1.13.0 — مهاجرت ایدمپوتنت «روزهای بازار»: روتین‌های روزانه‌ی قدیمی تریدر به تکرار روزهای بازار می‌روند (بعد از init و هر سینک) */
+  upgradeTraderMarketDays(): Promise<void>;
 
   /* ---- فاز ۲ — قابلیت کامل لیست‌ها ---- */
   openEditList(id: string): void;
@@ -324,7 +333,9 @@ async function upsertTraderAnchor(
     dueDate,
     dueTime,
     reminderMinutes,
-    repeat: 'daily', // تیکِ امروز → نوبت فردا با همان ساعت — زنگ ادامه دارد
+    // v1.13.0 — زنگ سشن فقط در روزهای باز بازار (شنبه/یکشنبه تعطیل) — تیکِ امروز → نوبت بعدی روز بازار
+    repeat: 'custom',
+    repeatMeta: traderMarketMeta(),
   });
 }
 
@@ -419,10 +430,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   myDayIds: [],
   quickDraft: '',
+  planDay: null,
 
   async init() {
     await ensureDefaultData();
     await get().refresh();
+    // v1.13.0 — مهاجرت «روزهای بازار» روی داده‌ی محلی، قبل از آماده‌شدن اپ (ایدمپوتنت — فقط ردیف‌های مغایر قرارداد را پچ می‌کند)
+    await get().upgradeTraderMarketDays();
     const [dark, accent, alerts, savedName, fontScale, coachSeen] = await Promise.all([
       repo.prefsGet<boolean>('theme-dark', false),
       repo.prefsGet<AccentColor>('accent', 'teal'),
@@ -507,6 +521,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       await refreshSession();
       await get().reloadSession(false);
       firstSync = runSync();
+      // v1.13.0 — بعد از اولین سینک هم مهاجرت «روزهای بازار» ردیف‌های تازه‌رسیده از سرور را پچ می‌کند
+      void firstSync.then(() => get().upgradeTraderMarketDays()).catch(() => undefined);
     }
 
     // فاز نصب تمیز — هیچ مودال مزاحمی در باز شدن اپ نیست؛ راهنمای ۳مرحله‌ای Tooltip
@@ -741,7 +757,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const session = await getSession();
     set({ session });
     // autoSync=false فقط برای init — تا هر راه‌اندازی دقیقاً یک سینک داشته باشد
-    if (session && autoSync) void runSync();
+    if (session && autoSync) {
+      void runSync()
+        // v1.13.0 — بعد از هر سینک، روتین‌های تریدرِ تازه‌رسیده از دستگاه دیگر هم به «روزهای بازار» می‌روند (ایدمپوتنت)
+        .then(() => useAppStore.getState().upgradeTraderMarketDays())
+        .catch(() => undefined);
+    }
   },
 
   async signOut() {
@@ -1046,8 +1067,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async moveOverdueToToday() {
     const today = toIsoDate(new Date());
+    // v1.13.0 — چک‌لیست تریدر از این جریان خارج است: روتین‌هایش با موتور «روزهای بازار» مدیریت
+    // می‌شوند و کشیده‌شدنشان به «امروز» (مثلاً آخر هفته‌ی تعطیل بازار) بی‌معناست.
+    const traderIds = traderListIdSet(get().lists);
     const overdue = get().tasks.filter(
-      (t) => !t.completedAt && t.dueDate && t.dueDate < today,
+      (t) => !t.completedAt && t.dueDate && t.dueDate < today && !traderIds.has(t.listId),
     );
     for (const t of overdue) {
       await repo.tasksUpdate(t.id, { dueDate: today });
@@ -1132,6 +1156,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ quickDraft: text });
   },
 
+  setPlanDay(iso) {
+    set({ planDay: iso });
+  },
+
   /** P2.0 — افزودن قالب رایگان — ایدمپوتنت با کلید: لیست با کلید/نام پیدا یا با کلید ساخته می‌شود
    *  و آیتم هم‌عنوانِ زنده دوباره ساخته نمی‌شود (قبلاً کلیک دوباره آیتم تکراری می‌ساخت — رفع شد) */
   async applyTemplate(tpl) {
@@ -1199,8 +1227,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           itemType: item.type ?? null,
           repeat,
           repeatMeta: item.repeatMeta ?? null,
-          // سررسید اولیه: روزانه = امروز؛ هفتگی = نزدیک‌ترین روز انتخابی (نوبت بعدی با موتور تکرار)
-          dueDate: repeat !== 'none' ? (weekly ? nextWeekdayIso(item.repeatMeta!.days?.[0] ?? 6) : today) : null,
+          // سررسید اولیه: روزانه = امروز؛ هفتگی = اولین روزِ انتخابی از امروز به بعد (v1.13.0 — روزهای چندگانه‌ی هفتگی درست؛ نوبت بعدی با موتور تکرار)
+          dueDate: repeat !== 'none' ? (weekly ? (nextWeeklyDayIso(item.repeatMeta!.days ?? []) ?? nextWeeklyDayIso([item.repeatMeta!.days?.[0] ?? 6])) : today) : null,
           // لنگر یادآور — فقط آیتم‌های دارای ساعت در داده‌ی بسته
           dueTime: item.dueTime ?? null,
           reminderMinutes: item.dueTime ? (item.reminderMinutes ?? null) : null,
@@ -1281,17 +1309,18 @@ export const useAppStore = create<AppState>((set, get) => ({
           itemType: item.type ?? null,
           repeat,
           repeatMeta: item.repeatMeta ?? null,
-          // سررسید اولیه: کارهای روزانه = امروز (نوبت بعدی بعد از تیک با موتور تکرار)؛ هفتگی = نزدیک‌ترین روز انتخابی
-          dueDate: repeat !== 'none' ? (weekly ? nextWeekdayIso(item.repeatMeta!.days?.[0] ?? 6) : today) : null,
+          // سررسید اولیه: روتین روزهای بازار = اولین روز بازار از امروز (v1.13.0)؛ هفتگی = اولین روز انتخابی از امروز
+          dueDate: repeat !== 'none' ? (weekly ? (nextWeeklyDayIso(item.repeatMeta!.days ?? []) ?? nextMarketDayIso(new Date())) : today) : null,
         });
       }
     }
     // state تازه قبل از لنگرها — لنگر باید لیست تازه‌ساخته‌شده را ببیند
     await get().refresh();
-    // کارهای لنگر یادآور سشن — از خط لوله‌ی یادآور بومی (dueTime + reminderMinutes + تکرار روزانه)
-    await upsertTraderAnchor(get, TRADER_ANCHOR_START, resolved[1], start, 30, today);
+    // کارهای لنگر یادآور سشن — از خط لوله‌ی یادآور بومی (dueTime + reminderMinutes + تکرار روزهای بازار)
+    // سررسید اولین زنگ = اولین روز بازار از امروز (شنبه/یکشنبه تعطیل)
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, resolved[1], start, 30, nextMarketDayIso(new Date()));
     // «۳۰ دقیقه بعد از پایان» = سررسید پایان+۳۰ دقیقه با یادآور ۰ (Validator یادآور ≥ ۰ است)
-    await upsertTraderAnchor(get, TRADER_ANCHOR_END, resolved[3], addMinutesToTime(end, 30), 0, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, resolved[3], addMinutesToTime(end, 30), 0, nextMarketDayIso(new Date()));
     const pref: TraderPref = { activatedAt: new Date().toISOString(), start, end };
     await repo.prefsSet(TRADER_PREF_KEY, pref);
     await get().refresh();
@@ -1309,11 +1338,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast('ساعت شروع و پایان سشن را درست وارد کنید (مثلاً ۰۹:۳۰)');
       return;
     }
-    const today = toIsoDate(new Date());
     // لیست‌های لنگر با کلید/نام — تغییر نام توسط کاربر دیگر یادآورها را گم نمی‌کند
+    // لنگرِ گم‌شده دوباره ساخته می‌شود — اولین زنگ = اولین روز بازار از امروز (v1.13.0)
     const found = findTraderLists(get().lists);
-    await upsertTraderAnchor(get, TRADER_ANCHOR_START, found[1], start, 30, today);
-    await upsertTraderAnchor(get, TRADER_ANCHOR_END, found[3], addMinutesToTime(end, 30), 0, today);
+    await upsertTraderAnchor(get, TRADER_ANCHOR_START, found[1], start, 30, nextMarketDayIso(new Date()));
+    await upsertTraderAnchor(get, TRADER_ANCHOR_END, found[3], addMinutesToTime(end, 30), 0, nextMarketDayIso(new Date()));
     const prev = get().traderPref;
     const pref: TraderPref = { activatedAt: prev?.activatedAt ?? new Date().toISOString(), start, end };
     await repo.prefsSet(TRADER_PREF_KEY, pref);
@@ -1360,6 +1389,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   /** ذخیره‌ی سریع نوع/مقدار آیتم (فیلدهای عدد/یادداشت/انتخاب/امتیاز) */
   async updateTaskValue(id, patch) {
     await repo.tasksUpdate(id, patch);
+    await get().refresh();
+    queueSync();
+  },
+
+  /**
+   * v1.13.0 — مهاجرت ایدمپوتنت «روزهای بازار» (درخواست صاحب محصول: شنبه و یکشنبه بازار تعطیل است):
+   * روتین‌های روزانه‌ی لیست‌های تریدر (پیش/بعد از بازار + لنگرهای سشن) که هنوز repeat='daily' دارند
+   * به تکرار سفارشی هفتگیِ دوشنبه تا جمعه می‌روند؛ سررسید نامعتبر (گذشته/تعطیل) هم به اولین روز بازار
+   * از امروز اصلاح می‌شود. داده‌ی واقعی کاربر جزو تغییر نیست — فقط قرارداد تکرار روتین تریدر.
+   */
+  async upgradeTraderMarketDays() {
+    const traderIds = traderListIdSet(get().lists);
+    if (traderIds.size === 0) return;
+    const patches = traderMarketDayUpgrades(get().tasks, traderIds, new Date());
+    if (patches.length === 0) return;
+    for (const p of patches) {
+      await repo.tasksUpdate(p.id, p.patch);
+    }
     await get().refresh();
     queueSync();
   },

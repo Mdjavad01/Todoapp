@@ -158,6 +158,23 @@ function nextCustomWeek(base: Date, every: number, days: number[]): Date {
 }
 
 /**
+ * v1.13.0 — اولین روزِ «از امروز به بعد» که در روزهای هفتگی انتخابی باشد (۰=شنبه … ۶=جمعه).
+ * اگر امروز جزو روزهاست = امروز. روزها نامعتبر/خالی = null.
+ * برعکسِ nextOccurrence که «نوبت بعدی» را از سررسید قبلی می‌سازد — این برای «اولین سررسیدِ
+ * یک آیتم تازه» است (فعال‌سازی قالب/بسته) و با روزهای چندگانه‌ی هفته درست کار می‌کند.
+ */
+export function nextWeeklyDayIso(days: readonly number[], now: Date = new Date()): string | null {
+  const clean = [...new Set(days)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort((a, b) => a - b);
+  if (clean.length === 0) return null;
+  const d = startOfDay(now);
+  for (let i = 0; i < 7; i++) {
+    if (clean.includes(jalaliWeekday(d))) return toIsoDate(d);
+    d.setDate(d.getDate() + 1);
+  }
+  return toIsoDate(d); // غیرقابل‌رسیدن با ورودی درست
+}
+
+/**
  * نوبت بعدی تکرار — تابع خالص و قطعی.
  * @param dueIso سررسید فعلی «YYYY-MM-DD» یا null (مبنا = روزِ انجام)
  * @param completedOn لحظه‌ی انجام کار (برای کارِ بی‌تاریخ)

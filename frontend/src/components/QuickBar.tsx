@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { detectSmartDate } from '@/lib/smartDate';
+import { toIsoDate } from '@/lib/format';
 import { defaultListId } from '@/lib/selectors';
 
 /**
@@ -9,12 +10,14 @@ import { defaultListId } from '@/lib/selectors';
  *  - تایپ + Enter = افزودن با تشخیص هوشمند تاریخ/ساعت («فردا ساعت ۱۷ …»)
  *  - دکمه‌ی تاریخ = تقویم شمسی برای کار جدید
  *  - دکمه‌ی باز شدن = شیت کامل افزودن (با پیش‌نویس همین متن)
- * فاز الف — فقط داخل لیست‌ها و صفحه‌ی «امروز» نشان داده می‌شود (خانه/پلنر/آمار/تنظیمات نه).
+ * فاز الف — فقط داخل لیست‌ها و صفحه‌ی «امروز» نشان داده می‌شود (خانه/آمار/تنظیمات نه).
  * P1.3 — دکمه‌ی میکروفون حذف شد (سرویس وویس‌به‌متن ساخته نمی‌شود؛ نه دکمه‌ی غیرفعال، نه وعده‌ی «به‌زودی»).
  *
  * بسته A (خلوت‌سازی UX) — تک‌نوارشدن: ردیف‌های افزودنِ داخل صفحه (لیست و امروز) حذف شدند و
  * این نوار تنها راه سریعِ افزودن است — روی «خانه» هم دیده می‌شود با هدف لیست پیش‌فرض؛
  * در تب «امروز» کار ساخته‌شده خودکار به «روزهای من» پین می‌شود (همان معنای ردیف حذف‌شده).
+ * v1.13.0 — تب «پلن‌ها» هم به همین نوار وصل شد: کار تازه با سررسیدِ روزِ انتخاب‌شده (planDay)
+ * ساخته می‌شود — بدون تشخیص هوشمند تاریخ، تا هرگز برخلاف روزِ انتخابی در نوار تقویم ننویسد.
  * حالت صفر لیست: نوار هرگز مخفی نمی‌شود — با اولین ارسال، لیست پیش‌فرض قطعی «کارهای من»
  * ساخته و کار در آن ثبت می‌شود (addQuickTaskBootstrap — e2e: tests/e2e-quickbar-fresh.mjs).
  * رفتار کیبورد: پنجره با interactive-widget=resizes-content در موبایل کوچک می‌شود و نوار
@@ -22,7 +25,7 @@ import { defaultListId } from '@/lib/selectors';
  * و چیدمان در tests/e2e-quickbar.mjs راستی‌آزمایی می‌شود.
  */
 
-const VISIBLE_VIEWS = ['home', 'listView', 'myday'];
+const VISIBLE_VIEWS = ['home', 'listView', 'myday', 'planned'];
 
 export function QuickBar() {
   const view = useAppStore((s) => s.view);
@@ -38,13 +41,16 @@ export function QuickBar() {
 
   const [text, setText] = useState('');
   const isMyDay = view === 'myday';
+  const isPlanned = view === 'planned';
+  const planDay = useAppStore((s) => s.planDay);
 
   const targetList = useMemo(() => {
     const id = view === 'listView' ? activeListId : (defaultListId(lists) ?? lists[0]?.id ?? null);
     return lists.find((l) => l.id === id) ?? lists[0] ?? null;
   }, [view, activeListId, lists]);
 
-  const smart = useMemo(() => (text.trim() ? detectSmartDate(text, new Date()) : null), [text]);
+  // در تب «پلن‌ها» تشخیص هوشمند تاریخ عمداً خاموش است — هدف همیشه روزِ انتخاب‌شده است
+  const smart = useMemo(() => (text.trim() && !isPlanned ? detectSmartDate(text, new Date()) : null), [text, isPlanned]);
 
   // بسته A — نوار بدون هدف هم دیده می‌شود؛ ارسال اول لیست پیش‌فرض را می‌سازد (نه مخفی‌شدن، نه خطا)
   if (!VISIBLE_VIEWS.includes(view)) return null;
@@ -55,19 +61,21 @@ export function QuickBar() {
     setText('');
     void (async () => {
       const smartNow = smart;
+      // v1.13.0 — تب «پلن‌ها»: سررسید = روزِ انتخاب‌شده (null = امروز)؛ تشخیص هوشمند تاریخ خاموش
+      const plannedDue = isPlanned ? (planDay ?? toIsoDate(new Date())) : null;
       const createdId = targetList
         ? await addQuickTask({
             title: value,
             listId: targetList.id,
-            dueDate: smartNow?.dueDate ?? null,
-            dueTime: smartNow?.dueTime ?? null,
-            titleText: smartNow?.cleanTitle,
+            dueDate: isPlanned ? plannedDue : (smartNow?.dueDate ?? null),
+            dueTime: isPlanned ? null : (smartNow?.dueTime ?? null),
+            titleText: isPlanned ? undefined : smartNow?.cleanTitle,
           })
         : await addQuickTaskBootstrap({
             title: value,
-            dueDate: smartNow?.dueDate ?? null,
-            dueTime: smartNow?.dueTime ?? null,
-            titleText: smartNow?.cleanTitle,
+            dueDate: isPlanned ? plannedDue : (smartNow?.dueDate ?? null),
+            dueTime: isPlanned ? null : (smartNow?.dueTime ?? null),
+            titleText: isPlanned ? undefined : smartNow?.cleanTitle,
           });
       // تب «امروز» — همان معنای ردیف حذف‌شده: کار تازه به «روزهای من» پین می‌شود
       if (isMyDay && createdId) await persistMyDay([...myDayIds, createdId]);
@@ -86,9 +94,11 @@ export function QuickBar() {
           placeholder={
             isMyDay
               ? 'افزودن به امروز…'
-              : targetList
-                ? `افزودن به ${targetList.name}…`
-                : 'افزودن به کارهای من…'
+              : isPlanned
+                ? 'افزودن به پلن این روز…'
+                : targetList
+                  ? `افزودن به ${targetList.name}…`
+                  : 'افزودن به کارهای من…'
           }
           type="text"
           value={text}

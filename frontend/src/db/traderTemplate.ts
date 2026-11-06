@@ -1,5 +1,6 @@
 import type { ListEntity, TaskEntity, TaskItemType, RepeatMeta } from '@/types';
-import { toIsoDate } from '@/lib/format';
+import { toIsoDate, parseIsoDate, startOfDay } from '@/lib/format';
+import { jalaliWeekday } from '@/lib/jalali';
 import { templateListKey, findTemplateList, findTemplateLists, isTemplateActive } from '@/db/templateKey';
 
 /**
@@ -45,6 +46,37 @@ export const TRADER_ANCHOR_END = 'پایان سشن معاملاتی';
 /** ریویو هفتگی — پیش‌فرض شنبه به‌ازای درخواست صاحب محصول v1.10.2 (jalaliWeekday: 0=شنبه … 6=جمعه)؛ کاربر از جزئیات آیتم عوضش می‌کند */
 export const TRADER_REVIEW_DAY_DEFAULT = 0;
 
+/**
+ * v1.13.0 — روزهای باز بازار جهانی (فارکس/کریپتو-سهام جهانی):
+ * شنبه (۰) و یکشنبه (۱) بازار تعطیل است — چک‌لیست روزانه‌ی تریدر فقط در دوشنبه تا جمعه می‌آید.
+ * اجرا: آیتم‌های روتین به‌جای «روزانه»، تکرار سفارشی هفتگی با همین روزها ساخته می‌شوند —
+ * نوبت بعدی (repo.completeRecurring) خودش از تعطیلی آخر هفته می‌پرد.
+ */
+export const TRADER_MARKET_DAYS: readonly number[] = [2, 3, 4, 5, 6];
+
+/** تنظیم تکرار استاندارد «روتین روزهای بازار» — در فعال‌سازی و مهاجرت داده‌ی قدیمی یکسان استفاده می‌شود */
+export function traderMarketMeta(): RepeatMeta {
+  return { every: 1, unit: 'week', days: [...TRADER_MARKET_DAYS] };
+}
+
+/** گسترش آیتم روتین روزانه‌ی بازار برای تعریف تمپلیت — هر بار یک شیء تازه (بدون اشتراک ارجاع) */
+export function marketDaily(): Pick<TraderItemDef, 'repeat' | 'repeatMeta'> {
+  return { repeat: 'custom', repeatMeta: traderMarketMeta() };
+}
+
+/**
+ * اولین روز بازار (شنبه/یکشنبه کنار گذاشته می‌شوند) از «امروز» به بعد —
+ * اگر امروز روز بازار است = امروز؛ وگرنه نزدیک‌ترین روز باز بعدی.
+ */
+export function nextMarketDayIso(now: Date = new Date()): string {
+  const d = startOfDay(now);
+  for (let i = 0; i < 7; i++) {
+    if (TRADER_MARKET_DAYS.includes(jalaliWeekday(d))) return toIsoDate(d);
+    d.setDate(d.getDate() + 1);
+  }
+  return toIsoDate(d); // غیرقابل‌رسیدن با ورودی درست
+}
+
 export interface TraderItemDef {
   title: string;
   /** پیش‌فرض 'check' */
@@ -86,16 +118,16 @@ export const TRADER_TEMPLATE: TraderListDef[] = [
     name: TRADER_PREMARKET_LIST,
     emoji: '🌅',
     color: 'amber',
-    guide: 'روتین هر روز قبل از شروع سشن — یادآورش ۳۰ دقیقه قبل از ساعت شروع سشن زنگ می‌زند.',
+    guide: 'روتین روزهای بازار قبل از شروع سشن — یادآورش ۳۰ دقیقه قبل از ساعت شروع سشن زنگ می‌زند (شنبه و یکشنبه بازار تعطیل است و نمی‌آید).',
     items: [
-      { title: 'تقویم اقتصادی و اخبار مهم امروز را چک کردم', repeat: 'daily' },
-      { title: 'حرکت شبانه بازار / گپ‌ها را دیدم', repeat: 'daily' },
-      { title: 'واچ‌لیست امروز را ساختم (حداکثر ۵ نماد)', repeat: 'daily' },
-      { title: 'سطوح کلیدی (حمایت و مقاومت) را مشخص کردم', repeat: 'daily' },
-      { title: 'حداکثر ضرر امروز', type: 'num', repeat: 'daily' },
-      { title: 'ریسک هر معامله', type: 'num', repeat: 'daily' },
-      { title: 'حالم خوب و آماده است (خواب کافی داشتم، عصبانی نیستم)', repeat: 'daily' },
-      { title: 'پلن امروز را نوشتم (فقط ستاپ‌های A+)', type: 'note', repeat: 'daily' },
+      { title: 'تقویم اقتصادی و اخبار مهم امروز را چک کردم', ...marketDaily() },
+      { title: 'حرکت شبانه بازار / گپ‌ها را دیدم', ...marketDaily() },
+      { title: 'واچ‌لیست امروز را ساختم (حداکثر ۵ نماد)', ...marketDaily() },
+      { title: 'سطوح کلیدی (حمایت و مقاومت) را مشخص کردم', ...marketDaily() },
+      { title: 'حداکثر ضرر امروز', type: 'num', ...marketDaily() },
+      { title: 'ریسک هر معامله', type: 'num', ...marketDaily() },
+      { title: 'حالم خوب و آماده است (خواب کافی داشتم، عصبانی نیستم)', ...marketDaily() },
+      { title: 'پلن امروز را نوشتم (فقط ستاپ‌های A+)', type: 'note', ...marketDaily() },
     ],
   },
   {
@@ -115,13 +147,13 @@ export const TRADER_TEMPLATE: TraderListDef[] = [
     name: TRADER_POSTMARKET_LIST,
     emoji: '🌆',
     color: 'indigo',
-    guide: 'پس از بستن پلتفرم — یادآورش ۳۰ دقیقه بعد از ساعت پایان سشن زنگ می‌زند؛ درس روز و امتیاز انضباط را ثبت کن.',
+    guide: 'پس از بستن پلتفرم — یادآورش ۳۰ دقیقه بعد از ساعت پایان سشن زنگ می‌زند؛ درس روز و امتیاز انضباط را ثبت کن (فقط روزهای بازار).',
     items: [
-      { title: 'همه‌ی معاملات امروز را ثبت کردم', repeat: 'daily' },
-      { title: 'طبق پلنم معامله کردم؟', type: 'choice', repeat: 'daily' },
-      { title: 'یک درس اصلی امروز', type: 'note', repeat: 'daily' },
-      { title: TRADER_SCORE_DAILY, type: 'score', repeat: 'daily' },
-      { title: 'نکته‌ی مهم برای فردا', type: 'note', repeat: 'daily' },
+      { title: 'همه‌ی معاملات امروز را ثبت کردم', ...marketDaily() },
+      { title: 'طبق پلنم معامله کردم؟', type: 'choice', ...marketDaily() },
+      { title: 'یک درس اصلی امروز', type: 'note', ...marketDaily() },
+      { title: TRADER_SCORE_DAILY, type: 'score', ...marketDaily() },
+      { title: 'نکته‌ی مهم برای فردا', type: 'note', ...marketDaily() },
     ],
   },
   {
@@ -145,7 +177,45 @@ export const TRADER_PRETRADE_FOOTER = 'اگر حتی یکی از این‌ها �
 
 /** متن صادقانه‌ی محدودیت تکرار — در راهنمای کارت تریدر */
 export const TRADER_REPEAT_NOTICE =
-  'آیتم‌های تکرارشونده وقتی نوبت تازه می‌سازند که آیتم امروز را تیک بزنی — اگر روزی تیک نزنی، همان آیتم بی‌تیک سر جایش می‌ماند و تاریخچه‌ی تیک‌شده‌ها در «انجام‌شده‌ها» می‌ماند. یادآورها فقط در اپ اندروید زنگ می‌زنند.';
+  'آیتم‌های تکرارشونده وقتی نوبت تازه می‌سازند که آیتم امروز را تیک بزنی — اگر روزی تیک نزنی، همان آیتم بی‌تیک سر جایش می‌ماند و تاریخچه‌ی تیک‌شده‌ها در «انجام‌شده‌ها» می‌ماند. روتین‌های بازار فقط در روزهای باز بازار (دوشنبه تا جمعه) می‌آیند — شنبه و یکشنبه بازار تعطیل است. یادآورها فقط در اپ اندروید زنگ می‌زنند.';
+
+/**
+ * v1.13.0 — پچ‌های مهاجرت «روزهای بازار» برای داده‌ی قدیمی (خالص و ایدمپوتنت):
+ * هر کارِ زنده‌ی داخل لیست‌های تریدر که هنوز repeat='daily' دارد → تکرار سفارشی هفتگیِ روزهای بازار؛
+ * و اگر ناتمام باشد و سررسیدش تعطیل/گذشته باشد → سررسید = اولین روز بازار از امروز به بعد.
+ * کارهای انجام‌شده (تاریخچه) دست نمی‌خورند؛ آیتم‌های قوانین/قبل از معامله/ریویو هفتگی هم هیچ.
+ */
+export function traderMarketDayUpgrades(
+  tasks: TaskEntity[],
+  traderListIds: ReadonlySet<string>,
+  now: Date = new Date(),
+): { id: string; patch: { repeat: 'custom'; repeatMeta: RepeatMeta; dueDate?: string } }[] {
+  const todayIso = toIsoDate(now);
+  const out: { id: string; patch: { repeat: 'custom'; repeatMeta: RepeatMeta; dueDate?: string } }[] = [];
+  for (const t of tasks) {
+    if (!traderListIds.has(t.listId) || t.deletedAt || t.completedAt) continue;
+    if (t.repeat !== 'daily') continue;
+    const patch: { repeat: 'custom'; repeatMeta: RepeatMeta; dueDate?: string } = {
+      repeat: 'custom',
+      repeatMeta: traderMarketMeta(),
+    };
+    // سررسید نامعتبر برای روتین بازار (خالی/گذشته/روز تعطیل) → اولین روز بازار از امروز
+    const dueInvalid =
+      t.dueDate === null ||
+      t.dueDate < todayIso ||
+      !TRADER_MARKET_DAYS.includes(jalaliWeekday(startOfDay(parseIsoDate(t.dueDate))));
+    if (dueInvalid) patch.dueDate = nextMarketDayIso(now);
+    out.push({ id: t.id, patch });
+  }
+  return out;
+}
+
+/** شناسه‌ی لیست‌های تریدر (کلید-اول + فال‌بک نامی) — برای فیلترکردن تریدر از نمای‌های عمومی */
+export function traderListIdSet(lists: ListEntity[]): Set<string> {
+  const ids = new Set<string>();
+  for (const l of findTraderLists(lists)) if (l) ids.add(l.id);
+  return ids;
+}
 
 /* ---------------- توابع کمکی خالص ---------------- */
 

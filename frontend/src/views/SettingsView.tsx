@@ -31,9 +31,9 @@ import {
   subscribeInstall,
 } from '@/lib/pwa';
 
-const APP_VERSION = '۴.۵.۰';
+const APP_VERSION = '۴.۶.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '4.5.0';
+const APP_VERSION_RAW = '4.6.0';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {

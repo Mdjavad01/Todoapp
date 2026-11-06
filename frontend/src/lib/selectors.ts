@@ -24,15 +24,23 @@ export interface HomeStats {
   todayTasks: TaskEntity[];
 }
 
-export function homeStats(tasks: TaskEntity[], today: Date): HomeStats {
+export function homeStats(tasks: TaskEntity[], today: Date, excludeOverdueListIds?: ReadonlySet<string>): HomeStats {
   const todayIso = toIsoDate(today);
   const todayTasks = tasks
     .filter((t) => t.dueDate === todayIso)
     .sort((a, b) => (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99'));
   const todayDone = todayTasks.filter((t) => t.completedAt).length;
   const todayTotal = todayTasks.length;
+  // v1.13.0 — لیست‌های مستثنی (چک‌لیست تریدر) از «معوقه» خارج‌اند: روتین‌هایش با موتور روزهای بازار
+  // مدیریت می‌شود و نشان‌دادنش به‌عنوان معوقه در آخر هفته‌ی تعطیل بازار گمراه‌کننده است.
   const overdue = tasks
-    .filter((t) => !t.completedAt && t.dueDate !== null && t.dueDate < todayIso)
+    .filter(
+      (t) =>
+        !t.completedAt &&
+        t.dueDate !== null &&
+        t.dueDate < todayIso &&
+        !(excludeOverdueListIds && excludeOverdueListIds.has(t.listId)),
+    )
     .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
   return {
     todayTotal,

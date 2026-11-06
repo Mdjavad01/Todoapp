@@ -116,8 +116,8 @@ describe('داده‌ی تمپلیت تریدر', () => {
     const review = TRADER_TEMPLATE.find((l) => l.name === 'ریویو هفتگی')!;
     const rules = TRADER_TEMPLATE.find((l) => l.name === TRADER_RULES_LIST)!;
     const pretrade = TRADER_TEMPLATE.find((l) => l.name === TRADER_PRETRADE_LIST)!;
-    expect(pre.items.every((i) => i.repeat === 'daily')).toBe(true);
-    expect(post.items.every((i) => i.repeat === 'daily')).toBe(true);
+    expect(pre.items.every((i) => i.repeat === 'custom' && i.repeatMeta?.unit === 'week' && i.repeatMeta.days?.join(',') === '2,3,4,5,6')).toBe(true);
+    expect(post.items.every((i) => i.repeat === 'custom' && i.repeatMeta?.unit === 'week' && i.repeatMeta.days?.join(',') === '2,3,4,5,6')).toBe(true);
     expect(review.items.every((i) => i.repeat === 'custom' && i.repeatMeta?.unit === 'week' && i.repeatMeta.days?.[0] === TRADER_REVIEW_DAY_DEFAULT)).toBe(true);
     expect(rules.items.every((i) => i.repeat === undefined)).toBe(true);
     expect(pretrade.items.every((i) => i.repeat === undefined)).toBe(true);
@@ -273,11 +273,13 @@ describe('فعال‌سازی تمپلیت تریدر (store + IndexedDB mock)',
     expect(findTraderLists(lists)).toHaveLength(5);
 
     // لنگر شروع: ۰۹:۰۰ با یادآور ۳۰ دقیقه قبل؛ لنگر پایان: ۱۸:۰۰ (پایان+۳۰) با یادآور ۰
+    // v1.13.0 — تکرار لنگرها = روزهای بازار (دوشنبه تا جمعه؛ شنبه/یکشنبه تعطیل)
     const anchorStart = tasks.find((t) => t.title === TRADER_ANCHOR_START)!;
     const anchorEnd = tasks.find((t) => t.title === TRADER_ANCHOR_END)!;
     expect(anchorStart.dueTime).toBe('09:00');
     expect(anchorStart.reminderMinutes).toBe(30);
-    expect(anchorStart.repeat).toBe('daily');
+    expect(anchorStart.repeat).toBe('custom');
+    expect(anchorStart.repeatMeta?.days?.join(',')).toBe('2,3,4,5,6');
     expect(anchorEnd.dueTime).toBe('18:00');
     expect(anchorEnd.reminderMinutes).toBe(0);
     // آیتم‌های هفتگی: سررسید = یک شنبه (jalaliWeekday 0 — پیش‌فرض v1.10.2)

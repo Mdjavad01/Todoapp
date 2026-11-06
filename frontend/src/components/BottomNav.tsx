@@ -3,14 +3,15 @@ import { useAppStore } from '@/store/useAppStore';
 import type { ViewName } from '@/types';
 
 /**
- * فاز الف — ناوبری پایین، دقیقاً ۵ تب: خانه / امروز / پلنر / آمار / تنظیمات.
+ * فاز الف — ناوبری پایین، دقیقاً ۵ تب: خانه / امروز / پلن‌ها / آمار / تنظیمات.
  * تب فعال با رنگ برند و وزن بولد کاملاً مشخص است. صفحات داخلی (لیست، مهم، همه،
  * جستجو) زیر تب «خانه» هایلایت می‌شوند.
+ * v1.13.0 — تب «پلنر» به «پلن‌ها» تغییر نام داد: نمای روز + پیشنهادها از پلن‌های کلی.
  */
 const TABS: { view: ViewName; icon: 'home' | 'today' | 'event_note' | 'bar_chart' | 'settings'; label: string }[] = [
   { view: 'home', icon: 'home', label: 'خانه' },
   { view: 'myday', icon: 'today', label: 'امروز' },
-  { view: 'planned', icon: 'event_note', label: 'پلنر' },
+  { view: 'planned', icon: 'event_note', label: 'پلن‌ها' },
   { view: 'analytics', icon: 'bar_chart', label: 'آمار' },
   { view: 'settings', icon: 'settings', label: 'تنظیمات' },
 ];
