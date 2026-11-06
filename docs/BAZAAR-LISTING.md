@@ -16,7 +16,7 @@
 | مورد | مقدار |
 | --- | --- |
 | شناسه پکیج | `ir.hojre24shop.app` (در `mobile/capacitor.config.ts` و `mobile/android/app/build.gradle` قطعی شده) |
-| نسخه‌ی این بیلد | `versionCode 10` + `versionName "1.0.9"` (در `mobile/android/app/build.gradle` — APK آرتیفکت‌های Actions از این نسخه‌اند) |
+| نسخه‌ی این بیلد | `versionCode 11` + `versionName "1.0.10"` (در `mobile/android/app/build.gradle` — APK آرتیفکت‌های Actions از این نسخه‌اند) |
 | نام اپ روی گوشی | کارام |
 | وب‌سایت | https://app.hojre24shop.ir |
 | خط‌مشی حریم خصوصی | **`https://app.hojre24shop.ir/privacy/`** (صفحه‌ی مستقل — از v1.11.2) |
@@ -206,10 +206,10 @@ base64 karam-release.jks > karam-release.b64   # ویندوز: certutil -encode 
 
 - [x] ۱. ساخت `karam-release.jks` + ثبت ۴ Secret در GitHub ← **انجام شد (خودکار — ۱۴۰۵/۰۸/۰۴)**
 - [x] ۲. پوش ریپو به GitHub ← **انجام شد: `2cadcf2` (۲۸ کامیت)**
-- [x] ۳. ~~Run workflow~~ بیلد ابری موفق (۱۴۰۵/۰۸/۱۴ — run ۴۲۱۴۶۵۷۱۳۳۴) ← دانلود `karam-latest-apk` + `karam-bazaar-apk` از تب Actions (versionCode ۱۰ / 1.0.9 — شامل خلوت‌سازی A/B/C/D و v1.11.2)
+- [x] ۳. ~~Run workflow~~ بیلد ابری موفق (۱۴۰۵/۰۸/۱۴ — run ۴۲۱۴۶۵۷۱۳۳۴) ← دانلود `karam-latest-apk` + `karam-bazaar-apk` از تب Actions (versionCode ۱۱ / 1.0.10 — شامل چندروش ورود (موج‌های ۱ و ۲ + اصلاحیه))
 - [ ] ۴. نصب APK روی گوشی خودتان + تست ورود تلگرام و سینک (برای دیدن پرو/پرداخت: **`karam-latest.apk`** نصب کنید نه بیلد بازار)
 - [ ] ۵. دانلود `karam-latest.apk` ← آپلود public_html ← تست لینک
-- [ ] ۶. پنل ← تنظیمات ← `app_latest_version=1.0.9` + `app_update_url`
+- [ ] ۶. پنل ← تنظیمات ← `app_latest_version=1.0.10` + `app_update_url`
 - [ ] ۷. آپلود نسخه وب لندینگ (karam-landing.zip) + استقرار پک هاست v1.11.2 ← لینک حریم خصوصی `https://app.hojre24shop.ir/privacy/`
 - [ ] ۸. ثبت اپ در پنل بازار با متن‌های بخش ۴ ← آپلود **`karam-bazaar.apk`** ← ارسال بررسی
 - [ ] ۹. بعد از تأیید: کارت «کافه بازار» در لندینگ از «به‌زودی» به دکمه فعال تغییر کند

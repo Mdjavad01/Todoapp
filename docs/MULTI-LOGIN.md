@@ -2,7 +2,7 @@
 
 > شاخه: `feat/multi-login` — پایه: `431e131` (اصلاحیه v1.12.2)
 > انگیزه: گزارش کاربری که کد تأیید تلگرام برایش نمی‌آمد و هیچ بازخوردی نمی‌گرفت.
-> قرارداد نسخه: versionCode 10 / versionName 1.0.9 / APP_VERSION وب ۴.۵.۰ (4.5.0 — مقدار واقعی `frontend/src/views/SettingsView.tsx`) — در این شاخه تغییر نکرده است.
+> قرارداد نسخه: versionCode 11 / versionName 1.0.10 / APP_VERSION وب ۴.۵.۰ (4.5.0 — مقدار واقعی `frontend/src/views/SettingsView.tsx`) — در این شاخه تغییر نکرده است.
 
 ---
 
