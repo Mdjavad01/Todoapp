@@ -83,8 +83,61 @@ final class TelegramBot
         if ($parseMode !== null) {
             $body['parse_mode'] = $parseMode; // «HTML» → بلوک <code> مونو و لمس‌پذیر برای کپی
         }
-        [$status] = self::httpPostJson($url, (string) json_encode($body, JSON_UNESCAPED_UNICODE));
-        return $status === 200;
+        $payload = (string) json_encode($body, JSON_UNESCAPED_UNICODE);
+
+        [$status, $respBody, $err] = self::httpPostJson($url, $payload);
+        if ($status === 200) {
+            return true;
+        }
+        // موج ۱ (چندروش ورود) — نتیجه‌ی sendMessage هرگز بی‌صدا رد نمی‌شود:
+        // وضعیت HTTP و توضیح تلگرام در لاگ می‌رود؛ بدون متن پیام (کد خام) و بدون chat_id کامل.
+        self::logSendFailure($status, $respBody, $err, $chatId);
+
+        // فقط یک retry کوتاه — و فقط برای خطاهای گذرا (شبکه/۴۲۹/۵xx) که تلاش دوباره می‌تواند جواب دهد؛
+        // خطاهای دائمی (۴۰۳ = ربات بلاک شده، ۴۰۰، ۴۰۴) با تلاش دوباره درست نمی‌شوند و فقط لاگ را شلوغ می‌کنند.
+        if (self::retryableSendStatus($status)) {
+            usleep(800_000); // ۰٫۸ ثانیه — «کوتاه»
+            [$status, $respBody, $err] = self::httpPostJson($url, $payload);
+            if ($status === 200) {
+                return true;
+            }
+            self::logSendFailure($status, $respBody, $err, $chatId, true);
+        }
+        return false;
+    }
+
+    /** آیا برای این وضعیت HTTP تلاش دوباره معنا دارد؟ (۰ = اصلاً پاسخی نرسیده) */
+    private static function retryableSendStatus(int $status): bool
+    {
+        return $status === 0 || $status === 429 || $status >= 500;
+    }
+
+    /**
+     * لاگ شکست ارسال — موج ۱: کد وضعیت + توضیح تلگرام؛
+     * هرگز متن پیام (کد خام) و هرگز chat_id کامل در لاگ نمی‌رود.
+     */
+    private static function logSendFailure(int $status, ?string $body, string $curlErr, int|string $chatId, bool $isRetry = false): void
+    {
+        $desc = '';
+        $json = is_string($body) ? json_decode($body, true) : null;
+        if (is_array($json)) {
+            $desc = (string) ($json['description'] ?? '');
+        }
+        error_log('[karam][telegram] sendMessage ناموفق (' . ($isRetry ? 'retry' : 'اول') . '): HTTP ' . $status
+            . ($desc !== '' ? ' — ' . $desc : '')
+            . ($curlErr !== '' ? ' — cURL: ' . $curlErr : '')
+            . ' — chat=' . self::maskedChatId($chatId));
+    }
+
+    /** ماسک chat_id برای لاگ — فقط طول و دو نویسه‌ی ابتدا/انتهای عددی */
+    private static function maskedChatId(int|string $chatId): string
+    {
+        $s = (string) $chatId;
+        $len = strlen($s);
+        if ($len <= 2) {
+            return 'len=' . $len;
+        }
+        return substr($s, 0, 1) . '•••' . substr($s, -1) . ' (len=' . $len . ')';
     }
 
     /** بررسی اعتبار توکن ربات (پنل ادمین هنگام ذخیره‌ی توکن صدایش می‌زند) */
@@ -160,12 +213,16 @@ final class TelegramBot
             [$status, $body] = self::httpPostJson($url, '');
         }
         if ($status !== 200) {
-            error_log("[karam][telegram] getUpdates status={$status} body=" . var_export($body, true));
+            // موج ۱ — بدون dump بدنه‌ی خام (شامل chat_id است): فقط وضعیت + توضیح تلگرام
+            $json = is_string($body) ? json_decode($body, true) : null;
+            $desc = is_array($json) ? (string) ($json['description'] ?? '') : '';
+            error_log("[karam][telegram] getUpdates ناموفق: HTTP {$status}" . ($desc !== '' ? ' — ' . $desc : ''));
             return null;
         }
         $json = json_decode((string) $body, true);
         if (!is_array($json) || ($json['ok'] ?? false) !== true || !isset($json['result']) || !is_array($json['result'])) {
-            error_log("[karam][telegram] getUpdates JSON نامعتبر: " . var_export($body, true));
+            // موج ۱ — همان قاعده: بدون محتوای خام پیام‌ها در لاگ
+            error_log('[karam][telegram] getUpdates پاسخ نامعتبر داد (JSON/ok/result) — HTTP ' . $status);
             return null;
         }
         return $json['result'];
