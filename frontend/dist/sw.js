@@ -1,21 +1,20 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.06.03.32.18) */
-const CACHE_NAME = 'karam-cache-2026.11.06.03.32.18';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.06.05.49.23) */
+const CACHE_NAME = 'karam-cache-2026.11.06.05.49.23';
 const PRECACHE_URLS = [
-  "./.htaccess",
-  "./assets/base-BM_zkYZJ.js",
-  "./assets/index-Bolg4_I5.js",
-  "./assets/index-BuqW7kPP.js",
-  "./assets/index-C0Ya5UqF.js",
-  "./assets/index-D17-Aafk.js",
-  "./assets/index-DYlODxdT.js",
-  "./assets/index-DpqdSxeH.css",
-  "./assets/native-DdyPHlM4.js",
-  "./assets/web-1W4vcZsj.js",
-  "./assets/web-BCLCd5Q-.js",
-  "./assets/web-BVtNCTBw.js",
-  "./assets/web-BYDudcEL.js",
-  "./assets/web-DOyzubmA.js",
-  "./assets/web-DkY7-IDE.js",
+  "./assets/base-D4TgVbKP.js",
+  "./assets/index-556hwEqe.js",
+  "./assets/index-BARB_d_6.js",
+  "./assets/index-BUfFKt8_.js",
+  "./assets/index-BcQjzEug.css",
+  "./assets/index-C98BhhYU.js",
+  "./assets/index-RGLWX2oe.js",
+  "./assets/native-K9bxlsQv.js",
+  "./assets/web-CNX18Ghs.js",
+  "./assets/web-CcU9Ppgo.js",
+  "./assets/web-CfZz7Zvn.js",
+  "./assets/web-CrynhVPb.js",
+  "./assets/web-DdLVnNUR.js",
+  "./assets/web-DqsGaxm6.js",
   "./fonts/Vazirmatn-Variable.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.svg",
@@ -25,7 +24,9 @@ const PRECACHE_URLS = [
   "./index.html",
   "./manifest.webmanifest",
   "./privacy/index.html",
-  "./terms/index.html"
+  "./privacy/style.css",
+  "./terms/index.html",
+  "./terms/style.css"
 ];
 
 self.addEventListener('install', (event) => {
