@@ -47,3 +47,16 @@ export const rulesPayment: string =
 /** خط پشتیبانی (TermsSheet) */
 export const supportIntro: string =
   'مشکل در پرداخت، حذف حساب یا هر سؤال دیگر؟ از همین راه‌ها پیام بدهید؛ سریع جواب می‌گیرید.';
+
+/* ---- موج ۲ — کارت «روش‌های ورود» (AccountSheet) — بدون معنای پرداختی؛ هر دو شاخه یکسان ---- */
+/** عنوان کارت روش‌های ورود */
+export const methodsCardTitle: string = 'روش‌های ورود';
+/** توضیح یک‌خطی زیر دکمه‌ی اتصال برای تک‌روشی‌ها */
+export const methodsConnectHint: string =
+  'با اتصال هر دو، اگر یکی کد نفرستاد، از دیگری وارد می‌شوی.';
+/** دکمه‌ی اتصال ایمیل (برای حساب تک‌روش تلگرامی) */
+export const methodsConnectEmail: string = 'اتصال ایمیل';
+/** دکمه‌ی اتصال تلگرام (برای حساب تک‌روش ایمیلی) */
+export const methodsConnectTelegram: string = 'اتصال تلگرام';
+/** لینک «بعداً» — نشان ۳۰ روز خواب می‌شود (pref محلی methods-snooze-v1) */
+export const methodsLaterLabel: string = 'بعداً';
