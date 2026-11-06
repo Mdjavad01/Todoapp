@@ -18,6 +18,54 @@
 
 ## [1.12.0] — موج ممیزی پیش از کافه‌بازار (K-01/K-02/M-01…M-08 — بدون SQL)
 
+> درخواست صاحب محصول: «گام‌های اصلاحی ممیزی پیش از بازار + اصلاحیه» — اجرای کامل روی شاخه‌ی `fix/pre-bazaar-audit` (۹ کامیت). تصمیم K-01 = مسیر الف (نسخه‌ی بازار بدون پرداخت می‌ماند؛ Poolakey ساخته نمی‌شود). هیچ SQL جدیدی؛ versionCode 10 / versionName 1.0.9 / BACKUP_VERSION 1 دست‌نخورده؛ APP_VERSION وب → ۴٫۵٫۰ (جدول نگاشت در سر همین فایل).
+
+### امنیت (K-02 — htaccess واحد روت)
+- `frontend/public/.htaccess` حذف؛ محتوای کش/فشرده‌سازی آن (Deflate + Expires + immutable یک‌ساله + Options -Indexes) به `deploy/.htaccess` ادغام شد — یک فایل واحد: HTTPS ۳۰۱ + CSP سخت‌گیرانه + nosniff/Referrer-Policy/Permissions-Policy + سد diag/install/.sql/.env + کش. هر دو اسکریپت پک از `deploy/.htaccess` کپی می‌کنند.
+- **HSTS rollout تدریجی:** `max-age=31536000; includeSubDomains` → `max-age=300` (بدون includeSubDomains/preload) — مستند: پس از چند روز تأیید سالم به ۳۱۵۳۶۰۰۰ افزایش یابد (نصب.txt بخش ج).
+- **رفع دو شکست CSP کشف‌شده در ممیزی:** (۱) صفحات `/privacy/` و `/terms/` بلوک `<style>` inline داشتند که با `style-src 'self'` بی‌استایل می‌شدند — CSS به فایل خارجی (`style.css` همان پوشه) منتقل شد + صفت inline جدول هم کلاس شد؛ (۲) پیام noscript در `index.html` صفت style داشت — کلاس `.noscript-tip` در global.css.
+- **رفع باگ کشف‌شده‌ی سرویس‌ورکر:** `generate-sw.mjs` فایل‌های نقطه‌دار (مثل `.htaccess`) را precache می‌کرد که با htaccess نو (سد dotfile) نصب SW کلاً می‌شکست — فیلتر dotfile اضافه شد.
+
+### امنیت (M-06 — حذف ژورنال دیسکی OTP)
+- `Otp::recordIssued` + `issuedPath` + `lastIssuedFor` + `lastIssuedForTicket` + `searchIssued` حذف؛ `createCode` دیگر هیچ فایلی نمی‌نویسد — کد خام فقط به کانال کاربر می‌رود و در DB فقط hash می‌ماند.
+- `TelegramBot::linkChatToTicket` دیگر recordIssued نمی‌زند؛ `AccountDeletion::scrubIssuedOtpJournal` حذف شد.
+- `AdminController::otpShortcutTelegramPoll` دیگر کد را برنمی‌گرداند — فقط status + note (مرجع کد = چت تلگرام کاربر). شورتکد ایمیل/پیامک بدون تغییر (کد در پاسخ ادمین، نه روی دیسک). پنل `OtpLogin.tsx` با رفتار نو هم‌ساز + متن صادقانه.
+- **تست نو `tests/otp-no-disk-test.php`** (۵ بخش، بدون سرور): createCode (ورود/حذف حساب) و createTicket صفر اثر دیسکی (اسنپ‌شات storage غیر-DB) + کد خام در هیچ فایل متنی storage نیست + DB فقط hash. `tests/phase45-test.php` با رفتار نو هم‌ساز شد + دو بررسی نو M-06.
+
+### صداقت (K-01/M-03 — مسیر الف)
+- `docs/BAZAAR-LISTING.md`: بلوک «■ پرداخت» و «■ کارام پرو» و «۷ روز پرو رایگان» و درگاه/کارت‌به‌کارت حذف؛ بلوک «■ رایگان» (این نسخه خرید درون‌برنامه‌ای ندارد)؛ «روتیس تریدر» → «چک‌لیست معامله‌گری»؛ آیکن ۵۱۲ → `frontend/public/icons/icon-512.png`؛ نسخه‌ها → versionCode ۱۰/1.0.9؛ لینک /privacy/ در همه‌ی فیلدهای فرم؛ پیشنهاد اسکرین‌شات فقط قابلیت‌های واقعاً رایگان.
+- **بخش نو ۴-الف — گزارش اسکن «فروش پرو در باندل بازار»:** پنج متن بدون گارد می‌رسند (کارت ارتقای تنظیمات، چیپ/دکمه‌ی قالب‌ها، سربرگ قالب‌ها، قفل تحلیل عمقی، بندهای پرداخت قوانین درون‌اپ) + رفرال گارد سمت-سرور + تصمیم M-05 (پرو سمت کلاینت — فقط سند) + بن‌بست UX شناخته‌شده برای موج بعد.
+- `PaywallView.bazaar.tsx`: «پلن‌های زیر» (هر دو جمله) → «در این نسخه خرید انجام نمی‌شود؛ کد هدیه دارید؟» + پیام کد هدیه معتبر → «در نسخه‌ی کامل کارام (karam-latest از سایت) قابل استفاده است».
+- **درصد تخفیف واقعی:** ۶۰٪ → «حدود ۶۸٪» (۱۹۰٬۰۰۰ در برابر ۵۸۸٬۰۰۰) — در seed پلن سالانه (install.sql + install.sqlite.sql)، فال‌بک/بج PaywallView.tsx و بج لندینگ.
+
+### امنیت (M-01 — FileProvider)
+- `file_paths.xml`: `external-path` (کل حافظه‌ی خارجی) و `cache-path` کل cache حذف؛ فقط `<cache-path name="share" path="karam-share/" />`.
+- `saveFile.ts`: مقصد اشتراک → `cache/karam-share/<name>` + `mkdir recursive` قبل از نوشتن (پلاگین @capacitor/filesystem ۷.۱.۹ پوشه‌ی والد نمی‌سازد — بازبینی سورس کاتلین). تست `savefile.test.ts` هم‌ساز شد (mkdir + مسیر نو).
+
+### شفافیت (M-02)
+- بند نو «بکاپ و یادآور تلگرامی (اختیاری — پیش‌فرض خاموش)» در `/privacy/` (بخش ۴ با شماره‌گذاری مجدد) و `/terms/` (بند ۸) و `TermsSheet.tsx` (درون‌اپ): چه داده‌ای (کپی کامل دیتابیس / عنوان حداکثر ۳ کار عقب‌افتاده)، به کجا (چت ادمین/خود کاربر)، رمزگذاری‌نشده، فقط با کلید پنل، قابل خاموش‌کردن. تاریخ به‌روزرسانی صفحات → ۱۴۰۵/۰۸/۱۵.
+- پیش‌فرض‌های راستی‌آزمایی‌شده: `backup_telegram_chat=''` + `reminder_enabled='0'` در seedها. `trial_enabled` seed نصب نو: `'0'→'1'` (هم‌تراز sqlite؛ فقط نصب‌های تازه).
+
+### پک تمیز (m-06/m-09)
+- کلیدهای صفحه‌ی وضعیت سه کرون باقی‌مانده هم از `.env` خوانده می‌شوند (الگوی backup-db.php، hash_equals، پیش‌فرض سازگار با عقب): `RETENTION_CHECK_KEY` / `TELEGRAM_POLL_CHECK_KEY` / `REMINDER_CHECK_KEY` (+ `BACKUP_CHECK_KEY` از قبل).
+- `__FILE__` (نشتی مسیر مطلق سرور) از هر دو صفحه‌ی وضعیت وب حذف شد → قالب مسیر نسبی + ارجاع به راهنما.
+- `build-host-pack.sh`: پوشه‌ی SQLهای داخل پک `deploy/` → `deploy-sql/` (فقط مرجع) + htaccess سد کامل داخل خودش — نصب.txt صریح: «روی هاست آپلود نشود».
+- `tests/zibal-mock-state.json` از گیت خارج شد + `.gitignore`.
+
+### CI (M-08)
+- `android-build.yml`: گام `bun test` فرانت **قبل از هر بیلد** — شکست تست = شکست workflow و هیچ APK ای صادر نمی‌شود. + توصیه‌شده: PHP 8.2 (pdo_sqlite) و اجرای `otp-no-disk-test.php` + `trust-test.php` روی sqlite (تا تأیید اولین اجرا continue-on-error).
+
+### اسناد و نسخه‌ها (m-03/m-05/m-09/m-10/m-11/m-12)
+- جدول نگاشت نسخه‌ها در سر CHANGELOG (مرجع واحد) + README «نسخه‌ی فعلی» → ارجاع به CHANGELOG [1.12.0].
+- `backend/.env.example`: APP_VERSION → `1.12.0` + بلوک نیازمندی‌های PHP (8.1+، mbstring، pdo_mysql، json، curl) + چهار کلید check کرون. `docs/INSTALL.md`: فهرست افزونه‌های PHP.
+- APP_VERSION وب: `4.4.0` → `4.5.0` (SettingsView — تصمیم محافظه‌کارانه؛ ۵٫۰٫۰ در اختیار مالک).
+
+### تست
+- ۳۱۵ تست فرانت سبز (۳۱۴ قبلی + هم‌سازی savefile با M-01) + ۲۲۵ بررسی e2e در ۸ سوئیت (۲۰+۲۷+۳۸+۱۳+۳۳+۲۷+۶۱+۶) + تایپ‌چک تمیز + بیلد وب/پنل نو (dist بدون dotfile، SW بدون htaccess در precache، style.css خارجی صفحات).
+- PHP محلی در دسترس نیست — دو تست PHP (`otp-no-disk-test` + `trust-test`) نیازمند محیط PHP/CI (گام CI اضافه شد؛ PHP تغییرات این موج: Otp/TelegramBot/AccountDeletion/AdminController/کرون‌ها).
+- پک تجمعی: `karam-host-update-v1.12.0.zip` با `scripts/build-host-pack.sh` (گارد درخت تمیز + CHECKSUMS + گارد mojibake) + `README-نصب-v1.12.0.md` + `نصب.txt` نو (بخش «تست پس از نصب» با curl -sI + پاک‌سازی ژورنال + یادداشت افزایش HSTS).
+- **نیازمند تست شما:** آپلود پک روی هاست (بخش ج راهنما)، نصب و اشتراک بکاپ با APK نو روی گوشی، فرم کافه‌بازار.
+
 ## [1.11.3] — نصب سریع وب‌اپ + بنر بروزرسانی خودکار + لوگوی رسمی لندینگ (بدون SQL)
 
 > سه درخواست صاحب محصول. فقط وب‌اپ + لندینگ؛ api و panel نسبت به v1.11.2 بدون تغییر؛ versionCode 10 / APP_VERSION 4.4.0 / BACKUP_VERSION 1 دست‌خورده.

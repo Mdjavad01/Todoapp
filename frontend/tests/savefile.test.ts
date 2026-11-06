@@ -20,6 +20,7 @@ const nativeState = { native: false };
 
 /** ثبت فراخوانی‌های پلاگین‌های بومی */
 const calls = {
+  mkdir: [] as Array<{ path: string; directory: unknown; recursive: unknown }>,
   writeFile: [] as Array<{ path: string; data: string; directory: unknown; encoding: unknown }>,
   share: [] as Array<{ title?: string; url?: string; dialogTitle?: string }>,
 };
@@ -44,6 +45,10 @@ mock.module('@/lib/native', () => ({
 
 mock.module('@capacitor/filesystem', () => ({
   Filesystem: {
+    mkdir: async (opts: { path: string; directory: unknown; recursive?: unknown }) => {
+      calls.mkdir.push(opts);
+      return {};
+    },
     writeFile: async (opts: { path: string; data: string; directory: unknown; encoding: unknown }) => {
       calls.writeFile.push(opts);
       return { uri: writeUriImpl(opts.path) };
@@ -80,6 +85,7 @@ const { saveFileForUser, shareSuccessText } = await import('@/lib/saveFile');
 
 beforeEach(() => {
   nativeState.native = false;
+  calls.mkdir.length = 0;
   calls.writeFile.length = 0;
   calls.share.length = 0;
   anchorStubs.length = 0;
@@ -100,13 +106,18 @@ describe('saveFileForUser — شاخه‌ی وب', () => {
 });
 
 describe('saveFileForUser — شاخه‌ی بومی (اپ اندروید)', () => {
-  test('بومی: فایل در Cache با UTF8 نوشته و Share با file:// باز می‌شود', async () => {
+  test('بومی: mkdir زیرمسیر + فایل در cache/karam-share/ با UTF8 نوشته و Share با file:// باز می‌شود (M-01)', async () => {
     nativeState.native = true;
     const content = JSON.stringify({ app: 'karam', kind: 'backup' });
     const out = await saveFileForUser('karam-backup-2026-01-05-1130.json', content);
     expect(out).toEqual({ ok: true, canceled: false, method: 'share' });
+    // v1.12.0 (M-01) — زیرمسیر اختصاصی قبل از نوشتن ساخته می‌شود (پلاگین والد نمی‌سازد)
+    expect(calls.mkdir.length).toBe(1);
+    expect(calls.mkdir[0].path).toBe('karam-share');
+    expect(calls.mkdir[0].directory).toBe('CACHE');
+    expect(calls.mkdir[0].recursive).toBe(true);
     expect(calls.writeFile.length).toBe(1);
-    expect(calls.writeFile[0].path).toBe('karam-backup-2026-01-05-1130.json');
+    expect(calls.writeFile[0].path).toBe('karam-share/karam-backup-2026-01-05-1130.json');
     expect(calls.writeFile[0].data).toBe(content);
     expect(calls.writeFile[0].directory).toBe('CACHE');
     expect(calls.writeFile[0].encoding).toBe('utf8');
