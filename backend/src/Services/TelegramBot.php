@@ -396,6 +396,16 @@ final class TelegramBot
     {
         $now = gmdate('Y-m-d H:i:s');
 
+        // ج) محدودسازی ارسال به‌ازای chat_id — همان سیاست OTP: فاصله‌ی حداقلی بین دو کد +
+        //    سقف ساعتی برای هر چت. (IP اینجا معنا ندارد؛ ارسال از سمت سرور است.)
+        //    پیش از این، هیچ سقفی روی تعداد کد به‌ازای هر چت نبود.
+        $limit = Otp::checkRateLimit($pdo, 'telegram', (string) $chatId, '');
+        if (!$limit['ok']) {
+            error_log('[karam][telegram] اتصال بلیت ' . $ticket . ' به chat=' . self::maskedChatId($chatId)
+                . ' به‌ازای محدودیت نرخ رد شد: ' . $limit['reason']);
+            return; // بدون ساخت کد و بدون پیام — بلیت همان وضعیت قبلی‌اش را نگه می‌دارد
+        }
+
         $pdo->beginTransaction();
         try {
             // دوباره بررسی می‌کنیم که بلیت هنوز زنده است (مسابقه‌ی دو poll)
