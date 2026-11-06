@@ -97,6 +97,20 @@ jobs:
           sleep 2
           php tests/multi-login-wave1-test.php || { echo '--- php-error.log (ریشه‌یابی) ---'; tail -40 backend/storage/logs/php-error.log || true; exit 1; }
 
+      # موج ۲ چندروش ورود — تست یکپارچه‌ی اتصال روش دوم (ایمیل/تلگرام) به حساب
+      # (همان مک تلگرام گام قبل؛ env اختصاصی + ری‌استارت سرور: Config در هر پروسه یک‌بار .env را می‌خواند)
+      - name: اجرای تست موج ۲ اتصال روش دوم (مک تلگرام — sqlite)
+        if: runner.os == 'Linux'
+        run: |
+          SECRET=$(openssl rand -hex 32)
+          printf 'APP_ENV="local"\nAPP_SECRET="%s"\nOTP_DEBUG="1"\nOTP_TTL_MINUTES="5"\nOTP_RESEND_AFTER="1"\nOTP_MAX_ATTEMPTS="3"\nOTP_MAX_PER_HOUR="10"\nOTP_MAX_PER_IP_HOUR="500"\nOTP_TICKET_MAX_SEND_ATTEMPTS="3"\nDB_DRIVER="sqlite"\nSQLITE_PATH="%s/backend/storage/karam-wave2.sqlite3"\nMAIL_TRANSPORT="log"\nTELEGRAM_BOT_TOKEN="123456:WAVE1LOCALTESTtoken"\nTELEGRAM_BOT_USERNAME="KaramWave1Bot"\nTELEGRAM_API_BASE="http://127.0.0.1:8098"\n' "$SECRET" "$GITHUB_WORKSPACE" > backend/.env
+          rm -f backend/storage/karam-wave2.sqlite3 backend/storage/cache/telegram-updates.json
+          pkill -f "php -S 127.0.0.1:8099" || true
+          sleep 1
+          php -S 127.0.0.1:8099 -t backend/public >/tmp/php-server-wave2.log 2>&1 &
+          sleep 2
+          php tests/multi-login-wave2-test.php || { echo '--- php-error.log (ریشه‌یابی) ---'; tail -40 backend/storage/logs/php-error.log || true; exit 1; }
+
       - name: نصب وابستگی‌های موبایل
         working-directory: mobile
         run: bun install --frozen-lockfile
