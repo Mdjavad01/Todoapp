@@ -209,7 +209,7 @@ base64 karam-release.jks > karam-release.b64   # ویندوز: certutil -encode 
 - [x] ۳. ~~Run workflow~~ بیلد ابری موفق (۱۴۰۵/۰۸/۱۴ — run ۴۲۱۴۶۵۷۱۳۳۴) ← دانلود `karam-latest-apk` + `karam-bazaar-apk` از تب Actions (versionCode ۱۱ / 1.0.10 — شامل چندروش ورود (موج‌های ۱ و ۲ + اصلاحیه))
 - [ ] ۴. نصب APK روی گوشی خودتان + تست ورود تلگرام و سینک (برای دیدن پرو/پرداخت: **`karam-latest.apk`** نصب کنید نه بیلد بازار)
 - [ ] ۵. دانلود `karam-latest.apk` ← آپلود public_html ← تست لینک
-- [ ] ۶. پنل ← تنظیمات ← `app_latest_version=1.0.10` + `app_update_url`
-- [ ] ۷. آپلود نسخه وب لندینگ (karam-landing.zip) + استقرار پک هاست v1.11.2 ← لینک حریم خصوصی `https://app.hojre24shop.ir/privacy/`
+- [ ] ۶. پنل ← تنظیمات ← `app_latest_version=1.0.10` + `app_update_url` (همان 1.0.10 اپ جاری — فقط بعد از آپلود APK عوض شود)
+- [ ] ۷. استقرار پک هاست v1.12.4 (چندروش ورود) + لینک حریم خصوصی `https://app.hojre24shop.ir/privacy/`
 - [ ] ۸. ثبت اپ در پنل بازار با متن‌های بخش ۴ ← آپلود **`karam-bazaar.apk`** ← ارسال بررسی
 - [ ] ۹. بعد از تأیید: کارت «کافه بازار» در لندینگ از «به‌زودی» به دکمه فعال تغییر کند
