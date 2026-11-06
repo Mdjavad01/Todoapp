@@ -17,6 +17,7 @@ import {
   type AuthChannels,
 } from '@/sync/auth';
 import { fetchReferral, redeemReferral, referralShareText, type ReferralInfo } from '@/sync/referral';
+import { referralShareLabel, referralShareAria } from '@/lib/bazaarTexts';
 
 /**
  * شیت «حساب کاربری و سینک» — فاز ۳ (فاز ۵: بله ← تلگرام)
@@ -443,10 +444,10 @@ export function AccountSheet() {
                   type="button"
                   className="shrink-0 rounded-xl bg-surface-container dark:bg-slate-700 text-on-surface dark:text-slate-100 px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform flex items-center gap-1"
                   onClick={shareReferral}
-                  aria-label="اشتراک کد دعوت در تلگرام"
+                  aria-label={referralShareAria}
                 >
                   <Icon name="send" size={15} />
-                  اشتراک
+                  {referralShareLabel}
                 </button>
               </div>
               <p className="text-[11px] leading-5 text-on-surface-variant">

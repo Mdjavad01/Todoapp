@@ -2,7 +2,7 @@
 
 وب‌اپ **فارسی و راست‌به‌چپ (RTL)** لیست کارها و چک‌لیست برای دامنه‌ی `app.hojre24shop.ir` — کاملاً آفلاین، بدون هیچ وابستگی به CDN خارجی، آماده‌ی تبدیل به اپ اندروید (PWA).
 
-> نسخه‌ی فعلی: **۱.۱۲.۰** (موج ممیزی پیش از کافه‌بازار — جزئیات: CHANGELOG [1.12.0]) — جدول نگاشت نسخه‌ها (CHANGELOG ↔ APP_VERSION ↔ versionCode/versionName ↔ BACKUP_VERSION ↔ پک) در سرِ فایل CHANGELOG.md نگهداری می‌شود.
+> نسخه‌ی فعلی: **۱.۱۲.۱** (اصلاحیه‌ی صداقت باندل بازار + سخت‌گیری CI — جزئیات: CHANGELOG [1.12.1]) — جدول نگاشت نسخه‌ها (CHANGELOG ↔ APP_VERSION ↔ versionCode/versionName ↔ BACKUP_VERSION ↔ پک) در سرِ فایل CHANGELOG.md نگهداری می‌شود.
 
 ---
 
@@ -137,6 +137,16 @@ bun run build      # خروجی → dist/ (آپلود در /panel هاست)
 > پیش‌نیاز: Node.js 18+ یا Bun. سرور به Node نیازی ندارد — فقط خروجی `dist` (اپ) و `admin/dist` (پنل) آپلود می‌شود.
 
 ## 📦 استقرار روی هاست (خلاصه)
+
+**اسکریپت رسمی ساخت پک استقرار: `scripts/build-host-pack.sh`** — تنها مسیر تحویل نسخه‌ها (قرارداد تحویل از v1.10):
+هر انتشار = یک پک کامل و مستقل (`karam-host-update-vN.N.zip`) شامل اپ + پنل + API + همه‌ی SQLها (نسخه‌ای + تجمعی + install) + راهنمای رسمی (`README-نصب.md` + `نصب.txt`) + `CHECKSUMS.sha256`. اسکریپت پک فقط از درخت گیتِ تمیز می‌سازد، htaccess سدگر روت و `deploy-sql/` سدشده را خودش می‌گذارد و خروجی را با استخراج + `sha256sum -c` راستی‌آزمایی می‌کند:
+
+```bash
+# پیش‌نیاز: scripts/README-نصب-vN.N.md + بیلد تازه‌ی frontend/dist و frontend/admin/dist
+bash scripts/build-host-pack.sh v1.12.1   # خروجی: <مخزن>/../public/karam-host-update-v1.12.1.zip
+```
+
+> نسخه‌ی APK (کافه‌بازار + سایت) با workflow «بیلد اندروید کارام» در GitHub Actions ساخته می‌شود — بیلد دوگانه‌ی `karam-latest.apk` (پرداخت‌دار) و `karam-bazaar.apk` (بدون پرداخت، با اسکن صداقت باندل).
 
 راهنمای کامل در [`docs/INSTALL.md`](docs/INSTALL.md) آمده است. خلاصه:
 

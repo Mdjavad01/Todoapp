@@ -5,12 +5,15 @@ import { useAppStore } from '@/store/useAppStore';
 import { TEMPLATES } from '@/db/catalog';
 import { JOB_PACKS, packItemCount, PACK_REPEAT_NOTICE, isPackActive } from '@/db/jobPacks';
 import { toFa } from '@/lib/format';
+import { templatesSubtitle, proSectionTitle, packTierChip, unlockCta } from '@/lib/bazaarTexts';
 import type { JobPackDef, JobPackItem, JobPackList } from '@/types';
 
 /**
  * بسته C — صفحه‌ی واحد «قالب‌ها» (ادغام TemplatesView و JobKitsView سابق):
  *  - بخش «رایگان برای همه»: ۴ قالب کاتالوگ (سوپرمارکت، کنکور، سفر، خانه‌تکانی) با برچسب «رایگان»
  *  - بخش «مخصوص کارام پرو»: چک‌لیست تریدر (قفل کلاینت TRADER_REQUIRES_PRO) + ۳ بسته‌ی شغلی با برچسب «پرو»
+ * v1.12.1 — متن‌های وابسته به پرو با گارد زمان بیلد از lib/bazaarTexts می‌آیند؛ در بیلد بازار
+ * صادقانه «کد هدیه» می‌شوند (مثلاً «بازکردن با کد هدیه») و بیلد latest بدون تغییر.
  * تنها ورود به این صفحه: «لیست جدید ← یا از قالب‌های آماده شروع کنید» — ردیف‌های تنظیمات حذف شدند و
  * کارت ارتقا به پرو (تنظیمات/آمار) به همین صفحه راه می‌برد.
  */
@@ -48,7 +51,7 @@ export function TemplatesView() {
     <section className="p-margin flex flex-col gap-4" id="view-templates">
       <InnerHeader
         title="قالب‌ها"
-        subtitle="چک‌لیست‌های آماده برای شروع سریع — رایگان‌ها برای همه؛ فعال‌سازی بسته‌های پرو مخصوص کارام پرو"
+        subtitle={templatesSubtitle}
       />
 
       {/* بخش رایگان — ۴ قالب کاتالوگ */}
@@ -90,7 +93,7 @@ export function TemplatesView() {
       {/* بخش پرو — چک‌لیست تریدر + ۳ بسته‌ی شغلی */}
       <h2 className="text-label-lg font-black text-on-surface dark:text-inverse-on-surface flex items-center gap-1.5">
         <Icon name="workspace_premium" size={18} className="text-secondary" />
-        مخصوص کارام پرو
+        {proSectionTitle}
       </h2>
       <div className="flex flex-col gap-3" id="templates-pro">
         {/* چک‌لیست تریدر — قفل کلاینت TRADER_REQUIRES_PRO؛ فعالِ قبلی/پرو/بیلد بازار = دسترسی کامل */}
@@ -194,9 +197,9 @@ function PackCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <h3 className="text-headline-sm font-bold">{pack.title}</h3>
-            {/* بسته C — برچسب سطح بسته (بعد از فعال‌سازی، چیپ «فعال است» کنارش می‌آید) */}
+            {/* بسته C — برچسب سطح بسته (بعد از فعال‌سازی، چیپ «فعال است» کنارش می‌آید) — v1.12.1: متن از bazaarTexts */}
             <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-secondary/15 text-secondary shrink-0">
-              پرو
+              {packTierChip}
             </span>
           </div>
           <p className="text-xs text-outline">{pack.subtitle}</p>
@@ -262,7 +265,7 @@ function PackCard({
           data-pack-locked={pack.id}
         >
           <Icon name="lock" size={14} />
-          بازکردن با کارام پرو
+          {unlockCta}
         </button>
       )}
 

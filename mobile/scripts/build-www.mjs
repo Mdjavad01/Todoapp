@@ -6,10 +6,11 @@
  *
  * اجرا:  bun run build:www   یا   API_BASE="https://app.hojre24shop.ir/api" bun run build:www
  */
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyBazaarStaticTransform, assertNoBazaarForbiddenWords } from './bazaar-static-pages.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mobileRoot = join(here, '..');
@@ -40,6 +41,20 @@ const res = spawnSync('bunx', ['vite', 'build', '--outDir', 'dist-mobile', '--em
 if (res.status !== 0) {
   console.error('✗ بیلد وب ناموفق بود');
   process.exit(res.status ?? 1);
+}
+
+// v1.12.1 — بیلد بازار: صفحات ایستای /terms/ و /privacy/ هم صادق می‌شوند (بدون بند پرداخت).
+// fail-loud: نشانه‌ی ناموجود = شکست بیلد، هرگز بی‌صدا نه.
+if (PAYMENTS_BUILD === 'off') {
+  const pagesDir = join(outDir);
+  for (const page of ['terms', 'privacy']) {
+    const file = join(pagesDir, page, 'index.html');
+    const before = readFileSync(file, 'utf8');
+    const after = applyBazaarStaticTransform(before, page);
+    assertNoBazaarForbiddenWords(after, page);
+    writeFileSync(file, after);
+    console.log(`✅ تبدیل صداقت بازار روی /${page}/ اعمال شد (بدون واژه‌های پرداخت)`);
+  }
 }
 
 rmSync(wwwDir, { recursive: true, force: true });

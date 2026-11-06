@@ -59,10 +59,12 @@ jobs:
 
       - name: اجرای تست‌های PHP (trust + otp-no-disk — sqlite)
         if: runner.os == 'Linux'
-        continue-on-error: true
         run: |
           SECRET=$(openssl rand -hex 32)
-          printf 'APP_ENV="local"\nAPP_SECRET="%s"\nOTP_DEBUG="1"\nDB_DRIVER="sqlite"\nSQLITE_PATH="%s/backend/storage/karam-ci.sqlite3"\nMAIL_TRANSPORT="log"\n' "$SECRET" "$GITHUB_WORKSPACE" > backend/.env
+          # v1.12.1 — کلیدهای سقف OTP با مقادیر محیط سبزِ محلی هم‌خوان شدند؛ بدون آن‌ها
+          # پیش‌فرض OTP_RESEND_AFTER=60s درخواست دوم loginEmail را رد می‌کند → توکن خالی
+          # → FOREIGN KEY در trust-test:265 (شکست پنهان زیر continue-on-error تا v1.12.0)
+          printf 'APP_ENV="local"\nAPP_SECRET="%s"\nOTP_DEBUG="1"\nOTP_TTL_MINUTES="5"\nOTP_RESEND_AFTER="1"\nOTP_MAX_ATTEMPTS="3"\nOTP_MAX_PER_HOUR="10"\nOTP_MAX_PER_IP_HOUR="500"\nDB_DRIVER="sqlite"\nSQLITE_PATH="%s/backend/storage/karam-ci.sqlite3"\nMAIL_TRANSPORT="log"\n' "$SECRET" "$GITHUB_WORKSPACE" > backend/.env
           php -S 127.0.0.1:8099 -t backend/public >/tmp/php-server.log 2>&1 &
           sleep 2
           php tests/otp-no-disk-test.php
@@ -133,6 +135,18 @@ jobs:
       - name: ساخت بسته‌ی وب — حالت bazaar (پرداخت حذف از باندل)
         working-directory: mobile
         run: bun run build:www:bazaar
+
+      # v1.12.1 — سد صداقت باندل بازار: هیچ واژه‌ی پرداختی (درگاه/کارت‌به‌کارت/ارتقا به کارام پرو/زیبال)
+      # در JS/HTML باندل بازار نباشد — شکست گام = شکست workflow و هیچ APK بازارِ پرداخت‌دار ساخته نمی‌شود
+      - name: اسکن صداقت باندل بازار (بدون واژه‌های پرداخت)
+        run: |
+          MISSED=$(grep -rlE 'درگاه|کارت‌به‌کارت|کارت به کارت|ارتقا به کارام پرو|زیبال' mobile/www/assets mobile/www/terms mobile/www/privacy 2>/dev/null || true)
+          if [ -n "$MISSED" ]; then
+            echo '✗ واژه‌های پرداخت در باندل بازار پیدا شد — ساخت رد شد:' >&2
+            echo "$MISSED" >&2
+            exit 1
+          fi
+          echo '✅ باندل بازار پاک است — هیچ واژه‌ی پرداختی در JS/HTML نیست'
 
       - name: همگام‌سازی Capacitor — حالت bazaar
         working-directory: mobile

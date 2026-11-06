@@ -2,23 +2,48 @@
 
 فرمت بر اساس [Keep a Changelog](https://keepachangelog.com/) و نسخه‌گذاری معنایی (SemVer).
 
-## جدول نگاشت نسخه‌ها (مرجع قطعی — v1.12.0)
+## جدول نگاشت نسخه‌ها (مرجع قطعی — v1.12.1)
 
 > فقط همین جدول مرجع است؛ بقیه‌ی اسناد به آن ارجاع می‌دهند. تغییری در این جدول = تغییر در همین‌جا.
 
 | سند / محل | مقدار فعلی | توضیح |
 | --- | --- | --- |
-| CHANGELOG | `[1.12.0]` | نسخه‌ی انتشار (موج ممیزی پیش از کافه‌بازار) |
+| CHANGELOG | `[1.12.1]` | نسخه‌ی انتشار (اصلاحیه‌ی صداقت باندل بازار — پیش از ادغام) |
 | نسخه‌ی وب‌اپ (APP_VERSION در `SettingsView.tsx`) | `4.5.0` | نسخه‌ی نمایشی اپ وب (تصمیم مالک: ۴٫۵٫۰ — رشد به ۵٫۰٫۰ در اختیار مالک) |
-| APP_VERSION در `backend/.env` | `1.12.0` | نسخه‌ی استقرار هاست (هم‌نسخه‌ی CHANGELOG/پک) |
+| APP_VERSION در `backend/.env` | `1.12.0` | نسخه‌ی استقرار هاست فعلی روی سرور (پک جدید: v1.12.1) |
 | APK `versionCode` / `versionName` | `10` / `1.0.9` | در `mobile/android/app/build.gradle` — قبل از انتشار بازار +۱/بالا |
 | `BACKUP_VERSION` | `1` | فرمت فایل بکاپ |
-| پک هاست | `karam-host-update-v1.12.0.zip` | خروجی `scripts/build-host-pack.sh` |
+| پک هاست | `karam-host-update-v1.12.1.zip` | خروجی `scripts/build-host-pack.sh` (اسکریپت رسمی واحد) |
 | `app_latest_version` پنل (اعلام APK) | `1.0.9` | پنل ← تنظیمات ← به‌روزرسانی اپ — فقط بعد از انتشار APK نو عوض شود |
+
+## [1.12.1] — اصلاحیه‌ی صداقت باندل بازار + سخت‌گیری CI (پیش از ادغام — بدون SQL)
+
+> درخواست صاحب محصول: «پرامپت اصلاحی نهایی پیش از ادغام» — فقط شاخه‌ی `fix/pre-bazaar-audit`؛ هیچ push/ادغامی به main نشده است. versionCode 10 / versionName 1.0.9 / BACKUP_VERSION 1 / APP_VERSION وب ۴٫۵٫۰ دست‌نخورده.
+
+### صداقت متن‌های «پرو» در بیلد بازار (مهم‌ترین مورد)
+- **خزانه‌ی واحد متن‌ها `frontend/src/lib/bazaarTexts.ts` (نو):** هر متن وابسته به پرداخت/ارتقا با جفت شاخه‌ی `bazaar/latest` در `TEXT_VARIANTS` — گارد زمان بیلد `BAZAAR_BUILD` از ثابت نو `__KARAM_BAZAAR__` (define در `vite.config.ts`) می‌آید؛ esbuild شاخه‌ی مرده را از باندل حذف می‌کند → متن پرداخت‌دار latest اصلاً وارد باندل بازار نمی‌شود (نه فقط مخفی در runtime).
+- شش نقطه‌ی UI با گارد اصلاح شدند (مصرف‌کننده‌های bazaarTexts): کارت ارتقای تنظیمات (غیرپرو پنهان در بازار + عنوان «امکانات ویژه کارام»)، زیرعنوان و سربرگ بخش تخصصی و چیپ و دکمه‌ی قفل صفحه‌ی قالب‌ها («بازکردن با کد هدیه»)، جمله‌ی قفل تریدر، کارت قفل تحلیل عمقی («فعال‌سازی با کد هدیه»)، دکمه/لیبل هم‌رسانی رفرال («هم‌رسانی» به‌جای «اشتراک»).
+- **`TermsSheet.tsx`:** بندهای ۳ و ۴ (اشتراک دوره‌ای / پرداخت درگاه-کارت‌به‌کارت) و خط پشتیبانی «مشکل در پرداخت» در بیلد بازار به «در این نسخه خریدی انجام نمی‌شود؛ پرو فقط با کد هدیه» تبدیل می‌شوند.
+- **صفحات ایستای وب داخل APK (`/terms/` و `/privacy/`):** اسکریپت نو `mobile/scripts/bazaar-static-pages.mjs` در `build-www.mjs` فقط وقتی `BUILD_MODE=bazaar` بندهای پرداخت را با نگاشت دقیق تبدیل می‌کند — fail-loud: هر نشانه‌ی ناموجود = شکست بیلد، هرگز بی‌صدا نه. بیلد latest و وب سایت بدون تغییر.
+- **تست قراردادی نو `frontend/tests/bazaar-trust.test.ts` (۱۲ تست):** شاخه‌ی bazaar خزانه بدون «درگاه/کارت‌به‌کارت/ارتقا به کارام پرو/زیبال»؛ شاخه‌ی latest عیناً متن‌های قبلی (پین)؛ اسکن همه‌ی سورس باندل‌شونده‌ی بازار (بدون کامنت، بدون دو فایل حذف‌شده‌ی alias)؛ alias و define در vite config؛ اعمال تبدیل صفحات ایستا.
+- **گام نو CI «اسکن صداقت باندل بازار»:** بعد از ساخت www بazaar، باندل واقعی grep می‌شود — هر واژه‌ی پرداخت یافته = شکست workflow و هیچ APK بازارِ پرداخت‌دار ساخته نمی‌شود.
+- `docs/BAZAAR-LISTING.md` بخش ۴-الف: پنج متن بی‌گاردِ گزارش‌شده‌ی v1.12.0 حالا همه گارد دارند (بسته شد).
+
+### CI (گام PHP — کشف شکست پنهان)
+- **کشف مهم:** گام ۷ (تست PHP) در اجراهای ۳۶–۳۸ به‌ظاهر «سبز» بود ولی لاگ نشان داد `trust-test.php` با `PHP Fatal error: FOREIGN KEY constraint failed در خط ۲۶۵` کرش کرده (۴ شکست در بخش export هم قبلش) — سبزی گام فقط به‌خاطر `continue-on-error: true` بود. ریشه: `.env` تست CI کلیدهای سقف OTP را نداشت → پیش‌فرض `OTP_RESEND_AFTER=60` درخواست دومِ `loginEmail` را رد می‌کرد → توکن خالی → `uid=0` → نقض FK در INSERT سفارش. محیط سبز محلی همین کلیدها را داشت (`backend/.env`: OTP_RESEND_AFTER=1 و سقف‌ها).
+- رفع: کلیدهای `OTP_TTL_MINUTES/OTP_RESEND_AFTER=1/OTP_MAX_ATTEMPTS=3/OTP_MAX_PER_HOUR=10/OTP_MAX_PER_IP_HOUR=500` به env تست CI اضافه شد (عین مقادیر محیط سبز محلی) و `continue-on-error` حذف شد → از این‌جا شکست تست PHP = شکست workflow (سد واقعی).
+
+### اسکریپت‌ها و سند
+- `scripts/build-pack.sh` حذف شد (مسیر تحویل دوم و بدون گارد درخت تمیز/CHECKSUMS/راستی‌آزمایی) — **اسکریپت رسمی واحد: `scripts/build-host-pack.sh`** که در README (بخش استقرار) معرفی شد.
+- `scripts/build-host-pack.sh`: مسیر مطلق خروجی `/home/z/…` → نسبی از `$ROOT` (`$ROOT/../public/…`).
+- CHANGELOG: شمارش واقعی کامیت‌های موج v1.12.0 اصلاح شد («۹ کامیت» → «۱۰ کامیت» — `git log main..fix/pre-bazaar-audit = 10`).
+
+### امضای APK (گزارش — بدون تغییر کد)
+- هر دو `karam-latest.apk` و `karam-bazaar.apk` با **همان کلید release** امضا می‌شوند (نه debug): `signingConfigs.karamRelease` در `mobile/android/app/build.gradle` + properties از CI. کیستور فقط به‌صورت GitHub Secret (`ANDROID_KEYSTORE_B64` + رمزها) نگهداری می‌شود و در هر اجرا موقتاً روی runner باز می‌شود؛ هیچ فایل jks در مخزن/دیسک کارگاه نیست. (لاگ اجرای ۳۸: «کلید امضا آماده شد — هر دو Release امضاشده بیلد می‌شوند» + `KARAM_SIGNING: true`)
 
 ## [1.12.0] — موج ممیزی پیش از کافه‌بازار (K-01/K-02/M-01…M-08 — بدون SQL)
 
-> درخواست صاحب محصول: «گام‌های اصلاحی ممیزی پیش از بازار + اصلاحیه» — اجرای کامل روی شاخه‌ی `fix/pre-bazaar-audit` (۹ کامیت). تصمیم K-01 = مسیر الف (نسخه‌ی بازار بدون پرداخت می‌ماند؛ Poolakey ساخته نمی‌شود). هیچ SQL جدیدی؛ versionCode 10 / versionName 1.0.9 / BACKUP_VERSION 1 دست‌نخورده؛ APP_VERSION وب → ۴٫۵٫۰ (جدول نگاشت در سر همین فایل).
+> درخواست صاحب محصول: «گام‌های اصلاحی ممیزی پیش از بازار + اصلاحیه» — اجرای کامل روی شاخه‌ی `fix/pre-bazaar-audit` (۱۰ کامیت — شمارش با `git log --oneline main..fix/pre-bazaar-audit` از K-02 تا بیلد dist). تصمیم K-01 = مسیر الف (نسخه‌ی بازار بدون پرداخت می‌ماند؛ Poolakey ساخته نمی‌شود). هیچ SQL جدیدی؛ versionCode 10 / versionName 1.0.9 / BACKUP_VERSION 1 دست‌نخورده؛ APP_VERSION وب → ۴٫۵٫۰ (جدول نگاشت در سر همین فایل).
 
 ### امنیت (K-02 — htaccess واحد روت)
 - `frontend/public/.htaccess` حذف؛ محتوای کش/فشرده‌سازی آن (Deflate + Expires + immutable یک‌ساله + Options -Indexes) به `deploy/.htaccess` ادغام شد — یک فایل واحد: HTTPS ۳۰۱ + CSP سخت‌گیرانه + nosniff/Referrer-Policy/Permissions-Policy + سد diag/install/.sql/.env + کش. هر دو اسکریپت پک از `deploy/.htaccess` کپی می‌کنند.

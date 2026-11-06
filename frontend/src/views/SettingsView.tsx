@@ -15,6 +15,7 @@ import {
   type RestoreReport,
 } from '@/lib/backup';
 import { saveFileForUser, shareSuccessText } from '@/lib/saveFile';
+import { BAZAAR_BUILD, settingsProCardTitle, settingsProCardAria } from '@/lib/bazaarTexts';
 import { faJalaliDate } from '@/lib/jalali';
 import { isNativeApp } from '@/lib/native';
 import { exportMyData } from '@/sync/auth';
@@ -230,19 +231,22 @@ export function SettingsView() {
       <h1 className="text-headline-lg font-black text-on-surface dark:text-inverse-on-surface">تنظیمات</h1>
 
       {/* فاز الف — کارت کوچک اشتراک پرو (بالای تنظیمات). بسته C: کارت ارتقا به صفحه‌ی واحد «قالب‌ها»
-          راه می‌برد (ببین پرو چه می‌دهد) و از آنجا دکمه‌های قفل به پی‌وال می‌روند؛ کاربر پرو به پی‌وال (وضعیت اشتراک) */}
+          راه می‌برد (ببین پرو چه می‌دهد) و از آنجا دکمه‌های قفل به پی‌وال می‌روند؛ کاربر پرو به پی‌وال (وضعیت اشتراک).
+          v1.12.1 — بیلد بازار: برای غیرپرو پنهان می‌شود (گارد زمان بیلد BAZAAR_BUILD) چون «ارتقا» در این نسخه
+          مسیر خرید ندارد؛ کاربر پرو همان کارت وضعیت را می‌بیند. بیلد latest بدون تغییر */}
+      {(!BAZAAR_BUILD || isPro) ? (
       <div
         className="rounded-2xl border border-secondary/30 bg-secondary/5 dark:bg-secondary/10 p-4 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition-transform"
         onClick={() => setView(isPro ? 'paywall' : 'templates')}
         role="button"
-        aria-label={isPro ? 'وضعیت اشتراک کارام پرو' : 'ارتقا به کارام پرو'}
+        aria-label={isPro ? 'وضعیت اشتراک کارام پرو' : settingsProCardAria}
         id="settings-pro"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <Icon name="workspace_premium" size={26} className="text-secondary shrink-0" />
           <div className="min-w-0">
             <p className="text-body-md font-bold text-on-surface dark:text-inverse-on-surface">
-              {isPro ? 'اشتراک کارام پرو فعال است' : 'ارتقا به کارام پرو'}
+              {isPro ? 'اشتراک کارام پرو فعال است' : settingsProCardTitle}
             </p>
             <p className="text-xs text-on-surface-variant truncate">
               {isPro
@@ -257,6 +261,7 @@ export function SettingsView() {
           {isPro ? 'پرو' : 'مشاهده'}
         </span>
       </div>
+      ) : null}
 
       {/* بسته C — ردیف‌های «قالب‌های آماده» و «بسته‌های شغلی تخصصی» حذف شدند؛ تنها ورود به قالب‌ها:
           «لیست جدید ← یا از قالب‌های آماده شروع کنید» (NewListSheet) */}

@@ -10,6 +10,7 @@ import {
   traderLockedFor,
 } from '@/db/traderTemplate';
 import { TRADER_REQUIRES_PRO } from '@/sync/payments';
+import { traderLockedNote, unlockCta } from '@/lib/bazaarTexts';
 import { faTime, toFa } from '@/lib/format';
 
 /**
@@ -195,7 +196,7 @@ export function TraderCard() {
               ))}
             </div>
             <p className="text-[11px] leading-5 text-on-surface-variant">
-              محتوای هر ۵ لیست بالا را کامل می‌بینید — فعال‌سازی چک‌لیست تریدر (با یادآور سشن) مخصوص کارام پرو است.
+              {traderLockedNote}
             </p>
             <button
               className="w-full py-2.5 font-bold rounded-xl text-sm bg-secondary text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
@@ -203,7 +204,7 @@ export function TraderCard() {
               data-trader-locked
             >
               <Icon name="lock" size={16} />
-              بازکردن با کارام پرو
+              {unlockCta}
             </button>
             <p className="text-[10px] leading-4 text-on-surface-variant/80">
               اگر قبلاً چک‌لیست تریدر را فعال کرده بودی (حتی در نسخه‌های قدیمی)، لیست‌هایت سر جایشان است و دسترسی کامل داری.

@@ -3,6 +3,7 @@ import { Icon } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { weekBars as weekBarsOf, weekCompletionRate, currentStreak } from '@/lib/selectors';
 import { traderDisciplineAvg } from '@/db/traderTemplate';
+import { deepAnalyticsLockNote } from '@/lib/bazaarTexts';
 import { toFa } from '@/lib/format';
 import type { TaskEntity } from '@/types';
 
@@ -226,7 +227,7 @@ export function AnalyticsView() {
             <Icon name="lock" size={28} className="text-secondary" />
             <div>
               <h4 className="text-label-lg font-bold text-secondary">تحلیل عمقی بهره‌وری و ساعات اوج تمرکز</h4>
-              <p className="text-[11px] text-on-surface-variant">مخصوص کاربران نسخه پرو کارام</p>
+              <p className="text-[11px] text-on-surface-variant">{deepAnalyticsLockNote}</p>
             </div>
           </div>
           <span className="px-2.5 py-1 bg-secondary text-white text-xs font-bold rounded-lg shadow">مشاهده</span>

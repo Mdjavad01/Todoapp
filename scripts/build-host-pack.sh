@@ -7,14 +7,15 @@
 # نصب.txt + CHECKSUMS.sha256. هیچ رازی داخل بسته نیست.
 #
 # استفاده:  bash scripts/build-host-pack.sh vN.N
-# خروجی:    /home/z/my-project/public/karam-host-update-vN.N.zip
+# خروجی:    <مخزن>/../public/karam-host-update-vN.N.zip (نسبی از $ROOT)
 # پیش‌نیاز: scripts/README-نصب-vN.N.md وجود داشته باشد (راهنمای رسمی همین نسخه)
 # ============================================================================
 set -euo pipefail
 VER="${1:?usage: build-host-pack.sh vN.N}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="/tmp/karam-host-pack-$VER"
-OUT="/home/z/my-project/public/karam-host-update-$VER.zip"
+# v1.12.1 — مسیر خروجی نسبی از $ROOT (پوشه‌ی public هم‌سطح مخزن) — بدون مسیر مطلق /home/z/…
+OUT="$ROOT/../public/karam-host-update-$VER.zip"
 README_SRC="$ROOT/scripts/README-نصب-$VER.md"
 
 # — گاردها: پک فقط از وضعیت تمیز گیت ساخته می‌شود —

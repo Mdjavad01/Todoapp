@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Icon, type IconName } from '@/components/Icon';
 import { useAppStore } from '@/store/useAppStore';
 import { toFa } from '@/lib/format';
+import { rulesSubscription, rulesPayment, supportIntro } from '@/lib/bazaarTexts';
 
 /**
  * کارام v17 — قوانین استفاده، حریم خصوصی و پشتیبانی
@@ -18,8 +19,9 @@ interface TermItem {
 const RULES: TermItem[] = [
   { icon: 'checklist', chip: 'bg-teal-500/10 text-teal-700 dark:text-teal-300', t: 'کارام ابزار شخصی مدیریت وظایف است؛ مسئولیت محتوای کارها و لیست‌ها با خودتان است.' },
   { icon: 'fingerprint', chip: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', t: 'ورود با کد یک‌بارمصرف انجام می‌شود؛ نگهداری از دسترسی دستگاه و حساب بر عهده‌ی شماست.' },
-  { icon: 'star', chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', t: 'اشتراک پرو دوره‌ای است؛ در پایان دوره اگر تمدید نکنید، اپ به نسخه‌ی رایگان برمی‌گردد ولی هیچ داده‌ای حذف نمی‌شود.' },
-  { icon: 'credit_card', chip: 'bg-violet-500/10 text-violet-700 dark:text-violet-300', t: 'پرداخت از درگاه بانکی یا کارت‌به‌کارت (با تأیید ادمین) است؛ وضعیت هر پرداخت در صفحه‌ی پرو قابل پیگیری است.' },
+  // v1.12.1 — بندهای ۳ و ۴ در بیلد بازار صادقانه «کد هدیه» می‌شوند (گارد زمان بیلد — bazaarTexts)
+  { icon: 'star', chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', t: rulesSubscription },
+  { icon: 'credit_card', chip: 'bg-violet-500/10 text-violet-700 dark:text-violet-300', t: rulesPayment },
   { icon: 'warning', chip: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', t: 'سوءاستفاده از سرویس — تلاش برای نفوذ، بار مصنوعی یا ربات — موجب مسدودسازی حساب می‌شود.' },
   { icon: 'cloud_sync', chip: 'bg-sky-500/10 text-sky-700 dark:text-sky-300', t: 'قطع موقت سرویس برای نگهداری با «حالت تعمیر» اعلام می‌شود؛ در این بازه داده‌ها محفوظ است.' },
   { icon: 'auto_awesome', chip: 'bg-primary/10 text-primary', t: 'این قواعد با به‌روزرسانی اپ ممکن است تغییر کند؛ نسخه‌ی جدید در همین صفحه اعلام می‌شود.' },
@@ -149,7 +151,7 @@ export function TermsSheet() {
               پشتیبانی کارام
             </p>
             <p className="text-body-sm text-on-surface-variant mt-1.5 leading-relaxed">
-              مشکل در پرداخت، حذف حساب یا هر سؤال دیگر؟ از همین راه‌ها پیام بدهید؛ سریع جواب می‌گیرید.
+              {supportIntro}
             </p>
             <div className="mt-3 flex flex-col gap-2">
               {email ? (

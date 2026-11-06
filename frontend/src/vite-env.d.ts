@@ -6,3 +6,4 @@ interface ImportMetaEnv {
   readonly VITE_API_EXTRA_QUERY?: string;
   readonly VITE_PAYMENTS_BUILD?: string;
 }
+
