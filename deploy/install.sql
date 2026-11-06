@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS `reminders` (
 CREATE TABLE IF NOT EXISTS `plans` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `uuid`        CHAR(36)    NOT NULL,
-  `code`        VARCHAR(50) NOT NULL COMMENT 'monthly / annual / lifetime',
+  `code`        VARCHAR(50) NOT NULL COMMENT 'monthly / semiannual / annual / lifetime',
   `title`       VARCHAR(120) NOT NULL,
   `months`      INT         NOT NULL DEFAULT 1 COMMENT 'مدت اشتراک؛ 0=دائمی',
   `price_tomans` BIGINT     NOT NULL DEFAULT 0 COMMENT 'مبلغ به تومان — فقط از سرور (فاز تومان)',
@@ -449,10 +449,11 @@ INSERT INTO `admin_roles` (`code`, `title`, `permissions`) VALUES
   ('support', 'پشتیبان', '{"users.view":true,"orders.view":true,"orders.review":true}')
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
+-- قیمت‌گذاری مصوب (لندینگ جدید): ماهانه ۱۹۸٬۰۰۰ / شش‌ماهه ۱٬۱۰۰٬۰۰۰ / سالانه ۱٬۹۰۰٬۰۰۰ تومان — «دائمی» از سید حذف شد
 INSERT INTO `plans` (`uuid`, `code`, `title`, `months`, `price_tomans`, `description`, `is_active`, `sort_order`) VALUES
-  (UUID(), 'monthly',  'اشتراک ماهانه',  1, 49000,   'یک ماه دسترسی کامل به کارام پرو', 1, 1),
-  (UUID(), 'annual',   'اشتراک سالانه', 12, 190000,  'دوازده ماه دسترسی کامل — حدود ۶۸٪ تخفیف', 1, 2),
-  (UUID(), 'lifetime', 'دائمی',          0, 490000,  'یکبار پرداخت، همیشه پرو', 1, 3)
+  (UUID(), 'monthly',    'اشتراک ماهانه',    1, 198000,  'یک ماه دسترسی کامل به کارام پرو', 1, 1),
+  (UUID(), 'semiannual', 'اشتراک شش‌ماهه',   6, 1100000, 'شش ماه دسترسی کامل به کارام پرو', 1, 2),
+  (UUID(), 'annual',     'اشتراک سالانه',   12, 1900000, 'دوازده ماه دسترسی کامل — ۲۰٪ تخفیف', 1, 3)
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
 INSERT INTO `settings` (`key`, `value`) VALUES

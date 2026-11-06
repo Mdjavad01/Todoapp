@@ -30,16 +30,19 @@ import {
  * یا به درگاه آنلاین می‌رود یا جریان کارت‌به‌کارت داخل شیت ادامه می‌یابد.
  */
 
+// قیمت‌گذاری مصوب (لندینگ جدید) — ماهانه ۱۹۸٬۰۰۰ / شش‌ماهه ۱٬۱۰۰٬۰۰۰ / سالانه ۱٬۹۰۰٬۰۰۰ تومان؛ «دائمی» از فروش خارج شد.
+// این فقط پیش‌فرض آفلاین است؛ قیمت واقعی همیشه از سرور می‌آید (پنل ← پلن‌ها).
 const FALLBACK_PLANS: Plan[] = [
-  { code: 'monthly', title: 'اشتراک ماهانه', months: 1, priceTomans: 49000, description: 'یک ماه دسترسی کامل به کارام پرو' },
-  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceTomans: 190000, description: 'دوازده ماه دسترسی کامل — حدود ۶۸٪ تخفیف' },
-  { code: 'lifetime', title: 'دائمی', months: 0, priceTomans: 490000, description: 'یکبار پرداخت، همیشه پرو' },
+  { code: 'monthly', title: 'اشتراک ماهانه', months: 1, priceTomans: 198000, description: 'یک ماه دسترسی کامل به کارام پرو' },
+  { code: 'semiannual', title: 'اشتراک شش‌ماهه', months: 6, priceTomans: 1100000, description: 'شش ماه دسترسی کامل به کارام پرو' },
+  { code: 'annual', title: 'اشتراک سالانه', months: 12, priceTomans: 1900000, description: 'دوازده ماه دسترسی کامل — ۲۰٪ تخفیف' },
 ];
 
 const PLAN_LABELS: Record<string, string> = {
   monthly: 'ماهانه',
+  semiannual: 'شش‌ماهه',
   annual: 'سالانه',
-  lifetime: 'مادام‌العمر',
+  lifetime: 'مادام‌العمر', // سازگاری با دیتابیس‌های قدیمی تا «دائمی» از پنل غیرفعال شود
 };
 
 const PLAN_NOTES: Record<string, string> = {

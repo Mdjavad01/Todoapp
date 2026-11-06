@@ -243,7 +243,7 @@ export default function GiftCodes({
             </label>
           </div>
           <p className="rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-500">
-            نمونه: کد «NOWRUZ1404» با ۲۰٪ تخفیف و سقف ۵۰ بار — پلن سالانه ۱۹۰٬۰۰۰ تومان → ۱۵۲٬۰۰۰ تومان
+            نمونه: کد «NOWRUZ1404» با ۲۰٪ تخفیف و سقف ۵۰ بار — پلن سالانه ۱٬۹۰۰٬۰۰۰ تومان → ۱٬۵۲۰٬۰۰۰ تومان
             قابل پرداخت.
           </p>
           <div className="flex justify-end gap-2">
