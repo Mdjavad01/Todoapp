@@ -7,6 +7,11 @@
 ## ۱) پیش‌نیازها
 
 - هاست cPanel با PHP **8.1+** و MySQL/MariaDB
+- **افزونه‌های PHP الزامی** (v1.12.0 — در cPanel معمولاً فعال‌اند؛ در «Select PHP Version» چک کنید):
+  - `mbstring` — رشته‌های چندبایتی فارسی
+  - `pdo_mysql` — اتصال دیتابیس (نسخه‌ی sqlite فقط برای تست محلی)
+  - `json` — از PHP 8 داخلی است
+  - `curl` — ارسال OTP تلگرام/پیامک و اتصال درگاه زیبال
 - SSL فعال روی دامنه (Let's Encrypt کافی است) — اپ بدون HTTPS کار نمی‌کند (Service Worker)
 - دامنه‌ی `app.hojre24shop.ir` به پوشه‌ای مثل `public_html/app` (یا یک `public_html` اختصاصی) اشاره کند
 
