@@ -42,6 +42,32 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
+      # v1.12.0 (ممیزی M-08) — سد تست پیش از هر بیلد: شکست تست = شکست workflow و هیچ APK ای ساخته نمی‌شود
+      - name: اجرای تست‌های واحد فرانت (سد CI — ۳۱۵+ تست)
+        working-directory: frontend
+        run: bun test
+
+      # v1.12.0 (ممیزی M-08 — توصیه‌شده) — تست‌های PHP روی sqlite
+      # تا تأیید اولین اجرا در CI گارد باز است (continue-on-error)؛ بعد از سبزشدن، hard-gate شود
+      - name: نصب PHP 8.2 با pdo_sqlite (تست بک‌اند)
+        if: runner.os == 'Linux'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_sqlite, sqlite3, mbstring, curl, json
+          coverage: none
+
+      - name: اجرای تست‌های PHP (trust + otp-no-disk — sqlite)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          SECRET=$(openssl rand -hex 32)
+          printf 'APP_ENV="local"\nAPP_SECRET="%s"\nOTP_DEBUG="1"\nDB_DRIVER="sqlite"\nSQLITE_PATH="%s/backend/storage/karam-ci.sqlite3"\nMAIL_TRANSPORT="log"\n' "$SECRET" "$GITHUB_WORKSPACE" > backend/.env
+          php -S 127.0.0.1:8099 -t backend/public >/tmp/php-server.log 2>&1 &
+          sleep 2
+          php tests/otp-no-disk-test.php
+          php tests/trust-test.php
+
       - name: نصب وابستگی‌های موبایل
         working-directory: mobile
         run: bun install --frozen-lockfile
