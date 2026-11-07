@@ -260,10 +260,22 @@ describe('اسکن سورس باندل بازار — بدون واژه‌ی م�
       // v1.13.3 — هیچ اشاره‌ای به کد هدیه/نسخه‌ی بیرون از بازار در صفحات بازار نیست
       expect(out).not.toContain('کد هدیه');
       expect(out).not.toContain('karam-latest');
+      if (page === 'privacy') {
+        // v1.13.4 — جمله‌ی صریح «هیچ اطلاعات پرداخت جمع‌آوری نمی‌شود» در نسخه‌ی بازار الزامی است
+        expect(out).toContain('هیچ اطلاعات پرداخت جمع‌آوری نمی‌شود');
+        expect(out).toContain('کافه‌بازار');
+        // v1.13.4 — ردیف سوابق مالی در بازار با ردیف بی‌طرف جایگزین شده (سلول‌های سرور/حسابداری از جدول حذف)
+        expect(out).toContain('در این نسخه خریدی انجام نمی‌شود و هیچ رکورد مالی ثبت نمی‌شود');
+        expect(out).not.toContain('برای الزامات حسابداری می‌ماند');
+      }
     }
     // سورس فعلی (بیلد latest) هنوز بند پرداخت را دارد — تغییر نکرده باشد
     const termsLatest = read(join(import.meta.dir, '..', 'public', 'terms', 'index.html'));
     expect(termsLatest).toContain('پرداخت از درگاه بانکی (زیبال) یا کارت‌به‌کارت');
+    // v1.13.4 — سورس privacy هم نشانه‌های موردانتظار نگاشت بازار را دارد (fail-loud با تغییر متن)
+    const privacyLatest = read(join(import.meta.dir, '..', 'public', 'privacy', 'index.html'));
+    expect(privacyLatest).toContain('فقط در نسخه‌های دارای خرید، برای رسید درگاه بانکی (زیبال)');
+    expect(privacyLatest).toContain('سفارش اشتراک یا واریز (فقط در نسخه‌های دارای خرید)');
   });
 });
 
