@@ -1,5 +1,5 @@
-/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.07.15.03.20) */
-const CACHE_NAME = 'karam-cache-2026.11.07.15.03.20';
+/* Service Worker کارام — تولید خودکار پس از بیلد (نسخه 2026.11.07.15.34.28) */
+const CACHE_NAME = 'karam-cache-2026.11.07.15.34.28';
 const PRECACHE_URLS = [
   "./assets/base-DJX-elRu.js",
   "./assets/index-BPr_eFm2.js",
