@@ -33,7 +33,7 @@ import {
 
 const APP_VERSION = '۴.۶.۰';
 /** نسخه ماشینی برای مقایسه با «آخرین نسخه» سرور (چک‌کننده به‌روزرسانی v17) */
-const APP_VERSION_RAW = '4.6.1';
+const APP_VERSION_RAW = '4.6.2';
 
 /** آیا نسخه‌ی سرویس از نسخه‌ی فعلی اپ جدیدتر است؟ (مقایسه‌ی عددی سه‌بخشی) */
 function isNewerVersion(latest: string | null | undefined, current: string): boolean {
