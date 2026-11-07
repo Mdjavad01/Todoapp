@@ -229,7 +229,7 @@ export function AllView() {
   return (
     <SmartShell id="view-all" title="همه‌ی کارها" subtitle="ناتمام‌های همه‌ی لیست‌ها، گروه‌بندی‌شده" count={total}>
       {total === 0 ? (
-        <SmartEmpty emoji="🗂️" title="هیچ کارِ ناتمامی ندارید" hint="از دکمه‌ی + یا نوار افزودن سریع پایین صفحه، اولین کارتان را بسازید." />
+        <SmartEmpty emoji="🗂️" title="هیچ کارِ ناتمامی ندارید" hint="از نوار افزودن پایین صفحه (علامت +)، اولین کارتان را بسازید — همین‌جا زیر نام لیستش ظاهر می‌شود." />
       ) : (
         groups.map((g) => <ListGroupBlock key={g.list.id} list={g.list} tasks={g.tasks} onOpen={openList} />)
       )}
