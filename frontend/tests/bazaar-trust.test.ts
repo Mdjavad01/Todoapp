@@ -1,10 +1,12 @@
 /**
- * کارام — تست قراردادی صداقت بیلد بازار (v1.12.1 — موج اصلاحی پیش از ادغام)
+ * کارام — تست قراردادی صداقت بیلد بازار (v1.12.1 + v1.13.3 — آماده‌سازی کافه‌بازار)
  *
  * اجرا:  cd frontend && bun test tests/bazaar-trust.test.ts
  *
  * درخواست صاحب محصول: «بیلد بازار را اسکن کن و هر کلمه‌ی ممنوع («درگاه»، «کارت‌به‌کارت»،
  * «ارتقا به کارام پرو») در متن‌های UI آن رد شود.»
+ * v1.13.3 — تصمیم صاحب محصول برای انتشار بازار: ورودی کد هدیه از بیلد بازار حذف شد؛
+ * هیچ اشاره‌ای به کد هدیه، بیلد karam-latest یا نسخه‌ی کامل در باندل بازار مجاز نیست.
  *
  * معماری صداقت (که این تست قراردادش را قفل می‌کند):
  *   ۱) خزانه‌ی متن‌ها دو شاخه‌ی فیزیکی دارد: lib/bazaarTexts.ts (latest) و
@@ -12,8 +14,9 @@
  *      (همان مکانیزم PaywallView) → متن پرداخت‌دار latest اصلاً وارد باندل بازار نمی‌شود.
  *   ۲) PaywallView.tsx + PaymentMethodSheet.tsx در بیلد بازار با alias حذف فیزیکی می‌شوند.
  *   ۳) صفحات ایستای /terms/ و /privacy/ در بیلد بازار با bazaar-static-pages.mjs
- *      تبدیل می‌شوند (fail-loud).
- *   ۴) گام CI «اسکن صداقت باندل بازار» باندلِ واقعاً ساخته‌شده را grep می‌کند (سد دوم).
+ *      تبدیل می‌شوند (fail-loud) — جایگزین‌ها بی‌وعده‌اند (بدون کد هدیه).
+ *   ۴) گام CI «اسکن صداقت باندل بازار» باندلِ واقعاً ساخته‌شده را grep می‌کند (سد دوم)
+ *      + فهرست مجاز دامنه‌ها (فقط API خود اپ، w3.org، t.me، بنرهای مجوز).
  *
  * این تست سورس را در سطح «قرارداد» می‌سنجد؛ اسکن باندل واقعی در CI انجام می‌شود.
  */
@@ -24,8 +27,20 @@ import { join } from 'node:path';
 import * as latestTexts from '@/lib/bazaarTexts';
 import * as bazaarTexts from '@/lib/bazaarTexts.bazaar';
 
-/** واژه‌های ممنوع در هر متن UI بیلد بازار (درخواست صاحب محصول + نام درگاه) */
-const FORBIDDEN = ['درگاه', 'کارت‌به‌کارت', 'کارت به کارت', 'ارتقا به کارام پرو', 'زیبال'];
+/** واژه‌های ممنوع در هر متن UI بیلد بازار (درخواست صاحب محصول + نام درگاه + ارجاع بیرونی v1.13.3) */
+const FORBIDDEN = [
+  'درگاه',
+  'کارت‌به‌کارت',
+  'کارت به کارت',
+  'ارتقا به کارام پرو',
+  'زیبال',
+  // v1.13.3 — ورودی کد هدیه از بیلد بازار حذف شد؛ هیچ اشاره‌ای به آن و به نسخه‌ی بیرون از بازار مجاز نیست
+  'کد هدیه',
+  'karam-latest',
+  'نسخه کامل',
+  'نسخه‌ی کامل',
+  'نسخهٔ کامل',
+];
 
 const SRC_ROOT = join(import.meta.dir, '..', 'src');
 
@@ -154,13 +169,19 @@ describe('خزانه‌ی متن‌های بازار (bazaarTexts — قرارد
     expect(L.methodsLaterLabel).toBe('بعداً');
   });
 
-  test('متن‌های شاخه‌ی بازار صادقانه به کد هدیه اشاره می‌کنند', () => {
+  test('متن‌های شاخه‌ی بازار بی‌وعده‌اند — هیچ راهِ فعال‌سازی وعده نمی‌شود (v1.13.3)', () => {
     const B = bazaarTexts as unknown as Record<string, string>;
-    expect(B.unlockCta).toBe('بازکردن با کد هدیه');
-    expect(B.rulesPayment).toBe('در این نسخه خریدی انجام نمی‌شود؛ پرو فقط با کد هدیه.');
-    expect(B.deepAnalyticsLockNote).toContain('کد هدیه');
+    expect(B.unlockCta).toBe('اطلاعات فعال‌سازی');
+    expect(B.rulesPayment).toBe('در این نسخه خریدی انجام نمی‌شود؛ امکانات ویژه فعلاً فعال نیست.');
+    expect(B.deepAnalyticsLockNote).toContain('فعال نیست');
+    expect(B.templatesSubtitle).toContain('فعلاً در این نسخه فعال نیستند');
     // کارت غیرپرو تنظیمات در بازار هرگز «ارتقا» نمی‌گوید
     expect(B.settingsProCardTitle).toBe('امکانات ویژه کارام');
+    // هیچ متن شاخه‌ی بازار راهِ فعال‌سازی (کد هدیه) وعده نمی‌دهد
+    for (const key of TEXT_KEYS) {
+      if (key === 'BAZAAR_BUILD') continue;
+      expect((B[key] as string).includes('کد هدیه')).toBe(false);
+    }
   });
 });
 
@@ -180,6 +201,8 @@ describe('معماری گارد زمان بیلد (alias حذف فیزیکی —
     for (const bad of FORBIDDEN) {
       expect(stub.includes(bad)).toBe(false);
     }
+    // v1.13.3 — پیام خنثی الزامی به‌جای ورودی کد هدیه
+    expect(stub).toContain('این بخش در حال حاضر فعال نیست');
   });
 });
 
@@ -234,6 +257,9 @@ describe('اسکن سورس باندل بازار — بدون واژه‌ی م�
       expect(mod.assertNoBazaarForbiddenWords(out, page)).toBe(true);
       // جمله‌ی صادقانه‌ی الزامی در نسخه‌ی بازار
       expect(out).toContain('در این نسخه خریدی انجام نمی‌شود');
+      // v1.13.3 — هیچ اشاره‌ای به کد هدیه/نسخه‌ی بیرون از بازار در صفحات بازار نیست
+      expect(out).not.toContain('کد هدیه');
+      expect(out).not.toContain('karam-latest');
     }
     // سورس فعلی (بیلد latest) هنوز بند پرداخت را دارد — تغییر نکرده باشد
     const termsLatest = read(join(import.meta.dir, '..', 'public', 'terms', 'index.html'));
@@ -260,6 +286,6 @@ describe('بیلد موبایل — گارد صفحات ایستا فقط در b
       join(import.meta.dir, '..', '..', 'mobile', 'scripts', 'bazaar-static-pages.mjs'),
       'utf8',
     );
-    expect(helper).toContain('در این نسخه خریدی انجام نمی‌شود؛ پرو فقط با کد هدیه');
+    expect(helper).toContain('در این نسخه خریدی انجام نمی‌شود');
   });
 });

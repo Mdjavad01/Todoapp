@@ -177,17 +177,28 @@ jobs:
         working-directory: mobile
         run: bun run build:www:bazaar
 
-      # v1.12.1 — سد صداقت باندل بازار: هیچ واژه‌ی پرداختی (درگاه/کارت‌به‌کارت/ارتقا به کارام پرو/زیبال)
-      # در JS/HTML باندل بازار نباشد — شکست گام = شکست workflow و هیچ APK بازارِ پرداخت‌دار ساخته نمی‌شود
-      - name: اسکن صداقت باندل بازار (بدون واژه‌های پرداخت)
+      # v1.12.1 + v1.13.3 — سد صداقت باندل بازار: هیچ واژه‌ی پرداختی (درگاه/کارت‌به‌کارت/ارتقا به کارام پرو/زیبال)
+      # و هیچ اشاره‌ای به فعال‌سازی بیرونی (کد هدیه/karam-latest/نسخه کامل) در JS/HTML باندل بازار نباشد؛
+      # به‌علاوه فقط دامنه‌های مجاز (API خود اپ + SVG w3 + تلگرامِ هم‌رسانی/پشتیبانی + بنرهای مجوز کتابخانه‌ها) در باندل باشد —
+      # شکست هر دو گام = شکست workflow و هیچ APK بازارِ ناسازگار ساخته نمی‌شود
+      - name: اسکن صداقت باندل بازار (بدون واژه‌های پرداخت و ارجاع بیرون از بازار)
         run: |
-          MISSED=$(grep -rlE 'درگاه|کارت‌به‌کارت|کارت به کارت|ارتقا به کارام پرو|زیبال' mobile/www/assets mobile/www/terms mobile/www/privacy 2>/dev/null || true)
+          MISSED=$(grep -rlE 'درگاه|کارت‌به‌کارت|کارت به کارت|ارتقا به کارام پرو|زیبال|کد هدیه|karam-latest|نسخه کامل|نسخه‌ی کامل|نسخهٔ کامل' mobile/www/assets mobile/www/terms mobile/www/privacy 2>/dev/null || true)
           if [ -n "$MISSED" ]; then
-            echo '✗ واژه‌های پرداخت در باندل بازار پیدا شد — ساخت رد شد:' >&2
+            echo '✗ واژه‌های ممنوع در باندل بازار پیدا شد — ساخت رد شد:' >&2
             echo "$MISSED" >&2
             exit 1
           fi
-          echo '✅ باندل بازار پاک است — هیچ واژه‌ی پرداختی در JS/HTML نیست'
+          echo '✅ باندل بازار پاک است — هیچ واژه‌ی پرداخت/ارجاع بیرونی در JS/HTML نیست'
+          EXT=$(grep -rhoE 'https?://[a-zA-Z0-9.-]+' mobile/www/assets mobile/www/terms mobile/www/privacy 2>/dev/null \
+            | sed -E 's#https?://##' | sort -u \
+            | grep -vE '^(app\.hojre24shop\.ir|hojre24shop\.ir|www\.w3\.org|t\.me|reactjs\.org|github\.com|capacitorjs\.com)$' || true)
+          if [ -n "$EXT" ]; then
+            echo '✗ آدرس خارج از فهرست مجاز در باندل بازار پیدا شد — ساخت رد شد:' >&2
+            echo "$EXT" >&2
+            exit 1
+          fi
+          echo '✅ دامنه‌های باندل = فقط مجازها (API خود اپ، w3.org، t.me، بنرهای مجوز)'
 
       - name: همگام‌سازی Capacitor — حالت bazaar
         working-directory: mobile
